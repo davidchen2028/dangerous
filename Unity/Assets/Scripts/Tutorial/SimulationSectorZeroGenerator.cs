@@ -165,7 +165,7 @@ public class SimulationSectorZeroGenerator : MonoBehaviour
 
         // 靠近右墙，X 交替内收形成“之”字摸排走廊
         float[] zPositions = { 22f, 28f, 34f, 38f };
-        float[] xPositions = { 4.2f, 5.0f, 4.2f, 5.0f };
+        float[] xPositions = { 3.0f, 4.0f, 3.0f, 4.0f };
 
         for (int i = 0; i < zPositions.Length; i++)
         {

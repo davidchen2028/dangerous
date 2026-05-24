@@ -65,9 +65,19 @@ def index() -> Any:
     return _no_cache(make_response(send_from_directory(ROOT, "index.html")))
 
 
+_MIME_OVERRIDES = {
+    ".glb": "model/gltf-binary",
+    ".gltf": "model/gltf+json",
+}
+
+
 @app.route("/<path:path>")
 def static_files(path: str) -> Any:
-    resp = make_response(send_from_directory(ROOT, path))
+    suffix = Path(path).suffix.lower()
+    mimetype = _MIME_OVERRIDES.get(suffix)
+    resp = make_response(
+        send_from_directory(ROOT, path, mimetype=mimetype)
+    )
     if path.endswith((".html", ".js", ".css")):
         return _no_cache(resp)
     return resp

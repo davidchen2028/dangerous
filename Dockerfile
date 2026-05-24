@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r server/requirements.txt
 COPY index.html .
 COPY css/ css/
 COPY js/ js/
+COPY models/ models/
 COPY server/app.py server/app.py
 
 EXPOSE 8080

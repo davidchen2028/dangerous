@@ -1,6 +1,9 @@
 /**
  * 新手教程 — 0 号模拟围区（第一人称）
  */
+import * as THREE from "three";
+import { GLTFLoader } from "./vendor/GLTFLoader.js";
+
 (function () {
   "use strict";
 
@@ -41,6 +44,8 @@
   var BOUNDS_Z_MIN = 1.2;
   var BOUNDS_Z_MAX = 58.8;
   var clouds = [];
+  /** @type {{ minX: number, maxX: number, minY: number, maxY: number, minZ: number, maxZ: number }[]} */
+  var colliders = [];
 
   var CAPSULE_RADIUS = 0.5;
   var STAND_HEIGHT = 1.8;
@@ -76,37 +81,476 @@
     if (loadErrorEl) loadErrorEl.hidden = true;
   }
 
-  function addBox(parent, sx, sy, sz, px, py, pz, color) {
+  function registerCollider(sx, sy, sz, px, py, pz) {
+    colliders.push({
+      minX: px - sx * 0.5,
+      maxX: px + sx * 0.5,
+      minY: py - sy * 0.5,
+      maxY: py + sy * 0.5,
+      minZ: pz - sz * 0.5,
+      maxZ: pz + sz * 0.5,
+    });
+  }
+
+  function addBox(parent, sx, sy, sz, px, py, pz, color, solid) {
     var mesh = new THREE.Mesh(
       new THREE.BoxGeometry(sx, sy, sz),
       new THREE.MeshLambertMaterial({ color: color })
     );
     mesh.position.set(px, py, pz);
     parent.add(mesh);
+    if (solid !== false) {
+      registerCollider(sx, sy, sz, px, py, pz);
+    }
     return mesh;
+  }
+
+  var TRUCK_CENTER = { x: 0, y: 1.25, z: 30 };
+  var TRUCK_SIZE = { x: 2.5, y: 2.5, z: 6 };
+  var TRUCK_GLB_URL = "models/tactical-truck.glb";
+
+  var BARRIER_SIZE = { x: 1.5, y: 1.3, z: 0.8 };
+  var BARRIER_CENTER_X = -5.25;
+  var BARRIER_CENTER_Y = 0.65;
+  var BARRIER_Z = [10, 20, 30, 40];
+  var BARRIER_GLB_URL = "models/concrete-barrier.glb";
+
+  var CRATE_SIZE = { x: 2, y: 2, z: 2 };
+  var CRATE_CENTER_Y = 1;
+  var CRATE_Z = [22, 28, 34, 38];
+  var CRATE_X = [3.0, 4.0, 3.0, 4.0];
+  var CRATE_GLB_URL = "models/wooden-crate.glb";
+
+  function buildTruck(parent) {
+    registerCollider(
+      TRUCK_SIZE.x,
+      TRUCK_SIZE.y,
+      TRUCK_SIZE.z,
+      TRUCK_CENTER.x,
+      TRUCK_CENTER.y,
+      TRUCK_CENTER.z
+    );
+
+    var loader = new GLTFLoader();
+    loader.load(
+      TRUCK_GLB_URL,
+      function (gltf) {
+        placeTruckModel(gltf.scene, parent);
+      },
+      function (xhr) {
+        if (xhr.total) {
+          console.log(
+            "[ActionScene] 卡车加载 " +
+              Math.round((xhr.loaded / xhr.total) * 100) +
+              "%"
+          );
+        }
+      },
+      function (err) {
+        console.error("[ActionScene] 卡车模型加载失败", err);
+        addTruckFallback(parent);
+      }
+    );
+  }
+
+  function addTruckFallback(parent) {
+    addBox(
+      parent,
+      TRUCK_SIZE.x,
+      TRUCK_SIZE.y,
+      TRUCK_SIZE.z,
+      TRUCK_CENTER.x,
+      TRUCK_CENTER.y,
+      TRUCK_CENTER.z,
+      0x2a7ab8,
+      false
+    );
+  }
+
+  function fitModelToBox(object3D, targetSize) {
+    var box = new THREE.Box3().setFromObject(object3D);
+    var size = new THREE.Vector3();
+    box.getSize(size);
+    var cur = object3D.scale;
+    object3D.scale.set(
+      cur.x * (targetSize.x / (size.x || 1)),
+      cur.y * (targetSize.y / (size.y || 1)),
+      cur.z * (targetSize.z / (size.z || 1))
+    );
+    object3D.updateMatrixWorld(true);
+  }
+
+  function fitTruckToCollider(truckRoot) {
+    fitModelToBox(truckRoot, TRUCK_SIZE);
+  }
+
+  function enableShadows(root) {
+    root.traverse(function (child) {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        if (child.material) {
+          child.material.side = THREE.FrontSide;
+        }
+      }
+    });
+  }
+
+  var _footprintVec = new THREE.Vector3();
+
+  /** 采样某高度附近在 XZ 平面上的占地宽度（用于判断哪一面是墩底） */
+  function xzFootprintAreaAtWorldY(object, worldY, tolerance) {
+    var minX = Infinity;
+    var maxX = -Infinity;
+    var minZ = Infinity;
+    var maxZ = -Infinity;
+    var found = false;
+
+    object.updateMatrixWorld(true);
+    object.traverse(function (child) {
+      if (!child.isMesh || !child.geometry) return;
+      var posAttr = child.geometry.attributes.position;
+      if (!posAttr) return;
+      var i;
+      for (i = 0; i < posAttr.count; i++) {
+        _footprintVec.fromBufferAttribute(posAttr, i);
+        _footprintVec.applyMatrix4(child.matrixWorld);
+        if (Math.abs(_footprintVec.y - worldY) > tolerance) continue;
+        found = true;
+        minX = Math.min(minX, _footprintVec.x);
+        maxX = Math.max(maxX, _footprintVec.x);
+        minZ = Math.min(minZ, _footprintVec.z);
+        maxZ = Math.max(maxZ, _footprintVec.z);
+      }
+    });
+
+    if (!found) return 0;
+    return Math.max(0, maxX - minX) * Math.max(0, maxZ - minZ);
+  }
+
+  /** 若顶面比底面更宽，绕 X 翻转 180° 让墩底贴地 */
+  function ensureBarrierBaseOnFloor(root, model) {
+    root.updateMatrixWorld(true);
+    var box = new THREE.Box3().setFromObject(root);
+    var size = new THREE.Vector3();
+    box.getSize(size);
+    var tol = Math.max(0.06, size.y * 0.08);
+    var areaBottom = xzFootprintAreaAtWorldY(root, box.min.y + tol, tol);
+    var areaTop = xzFootprintAreaAtWorldY(root, box.max.y - tol, tol);
+
+    if (areaTop > areaBottom * 1.02) {
+      model.rotation.x += Math.PI;
+      model.updateMatrixWorld(true);
+      fitModelToBox(root, BARRIER_SIZE);
+      fitModelToBox(root, BARRIER_SIZE);
+    }
+  }
+
+  /**
+   * 水泥墩正放：X≈1.5 宽、Y≈1.3 高、Z≈0.8 厚，且宽底朝下
+   */
+  function orientBarrierUpright(model) {
+    var presets = [
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: Math.PI / 2, z: 0 },
+      { x: 0, y: Math.PI, z: 0 },
+      { x: Math.PI / 2, y: 0, z: 0 },
+      { x: -Math.PI / 2, y: 0, z: 0 },
+      { x: 0, y: 0, z: Math.PI / 2 },
+      { x: -Math.PI / 2, y: Math.PI / 2, z: 0 },
+      { x: -Math.PI / 2, y: 0, z: 0 },
+      { x: Math.PI / 2, y: Math.PI, z: 0 },
+    ];
+    var best = presets[0];
+    var bestScore = -1e9;
+    var i;
+
+    for (i = 0; i < presets.length; i++) {
+      var r = presets[i];
+      model.rotation.set(r.x, r.y, r.z);
+      model.updateMatrixWorld(true);
+
+      var box = new THREE.Box3().setFromObject(model);
+      var size = new THREE.Vector3();
+      box.getSize(size);
+      var dims = [size.x, size.y, size.z].sort(function (a, b) {
+        return a - b;
+      });
+
+      var score = 0;
+      if (Math.abs(size.y - dims[1]) < dims[1] * 0.2) score += 50;
+      if (Math.abs(size.z - dims[0]) < dims[0] * 0.2) score += 35;
+      if (Math.abs(size.x - dims[2]) < dims[2] * 0.2) score += 25;
+
+      var tol = Math.max(0.06, size.y * 0.08);
+      var areaBottom = xzFootprintAreaAtWorldY(model, box.min.y + tol, tol);
+      var areaTop = xzFootprintAreaAtWorldY(model, box.max.y - tol, tol);
+      if (areaBottom >= areaTop) score += 80;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = r;
+      }
+    }
+
+    model.rotation.set(best.x, best.y, best.z);
+    model.updateMatrixWorld(true);
+  }
+
+  function placeBarrierInstance(model, parent, centerZ) {
+    var root = new THREE.Group();
+    root.name = "ConcreteBarrier_GLB";
+    root.add(model);
+
+    model.scale.set(1, 1, 1);
+    orientBarrierUpright(model);
+    root.updateMatrixWorld(true);
+    fitModelToBox(root, BARRIER_SIZE);
+    fitModelToBox(root, BARRIER_SIZE);
+    ensureBarrierBaseOnFloor(root, model);
+
+    var box = new THREE.Box3().setFromObject(root);
+    var center = new THREE.Vector3();
+    box.getCenter(center);
+    root.position.set(
+      BARRIER_CENTER_X - center.x,
+      -box.min.y,
+      centerZ - center.z
+    );
+
+    enableShadows(root);
+    parent.add(root);
+  }
+
+  /** 木箱正放贴地，等比例填满 2×2×2 碰撞箱 */
+  function orientCrateUpright(model) {
+    var presets = [
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: Math.PI / 2, z: 0 },
+      { x: 0, y: Math.PI, z: 0 },
+      { x: Math.PI / 2, y: 0, z: 0 },
+      { x: -Math.PI / 2, y: 0, z: 0 },
+    ];
+    var best = presets[0];
+    var bestScore = -1e9;
+    var i;
+
+    for (i = 0; i < presets.length; i++) {
+      var r = presets[i];
+      model.rotation.set(r.x, r.y, r.z);
+      model.updateMatrixWorld(true);
+
+      var box = new THREE.Box3().setFromObject(model);
+      var size = new THREE.Vector3();
+      box.getSize(size);
+
+      var score =
+        100 -
+        (Math.abs(size.x - CRATE_SIZE.x) +
+          Math.abs(size.y - CRATE_SIZE.y) +
+          Math.abs(size.z - CRATE_SIZE.z));
+      if (size.y <= size.x && size.y <= size.z) score += 20;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = r;
+      }
+    }
+
+    model.rotation.set(best.x, best.y, best.z);
+    model.updateMatrixWorld(true);
+  }
+
+  function placeCrateInstance(model, parent, centerX, centerZ) {
+    var root = new THREE.Group();
+    root.name = "WoodenCrate_GLB";
+    root.add(model);
+
+    model.scale.set(1, 1, 1);
+    orientCrateUpright(model);
+    root.updateMatrixWorld(true);
+    fitModelToBox(root, CRATE_SIZE);
+    fitModelToBox(root, CRATE_SIZE);
+
+    var box = new THREE.Box3().setFromObject(root);
+    var center = new THREE.Vector3();
+    box.getCenter(center);
+    root.position.set(
+      centerX - center.x,
+      -box.min.y,
+      centerZ - center.z
+    );
+
+    enableShadows(root);
+    parent.add(root);
+  }
+
+  function buildWoodenCrates(parent) {
+    var j;
+    for (j = 0; j < CRATE_Z.length; j++) {
+      registerCollider(
+        CRATE_SIZE.x,
+        CRATE_SIZE.y,
+        CRATE_SIZE.z,
+        CRATE_X[j],
+        CRATE_CENTER_Y,
+        CRATE_Z[j]
+      );
+    }
+
+    var loader = new GLTFLoader();
+    loader.load(
+      CRATE_GLB_URL,
+      function (gltf) {
+        for (j = 0; j < CRATE_Z.length; j++) {
+          placeCrateInstance(
+            gltf.scene.clone(true),
+            parent,
+            CRATE_X[j],
+            CRATE_Z[j]
+          );
+        }
+      },
+      undefined,
+      function (err) {
+        console.error("[ActionScene] 木箱模型加载失败", err);
+        for (j = 0; j < CRATE_Z.length; j++) {
+          addBox(
+            parent,
+            CRATE_SIZE.x,
+            CRATE_SIZE.y,
+            CRATE_SIZE.z,
+            CRATE_X[j],
+            CRATE_CENTER_Y,
+            CRATE_Z[j],
+            0x6b4a28,
+            false
+          );
+        }
+      }
+    );
+  }
+
+  function buildConcreteBarriers(parent) {
+    var i;
+    for (i = 0; i < BARRIER_Z.length; i++) {
+      registerCollider(
+        BARRIER_SIZE.x,
+        BARRIER_SIZE.y,
+        BARRIER_SIZE.z,
+        BARRIER_CENTER_X,
+        BARRIER_CENTER_Y,
+        BARRIER_Z[i]
+      );
+    }
+
+    var loader = new GLTFLoader();
+    loader.load(
+      BARRIER_GLB_URL,
+      function (gltf) {
+        for (i = 0; i < BARRIER_Z.length; i++) {
+          placeBarrierInstance(gltf.scene.clone(true), parent, BARRIER_Z[i]);
+        }
+      },
+      undefined,
+      function (err) {
+        console.error("[ActionScene] 水泥墙模型加载失败", err);
+        for (i = 0; i < BARRIER_Z.length; i++) {
+          addBox(
+            parent,
+            BARRIER_SIZE.x,
+            BARRIER_SIZE.y,
+            BARRIER_SIZE.z,
+            BARRIER_CENTER_X,
+            BARRIER_CENTER_Y,
+            BARRIER_Z[i],
+            0x7a7c80,
+            false
+          );
+        }
+      }
+    );
+  }
+
+  /** 自动选朝向：车长沿 Z、车高沿 Y，车轮朝下贴地 */
+  function orientTruckUpright(model) {
+    var presets = [
+      { x: 0, y: Math.PI, z: 0 },
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: Math.PI / 2, z: 0 },
+      { x: 0, y: -Math.PI / 2, z: 0 },
+      { x: Math.PI / 2, y: Math.PI, z: 0 },
+      { x: -Math.PI / 2, y: Math.PI, z: 0 },
+    ];
+    var best = presets[0];
+    var bestScore = -1e9;
+    var i;
+
+    for (i = 0; i < presets.length; i++) {
+      var r = presets[i];
+      model.rotation.set(r.x, r.y, r.z);
+      model.updateMatrixWorld(true);
+
+      var box = new THREE.Box3().setFromObject(model);
+      var size = new THREE.Vector3();
+      box.getSize(size);
+
+      var score = 0;
+      if (size.z >= size.x && size.z >= size.y) score += 100;
+      if (size.y <= size.x && size.y <= size.z) score += 40;
+      if (size.z / (size.y || 1) >= 1.4) score += 25;
+      if (size.z / (size.x || 1) >= 1.4) score += 15;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = r;
+      }
+    }
+
+    model.rotation.set(best.x, best.y, best.z);
+    model.updateMatrixWorld(true);
+  }
+
+  function placeTruckModel(model, parent) {
+    var truckRoot = new THREE.Group();
+    truckRoot.name = "TacticalTruck_GLB";
+    truckRoot.add(model);
+
+    model.scale.set(1, 1, 1);
+    orientTruckUpright(model);
+    truckRoot.updateMatrixWorld(true);
+    fitTruckToCollider(truckRoot);
+    fitTruckToCollider(truckRoot);
+
+    var box = new THREE.Box3().setFromObject(truckRoot);
+    var center = new THREE.Vector3();
+    box.getCenter(center);
+    truckRoot.position.set(
+      TRUCK_CENTER.x - center.x,
+      -box.min.y,
+      TRUCK_CENTER.z - center.z
+    );
+
+    enableShadows(model);
+
+    parent.add(truckRoot);
   }
 
   /** 【新手教程】0 号模拟围区 — 与 Unity 生成器同规格 */
   function buildSectorZero(parent) {
+    colliders = [];
     var root = new THREE.Group();
     root.name = "SectorZero_新手教程";
     parent.add(root);
 
-    addBox(root, 12, 0.1, 60, 0, 0.05, 30, 0x5a5e64);
+    addBox(root, 12, 0.1, 60, 0, 0.05, 30, 0x5a5e64, false);
     addBox(root, 0.5, 3.5, 60, -6.25, 1.75, 30, 0x2e3338);
     addBox(root, 0.5, 3.5, 60, 6.25, 1.75, 30, 0x2e3338);
-    addBox(root, 2.5, 2.5, 6, 0, 1.25, 30, 0x2a7ab8);
+    buildTruck(root);
 
-    var zLeft = [10, 20, 30, 40];
-    for (var i = 0; i < zLeft.length; i++) {
-      addBox(root, 1.5, 1.3, 0.8, -5.25, 0.65, zLeft[i], 0x7a7c80);
-    }
+    buildConcreteBarriers(root);
 
-    var zRight = [22, 28, 34, 38];
-    var xRight = [4.2, 5.0, 4.2, 5.0];
-    for (var j = 0; j < zRight.length; j++) {
-      addBox(root, 2, 2, 2, xRight[j], 1, zRight[j], 0x6b4a28);
-    }
+    buildWoodenCrates(root);
 
     var floor = new THREE.Mesh(
       new THREE.PlaneGeometry(80, 80),
@@ -390,6 +834,78 @@
     pos.z = Math.max(BOUNDS_Z_MIN, Math.min(BOUNDS_Z_MAX, pos.z));
   }
 
+  /** 圆柱体（XZ）与轴对齐盒分离 — 用于卡车 / 水泥墙 / 木箱 */
+  function pushOutCircleAABB(px, pz, radius, box) {
+    var closestX = Math.max(box.minX, Math.min(px, box.maxX));
+    var closestZ = Math.max(box.minZ, Math.min(pz, box.maxZ));
+    var dx = px - closestX;
+    var dz = pz - closestZ;
+    var distSq = dx * dx + dz * dz;
+    var r2 = radius * radius;
+
+    if (distSq > r2) {
+      return { x: px, z: pz };
+    }
+
+    if (distSq > 1e-8) {
+      var dist = Math.sqrt(distSq);
+      var push = radius - dist;
+      return {
+        x: px + (dx / dist) * push,
+        z: pz + (dz / dist) * push,
+      };
+    }
+
+    var penL = px + radius - box.minX;
+    var penR = box.maxX - (px - radius);
+    var penB = pz + radius - box.minZ;
+    var penF = box.maxZ - (pz - radius);
+    var minPen = Math.min(penL, penR, penB, penF);
+
+    if (minPen === penL) px -= penL;
+    else if (minPen === penR) px += penR;
+    else if (minPen === penB) pz -= penB;
+    else pz += penF;
+
+    return { x: px, z: pz };
+  }
+
+  function resolvePositionXZ() {
+    var radius = CAPSULE_RADIUS;
+    var px = pos.x;
+    var pz = pos.z;
+    var iter;
+    var i;
+    var c;
+    var out;
+    var moved;
+
+    for (iter = 0; iter < 6; iter++) {
+      moved = false;
+      for (i = 0; i < colliders.length; i++) {
+        c = colliders[i];
+        if (
+          px + radius <= c.minX ||
+          px - radius >= c.maxX ||
+          pz + radius <= c.minZ ||
+          pz - radius >= c.maxZ
+        ) {
+          continue;
+        }
+        out = pushOutCircleAABB(px, pz, radius, c);
+        if (out.x !== px || out.z !== pz) {
+          px = out.x;
+          pz = out.z;
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
+
+    pos.x = px;
+    pos.z = pz;
+  }
+
   function getMoveSpeed() {
     if (keys.KeyC || keys.c) return CROUCH_SPEED;
     if (keys.ShiftLeft || keys.ShiftRight) return SPRINT_SPEED;
@@ -486,6 +1002,7 @@
       var cosY = Math.cos(yaw);
       pos.x += (cosY * strafe - sinY * forward) * speed * dt;
       pos.z += (-cosY * forward - sinY * strafe) * speed * dt;
+      resolvePositionXZ();
       clampPosition();
     }
 
@@ -544,7 +1061,7 @@
     if (typeof THREE === "undefined") {
       actionRoot.hidden = false;
       document.body.classList.add("action-open");
-      showLoadError("Three.js 未加载，请检查 js/vendor/three.min.js 是否存在。");
+      showLoadError("Three.js 未加载，请检查 js/vendor/three.module.min.js 是否存在。");
       return;
     }
 
@@ -669,3 +1186,10 @@
 
   bindUI();
 })();
+
+window.addEventListener("error", function (ev) {
+  var src = ev.filename || "";
+  if (src.indexOf("action-scene") >= 0 || src.indexOf("GLTFLoader") >= 0) {
+    console.error("[ActionScene] 脚本加载失败:", ev.message, src);
+  }
+});

@@ -9,21 +9,19 @@
   const roomPanel = document.getElementById("roomPanel");
   const stashPanel = document.getElementById("stashPanel");
   const tutorialPanel = document.getElementById("tutorialPanel");
-  const marketPanel = document.getElementById("marketPanel");
+  const marketPage = document.getElementById("marketPage");
   const btnRoomClose = document.getElementById("btnRoomClose");
   const btnStashClose = document.getElementById("btnStashClose");
   const btnTutorialClose = document.getElementById("btnTutorialClose");
-  const btnMarketClose = document.getElementById("btnMarketClose");
+  const btnMarketBack = document.getElementById("btnMarketBack");
   const roomBackdrop = document.getElementById("roomBackdrop");
   const stashBackdrop = document.getElementById("stashBackdrop");
   const tutorialBackdrop = document.getElementById("tutorialBackdrop");
-  const marketBackdrop = document.getElementById("marketBackdrop");
-
   function hideAllPanels() {
     roomPanel.hidden = true;
     stashPanel.hidden = true;
     tutorialPanel.hidden = true;
-    marketPanel.hidden = true;
+    if (marketPage) marketPage.hidden = true;
   }
 
   function goHome(e) {
@@ -69,7 +67,7 @@
     hideAllPanels();
     document.body.classList.remove("hub-home", "room-open", "stash-open", "tutorial-open");
     document.body.classList.add("market-open");
-    marketPanel.hidden = false;
+    if (marketPage) marketPage.hidden = false;
     if (window.LobbyMarket && window.LobbyMarket.onPanelOpen) {
       window.LobbyMarket.onPanelOpen();
     }
@@ -99,7 +97,9 @@
   bindClose(btnRoomClose, roomBackdrop);
   bindClose(btnStashClose, stashBackdrop);
   bindClose(btnTutorialClose, tutorialBackdrop);
-  bindClose(btnMarketClose, marketBackdrop);
+  if (btnMarketBack) {
+    btnMarketBack.addEventListener("click", goHome);
+  }
 
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
@@ -107,7 +107,7 @@
       !roomPanel.hidden ||
       !stashPanel.hidden ||
       !tutorialPanel.hidden ||
-      !marketPanel.hidden
+      (marketPage && !marketPage.hidden)
     ) {
       goHome();
     }
