@@ -1,0 +1,10 @@
+.git
+.gitignore
+server/.venv
+**/__pycache__
+**/*.pyc
+Unity/
+复制到终端.txt
+get-ip.sh
+run.sh
+README.md
