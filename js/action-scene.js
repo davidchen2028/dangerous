@@ -4,6 +4,10 @@
 import * as THREE from "three";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
 
+if (typeof window !== "undefined") {
+  window.THREE = THREE;
+}
+
 (function () {
   "use strict";
 
@@ -21,6 +25,8 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
   var renderer;
   var leftHand;
   var rightHand;
+  var fpsArmsRoot = null;
+  var fpsArmsAlignX = 0;
   var yaw = 0;
   var pitch = -0.08;
   var pos = { x: 0, y: 0, z: 2 };
@@ -42,7 +48,7 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
   var JUMP_SPEED = 9;
   var BOUNDS_X = 5.5;
   var BOUNDS_Z_MIN = 1.2;
-  var BOUNDS_Z_MAX = 77;
+  var BOUNDS_Z_MAX = 81;
   var clouds = [];
   /** @type {{ minX: number, maxX: number, minY: number, maxY: number, minZ: number, maxZ: number }[]} */
   var colliders = [];
@@ -124,14 +130,37 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
   var DOOR_Z = 60;
   var CORRIDOR_LEN = 15;
   var CORRIDOR_W = 1.5;
+  /** 走廊尽头 5×5 m 搜刮间（两桶居中） */
+  var BIN_ROOM_SIZE = 5;
+  var BIN_ROOM_CENTER_Z = DOOR_Z + CORRIDOR_LEN + BIN_ROOM_SIZE * 0.5;
+  var BIN_SPACING_X = 0.55;
   var SECTOR_WALL_H = 3.5;
   var DOOR_SIZE = { x: 1.5, y: 2.2, z: 0.28 };
   var DOOR_GLB_URL = "models/security-door.glb";
+  var ARMS_GLB_URL = "models/soldier-arms.glb";
+  /** 第一人称视野内双臂占位（宽 × 高 × 纵深） */
+  var ARMS_VIEW_SIZE = { x: 0.95, y: 0.36, z: 0.48 };
+  /** 整体缩放（1 = 100%，0.7 = 70%） */
+  var ARMS_SCALE = 0.65;
+  /**
+   * 士兵手臂 GLB 旋转（单位：度）— 在 action-scene.js 顶部改这里即可
+   * Y：水平转向（正值=从上往下看逆时针）；在面向玩家约 180° 基础上再左转 45° → 225
+   */
+  var ARMS_ROT_DEG = {
+    x: -5,
+    y: 275,
+    z: 0,
+  };
+  var fpsArmsRestY = -0.26;
+  var fpsArmsRestZ = -0.4;
   var securityDoorRoot = null;
+  var doorHomePosition = null;
   var doorUnlocked = false;
   var doorSwipeColliders = [];
+  var DOOR_OPEN_OFFSET_X = 1.35;
   var durabilityBannerEl = document.getElementById("actionDurabilityBanner");
   var interactHintEl = document.getElementById("actionInteractHint");
+  var crosshairEl = document.getElementById("actionCrosshair");
 
   function buildTruck(parent) {
     registerCollider(
@@ -206,6 +235,98 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
         }
       }
     });
+  }
+
+  function prepareFpsViewModel(root, castShadow) {
+    root.traverse(function (child) {
+      if (!child.isMesh) return;
+      child.castShadow = !!castShadow;
+      child.receiveShadow = false;
+      child.frustumCulled = false;
+      if (child.material) {
+        var mats = Array.isArray(child.material)
+          ? child.material
+          : [child.material];
+        var i;
+        for (i = 0; i < mats.length; i++) {
+          mats[i].fog = false;
+          mats[i].side = THREE.FrontSide;
+        }
+      }
+    });
+  }
+
+  function removeFallbackHands(camera) {
+    if (leftHand && leftHand.parent === camera) {
+      camera.remove(leftHand);
+    }
+    if (rightHand && rightHand.parent === camera) {
+      camera.remove(rightHand);
+    }
+    leftHand = null;
+    rightHand = null;
+  }
+
+  function armsModelRotationRad() {
+    var r = Math.PI / 180;
+    return {
+      x: ARMS_ROT_DEG.x * r,
+      y: ARMS_ROT_DEG.y * r,
+      z: ARMS_ROT_DEG.z * r,
+    };
+  }
+
+  function armsViewSizeScaled() {
+    return {
+      x: ARMS_VIEW_SIZE.x * ARMS_SCALE,
+      y: ARMS_VIEW_SIZE.y * ARMS_SCALE,
+      z: ARMS_VIEW_SIZE.z * ARMS_SCALE,
+    };
+  }
+
+  function alignFpsArmsPivot(pivot) {
+    pivot.updateMatrixWorld(true);
+    var box = new THREE.Box3().setFromObject(pivot);
+    var cx = (box.min.x + box.max.x) * 0.5;
+    var anchorY = (HAND_BASE.left.y + HAND_BASE.right.y) * 0.5;
+    var anchorZ = (HAND_BASE.left.z + HAND_BASE.right.z) * 0.5;
+
+    fpsArmsAlignX = -cx;
+    fpsArmsRestY = anchorY - box.min.y;
+    fpsArmsRestZ = anchorZ - box.min.z;
+
+    pivot.position.set(fpsArmsAlignX, fpsArmsRestY, fpsArmsRestZ);
+  }
+
+  function loadFpsArms(camera) {
+    if (!camera) return;
+    var loader = new GLTFLoader();
+    loader.load(
+      ARMS_GLB_URL,
+      function (gltf) {
+        var model = gltf.scene;
+        model.rotation.order = "YXZ";
+        var armsRot = armsModelRotationRad();
+        model.rotation.set(armsRot.x, armsRot.y, armsRot.z);
+
+        var pivot = new THREE.Group();
+        pivot.name = "SoldierArms_Pivot";
+        pivot.add(model);
+
+        prepareFpsViewModel(pivot, false);
+        fitModelToBox(pivot, armsViewSizeScaled());
+        alignFpsArmsPivot(pivot);
+
+        pivot.renderOrder = 10;
+        fpsArmsRoot = pivot;
+        removeFallbackHands(camera);
+        camera.add(fpsArmsRoot);
+      },
+      undefined,
+      function (err) {
+        console.warn("[ActionScene] 手部模型加载失败，使用方块手", err);
+      }
+    );
   }
 
   var _footprintVec = new THREE.Vector3();
@@ -563,7 +684,19 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     doorSwipeColliders.push(colliders[colliders.length - 1]);
   }
 
-  function setDoorGreen(root) {
+  function ensureDoorColliders() {
+    if (doorSwipeColliders.length > 0) return;
+    registerDoorSwipeCollider(
+      DOOR_SIZE.x,
+      DOOR_SIZE.y,
+      DOOR_SIZE.z + 0.15,
+      0,
+      DOOR_SIZE.y * 0.5,
+      DOOR_Z - 0.08
+    );
+  }
+
+  function applyDoorMaterial(root, hex, emissiveHex, emissiveIntensity) {
     if (!root) return;
     root.traverse(function (child) {
       if (!child.isMesh || !child.material) return;
@@ -572,13 +705,43 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
         : [child.material];
       var m;
       for (m = 0; m < mats.length; m++) {
-        if (mats[m].color) mats[m].color.setHex(0x2ecc55);
-        if (mats[m].emissive) mats[m].emissive.setHex(0x1a6630);
-        if (mats[m].emissiveIntensity !== undefined) {
-          mats[m].emissiveIntensity = 0.35;
+        if (mats[m].color) mats[m].color.setHex(hex);
+        if (mats[m].emissive) {
+          mats[m].emissive.setHex(emissiveHex);
+          if (mats[m].emissiveIntensity !== undefined) {
+            mats[m].emissiveIntensity = emissiveIntensity;
+          }
         }
       }
     });
+  }
+
+  function setDoorOrange(root) {
+    applyDoorMaterial(root, 0xe87820, 0x000000, 0);
+  }
+
+  function setDoorGreen(root) {
+    applyDoorMaterial(root, 0x2ecc55, 0x1a6630, 0.35);
+  }
+
+  function resetSecurityDoorState() {
+    doorUnlocked = false;
+    removeDoorColliders();
+    ensureDoorColliders();
+    if (securityDoorRoot && doorHomePosition) {
+      securityDoorRoot.position.copy(doorHomePosition);
+      setDoorOrange(securityDoorRoot);
+    }
+    setInteractHintVisible(false);
+  }
+
+  function clearInputKeys() {
+    keys = Object.create(null);
+  }
+
+  function releaseKeyFromEvent(e) {
+    keys[e.code] = false;
+    if (e.key) keys[e.key] = false;
   }
 
   function orientDoorUpright(model) {
@@ -636,7 +799,13 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     enableShadows(root);
     parent.add(root);
     securityDoorRoot = root;
-    if (doorUnlocked) setDoorGreen(securityDoorRoot);
+    doorHomePosition = root.position.clone();
+    if (doorUnlocked) {
+      setDoorGreen(securityDoorRoot);
+      securityDoorRoot.position.x += DOOR_OPEN_OFFSET_X;
+    } else {
+      setDoorOrange(securityDoorRoot);
+    }
   }
 
   function addDoorFallback(parent) {
@@ -652,6 +821,7 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
       false
     );
     securityDoorRoot = mesh;
+    doorHomePosition = mesh.position.clone();
   }
 
   function buildCorridorBeyondDoor(parent) {
@@ -678,14 +848,155 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
       midZ,
       0x2e3338
     );
+  }
+
+  /** 走廊与主围区之间的侧向空隙（封死，避免走出地图） */
+  function buildCorridorSideSeals(parent) {
+    var midZ = DOOR_Z + CORRIDOR_LEN * 0.5 + 0.25;
+    var innerX = CORRIDOR_W * 0.5 + 0.25;
+    var outerX = 6.25;
+    var fillW = outerX - innerX;
+    var fillCx = innerX + fillW * 0.5;
     addBox(
       parent,
-      CORRIDOR_W,
+      fillW,
+      SECTOR_WALL_H,
+      CORRIDOR_LEN,
+      -fillCx,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      fillW,
+      SECTOR_WALL_H,
+      CORRIDOR_LEN,
+      fillCx,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+  }
+
+  /** 搜刮间与主围区之间的侧向空隙 */
+  function buildBinRoomSideSeals(parent) {
+    var midZ = BIN_ROOM_CENTER_Z + 0.25;
+    var innerX = BIN_ROOM_SIZE * 0.5 + 0.25;
+    var outerX = 6.25;
+    var fillW = outerX - innerX;
+    var fillCx = innerX + fillW * 0.5;
+    addBox(
+      parent,
+      fillW,
+      SECTOR_WALL_H,
+      BIN_ROOM_SIZE,
+      -fillCx,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      fillW,
+      SECTOR_WALL_H,
+      BIN_ROOM_SIZE,
+      fillCx,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+  }
+
+  /** 走廊出口两侧挡墙（搜刮间入口） */
+  function buildBinRoomEntryWings(parent) {
+    var wingZ = DOOR_Z + CORRIDOR_LEN + 0.25;
+    var wingW = BIN_ROOM_SIZE * 0.5 - CORRIDOR_W * 0.5;
+    var wingCx = CORRIDOR_W * 0.5 + wingW * 0.5;
+    addBox(
+      parent,
+      wingW,
+      SECTOR_WALL_H,
+      0.5,
+      -wingCx,
+      SECTOR_WALL_H * 0.5,
+      wingZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      wingW,
+      SECTOR_WALL_H,
+      0.5,
+      wingCx,
+      SECTOR_WALL_H * 0.5,
+      wingZ,
+      0x2e3338
+    );
+  }
+
+  function buildBinRoomAtEnd(parent) {
+    var midZ = BIN_ROOM_CENTER_Z + 0.25;
+    var wallX = BIN_ROOM_SIZE * 0.5 + 0.25;
+    var backZ = DOOR_Z + CORRIDOR_LEN + BIN_ROOM_SIZE + 0.25;
+
+    addBox(parent, BIN_ROOM_SIZE, 0.1, BIN_ROOM_SIZE, 0, 0.05, midZ, 0x5a5e64, false);
+    addBox(
+      parent,
+      0.5,
+      SECTOR_WALL_H,
+      BIN_ROOM_SIZE,
+      -wallX,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      0.5,
+      SECTOR_WALL_H,
+      BIN_ROOM_SIZE,
+      wallX,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      BIN_ROOM_SIZE,
       SECTOR_WALL_H,
       0.5,
       0,
       SECTOR_WALL_H * 0.5,
-      DOOR_Z + CORRIDOR_LEN + 0.25,
+      backZ,
+      0x2e3338
+    );
+    buildBinRoomSideSeals(parent);
+    buildBinRoomEntryWings(parent);
+  }
+
+  /** 主围区侧墙延长到走廊+搜刮间 */
+  function buildSectorWallExtension(parent) {
+    var extLen = CORRIDOR_LEN + BIN_ROOM_SIZE;
+    var extMidZ = DOOR_Z + extLen * 0.5 + 0.25;
+    addBox(
+      parent,
+      0.5,
+      SECTOR_WALL_H,
+      extLen,
+      -6.25,
+      SECTOR_WALL_H * 0.5,
+      extMidZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      0.5,
+      SECTOR_WALL_H,
+      extLen,
+      6.25,
+      SECTOR_WALL_H * 0.5,
+      extMidZ,
       0x2e3338
     );
   }
@@ -755,9 +1066,10 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     if (doorUnlocked) return;
     doorUnlocked = true;
     removeDoorColliders();
-    if (securityDoorRoot) {
+    if (securityDoorRoot && doorHomePosition) {
       setDoorGreen(securityDoorRoot);
-      securityDoorRoot.position.x += 1.35;
+      securityDoorRoot.position.copy(doorHomePosition);
+      securityDoorRoot.position.x += DOOR_OPEN_OFFSET_X;
     }
     setInteractHintVisible(false);
   }
@@ -777,7 +1089,9 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
       return;
     }
 
-    showDurabilityBanner(result.remaining, result.max);
+    if (result.remaining > 0) {
+      showDurabilityBanner(result.remaining, result.max);
+    }
     unlockSecurityDoor();
 
     if (window.ActionInventory && window.ActionInventory.isOpen()) {
@@ -785,7 +1099,35 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     }
   }
 
-  function updateDoorInteraction() {
+  function updateCrosshair() {
+    if (!crosshairEl) return;
+    var show =
+      running &&
+      pointerLocked &&
+      !isUiBlocking() &&
+      document.body.classList.contains("action-open");
+    crosshairEl.classList.toggle("action-crosshair--hidden", !show);
+  }
+
+  function updateInteractHints() {
+    updateCrosshair();
+
+    if (
+      doorUnlocked &&
+      window.ActionWasteBin &&
+      camera &&
+      canvas
+    ) {
+      window.ActionWasteBin.updateAim(pos.x, pos.z, camera);
+      if (window.ActionWasteBin.isAimedAtBin()) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = "准星对准废料桶 · 按 F 翻找";
+        }
+        return;
+      }
+    }
+
     if (doorUnlocked) {
       setInteractHintVisible(false);
       return;
@@ -821,7 +1163,122 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     addBox(root, 12, SECTOR_WALL_H, 0.5, 0, SECTOR_WALL_H * 0.5, 0, 0x2e3338);
     buildEndWallWithDoorGap(root);
     buildCorridorBeyondDoor(root);
+    buildCorridorSideSeals(root);
+    buildSectorWallExtension(root);
+    buildBinRoomAtEnd(root);
     buildSecurityDoor(root);
+    buildIndustrialWasteBins(root);
+  }
+
+  function placeWasteBinModel(model, parent, centerX, centerZ, binIndex) {
+    var root = new THREE.Group();
+    root.name = "IndustrialWasteBin_GLB";
+    root.add(model);
+
+    model.scale.set(1, 1, 1);
+    model.updateMatrixWorld(true);
+
+    var box = new THREE.Box3().setFromObject(root);
+    var size = new THREE.Vector3();
+    box.getSize(size);
+    var binSize =
+      window.ActionWasteBin && window.ActionWasteBin.BIN_SIZE
+        ? window.ActionWasteBin.BIN_SIZE
+        : { x: 0.95, y: 1.15, z: 0.95 };
+    fitModelToBox(root, binSize);
+    fitModelToBox(root, binSize);
+
+    box = new THREE.Box3().setFromObject(root);
+    var center = new THREE.Vector3();
+    box.getCenter(center);
+    root.position.set(centerX - center.x, -box.min.y, centerZ - center.z);
+
+    parent.add(root);
+
+    root.updateMatrixWorld(true);
+
+    if (typeof THREE !== "undefined" && window.ActionWasteBin && binIndex != null) {
+      var pickMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(binSize.x, binSize.y, binSize.z),
+        new THREE.MeshBasicMaterial({
+          visible: false,
+          depthWrite: false,
+        })
+      );
+      pickMesh.name = "BinPickVolume";
+      pickMesh.position.set(0, binSize.y * 0.5, 0);
+      root.add(pickMesh);
+      if (window.ActionWasteBin.registerBinPickMesh) {
+        window.ActionWasteBin.registerBinPickMesh(binIndex, pickMesh);
+      }
+      var worldPos = new THREE.Vector3();
+      root.getWorldPosition(worldPos);
+      window.ActionWasteBin.syncBinWorldCenter(
+        binIndex,
+        worldPos.x,
+        worldPos.y + binSize.y * 0.55,
+        worldPos.z
+      );
+    }
+
+    registerCollider(
+      binSize.x,
+      binSize.y,
+      binSize.z,
+      centerX,
+      binSize.y * 0.5,
+      centerZ
+    );
+  }
+
+  function buildIndustrialWasteBins(parent) {
+    if (!window.ActionWasteBin) return;
+    var positions = window.ActionWasteBin.getBinPositions();
+    var url = window.ActionWasteBin.BIN_GLB_URL;
+    var i;
+
+    var loader = new GLTFLoader();
+    loader.load(
+      url,
+      function (gltf) {
+        for (i = 0; i < positions.length; i++) {
+          placeWasteBinModel(
+            gltf.scene.clone(true),
+            parent,
+            positions[i].x,
+            positions[i].z,
+            i
+          );
+        }
+      },
+      undefined,
+      function (err) {
+        console.error("[ActionScene] 废料桶模型加载失败", err);
+        for (i = 0; i < positions.length; i++) {
+          addBox(
+            parent,
+            0.95,
+            1.15,
+            0.95,
+            positions[i].x,
+            0.575,
+            positions[i].z,
+            0x2a4a6a,
+            false
+          );
+          if (window.ActionWasteBin) {
+            if (window.ActionWasteBin.syncBinWorldCenter) {
+              window.ActionWasteBin.syncBinWorldCenter(
+                i,
+                positions[i].x,
+                0.95,
+                positions[i].z
+              );
+            }
+          }
+        }
+      }
+    );
   }
 
   function cloudMaterial(opacity) {
@@ -1025,6 +1482,7 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
       rightHand.renderOrder = 10;
       camera.add(leftHand);
       camera.add(rightHand);
+      loadFpsArms(camera);
 
       renderer = new THREE.WebGLRenderer({
         canvas: canvas,
@@ -1061,7 +1519,7 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
   }
 
   function updateCrouch(dt) {
-    var wantsCrouch = !!(keys.KeyC || keys.c);
+    var wantsCrouch = !!keys.KeyC;
     var targetH = wantsCrouch ? CROUCH_HEIGHT : STAND_HEIGHT;
     var t = Math.min(1, CROUCH_LERP * dt);
     bodyHeightCurrent += (targetH - bodyHeightCurrent) * t;
@@ -1137,15 +1595,17 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     var out;
     var moved;
 
+    var nearPad = 10;
+
     for (iter = 0; iter < 6; iter++) {
       moved = false;
       for (i = 0; i < colliders.length; i++) {
         c = colliders[i];
         if (
-          px + radius <= c.minX ||
-          px - radius >= c.maxX ||
-          pz + radius <= c.minZ ||
-          pz - radius >= c.maxZ
+          px + radius < c.minX - nearPad ||
+          px - radius > c.maxX + nearPad ||
+          pz + radius < c.minZ - nearPad ||
+          pz - radius > c.maxZ + nearPad
         ) {
           continue;
         }
@@ -1164,13 +1624,13 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
   }
 
   function getMoveSpeed() {
-    if (keys.KeyC || keys.c) return CROUCH_SPEED;
+    if (keys.KeyC) return CROUCH_SPEED;
     if (keys.ShiftLeft || keys.ShiftRight) return SPRINT_SPEED;
     return WALK_SPEED;
   }
 
   function tryJump() {
-    if (grounded && !isCrouching() && !(keys.KeyC || keys.c)) {
+    if (grounded && !isCrouching() && !keys.KeyC) {
       velY = JUMP_SPEED;
       grounded = false;
     }
@@ -1193,11 +1653,23 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     var jumpTuck = grounded ? 0 : Math.min(Math.max(-velY * 0.018, -0.06), 0.14);
 
     function applyHand(hand, base, phase) {
+      if (!hand) return;
       hand.position.x = base.x + sway * phase * 0.4;
       hand.position.y = base.y - bob * phase + jumpTuck;
       hand.position.z = base.z + (grounded ? 0 : jumpTuck * 1.2);
       hand.rotation.x = base.rx + bob * 0.5 * phase;
       hand.rotation.z = base.rz + sway * phase;
+    }
+
+    if (fpsArmsRoot) {
+      fpsArmsRoot.position.x = fpsArmsAlignX + sway * 0.1;
+      fpsArmsRoot.position.y = fpsArmsRestY - bob * 0.75 + jumpTuck;
+      fpsArmsRoot.position.z =
+        fpsArmsRestZ + (grounded ? 0 : jumpTuck * 1.05);
+      fpsArmsRoot.rotation.x = bob * 0.3;
+      fpsArmsRoot.rotation.y = 0;
+      fpsArmsRoot.rotation.z = sway * 0.22;
+      return;
     }
 
     applyHand(leftHand, HAND_BASE.left, 1);
@@ -1209,7 +1681,10 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
   }
 
   function isUiBlocking() {
-    return isInventoryOpen();
+    return (
+      isInventoryOpen() ||
+      (window.ActionWasteBin && window.ActionWasteBin.isOpen())
+    );
   }
 
   function releasePointerForUi() {
@@ -1231,6 +1706,7 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
   }
 
   function onInventoryOpened() {
+    clearInputKeys();
     releasePointerForUi();
   }
 
@@ -1247,13 +1723,12 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     var dt = Math.min(clock.getDelta(), 0.05);
 
     if (isUiBlocking()) {
-      updateClouds(dt, animTime);
       renderer.render(scene, camera);
       return;
     }
 
-    var forward = (keys.KeyW || keys.w ? 1 : 0) - (keys.KeyS || keys.s ? 1 : 0);
-    var strafe = (keys.KeyD || keys.d ? 1 : 0) - (keys.KeyA || keys.a ? 1 : 0);
+    var forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
+    var strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
     var moving = !!(forward || strafe);
     var speed = getMoveSpeed();
 
@@ -1270,8 +1745,10 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     updateCrouch(dt);
     updatePlayerTransform();
     updateHands(dt, moving);
-    updateClouds(dt, animTime);
-    updateDoorInteraction();
+    if (pos.z < DOOR_Z + CORRIDOR_LEN + BIN_ROOM_SIZE + 2) {
+      updateClouds(dt, animTime);
+    }
+    updateInteractHints();
     renderer.render(scene, camera);
   }
 
@@ -1335,9 +1812,11 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     document.body.classList.add("action-open");
     document.body.classList.remove("hub-home");
 
-    doorUnlocked = false;
-    securityDoorRoot = null;
-    doorSwipeColliders = [];
+    clearInputKeys();
+    resetSecurityDoorState();
+    if (window.ActionWasteBin && window.ActionWasteBin.resetForNewRun) {
+      window.ActionWasteBin.resetForNewRun();
+    }
     if (window.PlayerLoadout && window.PlayerLoadout.ensureTutorialKeycard) {
       window.PlayerLoadout.ensureTutorialKeycard();
     }
@@ -1353,6 +1832,10 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
   }
 
   function exit() {
+    clearInputKeys();
+    if (window.ActionWasteBin && window.ActionWasteBin.close) {
+      window.ActionWasteBin.close();
+    }
     if (window.ActionInventory) window.ActionInventory.close();
     restoreGameCursor();
     if (document.pointerLockElement === canvas && document.exitPointerLock) {
@@ -1381,13 +1864,46 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
       return;
     }
 
+    if (e.code === "KeyF" && !e.repeat) {
+      e.preventDefault();
+      if (!doorUnlocked) {
+        alert("需要先刷房卡打开安全门，才能进入走廊搜刮废料桶。");
+        return;
+      }
+      if (window.ActionWasteBin) {
+        if (camera && window.ActionWasteBin.updateAim) {
+          window.ActionWasteBin.updateAim(pos.x, pos.z, camera);
+        }
+        if (window.ActionWasteBin.tryOpenAimed(pos.x, pos.z)) {
+          return;
+        }
+        if (
+          window.ActionWasteBin.isNearAnyBin &&
+          window.ActionWasteBin.isNearAnyBin(pos.x, pos.z) &&
+          !window.ActionWasteBin.isAimedAtBin()
+        ) {
+          alert("请将准星对准废料桶后再按 F。");
+        }
+      }
+      return;
+    }
+
+    if (e.code === "KeyQ" && !e.repeat) {
+      e.preventDefault();
+      exit();
+      return;
+    }
+
     if (e.code === "Escape") {
       e.preventDefault();
+      if (window.ActionWasteBin && window.ActionWasteBin.isOpen()) {
+        window.ActionWasteBin.close();
+        return;
+      }
       if (isInventoryOpen()) {
         window.ActionInventory.close();
         return;
       }
-      exit();
       return;
     }
 
@@ -1402,9 +1918,9 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
   }
 
   function onKeyUp(e) {
+    if (!running) return;
+    releaseKeyFromEvent(e);
     if (isUiBlocking()) return;
-    keys[e.code] = false;
-    keys[e.key] = false;
   }
 
   function onMouseMove(e) {
@@ -1416,11 +1932,16 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
   }
 
   function onPointerLockChange() {
+    var wasLocked = pointerLocked;
     pointerLocked = document.pointerLockElement === canvas;
+    if (wasLocked && !pointerLocked) {
+      clearInputKeys();
+    }
     if (pointerLocked) {
       restoreGameCursor();
     }
     setHintVisible(!pointerLocked && !isInventoryOpen());
+    updateCrosshair();
   }
 
   function bindUI() {
@@ -1444,6 +1965,7 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("pointerlockchange", onPointerLockChange);
     window.addEventListener("resize", resize);
+    window.addEventListener("blur", clearInputKeys);
 
     window.ActionScene = {
       enter: enter,
@@ -1454,6 +1976,7 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
       onInventoryOpened: onInventoryOpened,
       onInventoryClosed: onInventoryClosed,
       showDurabilityBanner: showDurabilityBanner,
+      releaseUiPointer: releasePointerForUi,
     };
 
     if (typeof THREE === "undefined") {

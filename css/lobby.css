@@ -524,10 +524,17 @@ body.action-open .btn-hub--action {
   color: #6a7a88;
 }
 
-.lobby-loadout__secure-wrap {
+.stash-subgrids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
   margin-top: 0.65rem;
   padding-top: 0.55rem;
   border-top: 1px solid rgba(70, 90, 110, 0.35);
+}
+
+.stash-subgrids__block {
+  flex: 0 0 auto;
 }
 
 .loadout-row {
@@ -596,6 +603,7 @@ body.action-open .btn-hub--action {
 }
 
 .loadout-slot--card {
+  position: relative;
   flex: 1;
   min-width: 2.5rem;
   min-height: 2.2rem;
@@ -617,6 +625,12 @@ body.action-open .btn-hub--action {
   background: rgba(25, 32, 42, 0.98);
 }
 
+.loadout-slot--drop-target {
+  border-color: rgba(120, 200, 140, 0.95) !important;
+  background: rgba(35, 70, 50, 0.55) !important;
+  box-shadow: 0 0 12px rgba(80, 180, 110, 0.45);
+}
+
 .loadout-slot__placeholder {
   color: #5a6878;
 }
@@ -629,14 +643,46 @@ body.action-open .btn-hub--action {
   word-break: break-all;
 }
 
+.loadout-slot__item--keycard {
+  min-height: 2.35rem;
+  background: center / contain no-repeat;
+  color: transparent;
+  font-size: 0;
+}
+
+.loadout-slot__dur {
+  position: absolute;
+  right: 0.15rem;
+  bottom: 0.1rem;
+  padding: 0.05rem 0.2rem;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #e8f4ff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 3px;
+  line-height: 1.2;
+}
+
+.inv-item--keycard {
+  background-color: rgba(20, 28, 36, 0.35) !important;
+  background-size: contain !important;
+}
+
+.inv-item--keycard .inv-item__label--dur {
+  position: absolute;
+  right: 0.12rem;
+  bottom: 0.08rem;
+  margin: 0;
+  padding: 0.06rem 0.22rem;
+  font-size: 0.52rem;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 3px;
+}
+
 .loadout-grid {
   display: grid;
   gap: 3px;
-}
-
-.loadout-grid--secure {
-  width: min(140px, 40%);
-  aspect-ratio: 1 / 2;
 }
 
 .loadout-grid__cell {
@@ -669,40 +715,75 @@ body.action-open .btn-hub--action {
   text-align: center;
 }
 
-/* 6×10 二维网格仓库（路线 B） */
-.stash-grid-board {
-  position: relative;
-  width: 100%;
-  max-width: 360px;
-  aspect-ratio: 6 / 10;
-  max-height: min(58vh, 420px);
-  margin: 0 auto;
-  touch-action: none;
-  user-select: none;
+/* 统一网格格宽（仓库 / 背包 / 安全箱） */
+:root {
+  --inv-cell: 52px;
+  --inv-gap: 3px;
+  --inv-pad: 4px;
 }
 
-.stash-grid-bg {
+.inv-grid-host {
+  display: flex;
+  justify-content: center;
+  min-height: 2rem;
+}
+
+.inv-grid-host__empty {
+  margin: 0;
+  padding: 0.5rem;
+  font-size: 0.72rem;
+  color: #6a7a88;
+  text-align: center;
+}
+
+.inv-grid-board {
+  position: relative;
+  touch-action: none;
+  user-select: none;
+  width: calc(
+    var(--inv-cols) * var(--inv-cell) + (var(--inv-cols) - 1) * var(--inv-gap) +
+      var(--inv-pad) * 2
+  );
+  height: calc(
+    var(--inv-rows) * var(--inv-cell) + (var(--inv-rows) - 1) * var(--inv-gap) +
+      var(--inv-pad) * 2
+  );
+  max-width: 100%;
+}
+
+#stashGrid.inv-grid-host {
+  width: 100%;
+  justify-content: center;
+}
+
+#stashGrid .inv-grid-board {
+  max-height: min(58vh, 560px);
+}
+
+.inv-grid-bg {
   position: absolute;
   inset: 0;
   display: grid;
-  gap: 3px;
-  padding: 4px;
+  grid-template-columns: repeat(var(--inv-cols), 1fr);
+  grid-template-rows: repeat(var(--inv-rows), 1fr);
+  gap: var(--inv-gap);
+  padding: var(--inv-pad);
   box-sizing: border-box;
 }
 
-.stash-grid-bg__cell {
+.inv-grid-bg__cell {
   background: rgba(8, 12, 18, 0.92);
   border: 1px solid rgba(55, 70, 90, 0.45);
   border-radius: 3px;
 }
 
-.stash-items-layer {
+.inv-items-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
-.stash-item {
+.inv-item {
   position: absolute;
   box-sizing: border-box;
   pointer-events: auto;
@@ -710,30 +791,30 @@ body.action-open .btn-hub--action {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.15rem;
+  padding: 0.12rem;
   background: rgba(35, 50, 65, 0.95) center / cover no-repeat;
   border: 2px solid rgba(120, 150, 180, 0.55);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
   transition: left 0.22s ease, top 0.22s ease, transform 0.15s ease;
+  z-index: 2;
 }
 
-.stash-item:active {
+.inv-item:active {
   cursor: grabbing;
 }
 
-.stash-item--dragging {
+.inv-item--dragging {
   opacity: 0.88;
-  z-index: 5;
+  z-index: 8;
   transition: none;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.55);
 }
 
-.stash-item--bounce {
-  animation: stash-bounce 0.32s ease;
+.inv-item--bounce {
+  animation: inv-bounce 0.32s ease;
 }
 
-@keyframes stash-bounce {
+@keyframes inv-bounce {
   0% {
     transform: scale(1);
   }
@@ -745,30 +826,29 @@ body.action-open .btn-hub--action {
   }
 }
 
-.stash-item__label {
-  font-size: 0.6rem;
-  line-height: 1.2;
+.inv-item__label {
+  font-size: 0.58rem;
+  line-height: 1.15;
   text-align: center;
   color: #dce8f4;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   pointer-events: none;
 }
 
-.stash-drop-preview {
+.inv-drop-preview {
   position: absolute;
   box-sizing: border-box;
   border-radius: 4px;
   pointer-events: none;
-  z-index: 4;
-  transition: left 0.05s, top 0.05s;
+  z-index: 6;
 }
 
-.stash-drop-preview--ok {
+.inv-drop-preview--ok {
   background: rgba(80, 160, 120, 0.35);
   border: 2px dashed rgba(120, 220, 160, 0.85);
 }
 
-.stash-drop-preview--bad {
+.inv-drop-preview--bad {
   background: rgba(160, 60, 60, 0.35);
   border: 2px dashed rgba(220, 100, 100, 0.85);
 }
@@ -777,15 +857,53 @@ body.action-open .btn-hub--action {
   width: 100%;
 }
 
-.stash-price-hint {
-  margin: 0.35rem 0 0;
-  padding: 0.45rem 0.65rem;
-  font-size: 0.82rem;
-  color: #b8e4c8;
-  background: rgba(40, 70, 55, 0.55);
-  border: 1px solid rgba(100, 180, 130, 0.45);
+.stash-item-popover {
+  margin: 0.4rem 0 0.5rem;
+  padding: 0.55rem 0.65rem;
+  background: rgba(12, 18, 26, 0.95);
+  border: 1px solid rgba(100, 140, 170, 0.45);
+  border-radius: 6px;
+}
+
+.stash-item-popover__text {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #c8dce8;
+}
+
+.stash-item-popover__actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.stash-item-popover__sell {
+  flex: 1;
+  min-width: 8rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0e1418;
+  background: linear-gradient(180deg, #9ed4b0 0%, #5a9a70 100%);
+  border: none;
   border-radius: 4px;
-  text-align: center;
+  cursor: pointer;
+}
+
+.stash-item-popover__sell:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.stash-item-popover__close {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  color: #9aa8b8;
+  background: transparent;
+  border: 1px solid rgba(90, 110, 130, 0.5);
+  border-radius: 4px;
+  cursor: pointer;
 }
 
 .stash-cell {

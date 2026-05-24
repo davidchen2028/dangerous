@@ -97,7 +97,7 @@
       minMarketPrice: 1000,
       maxMarketPrice: 3200,
       price: 2100,
-      image: "img/market/sealed-motor-oil.svg",
+      image: "img/market/sealed-motor-oil.png",
     },
     {
       id: "heavy_industrial_drill",
@@ -126,7 +126,7 @@
       w: 1,
       h: 1,
       price: 50000,
-      image: "img/market/keycard-silver.svg",
+      image: "img/market/keycard-side-entrance.png",
     },
   ];
 
@@ -419,6 +419,26 @@
     return hint;
   }
 
+  function getReclaimPrice(catalogItemId) {
+    if (!catalogItemId) return null;
+    var p = findProductByCatalogId(catalogItemId);
+    if (p && p.reclaimMin != null) return p.reclaimMin;
+    if (window.ItemCatalog) {
+      var item = window.ItemCatalog.getItem(catalogItemId);
+      if (item && item.reclaimMin != null) return item.reclaimMin;
+    }
+    if (p && p.price != null) return Math.floor(p.price * 0.5);
+    return null;
+  }
+
+  function sellCatalogItem(catalogItemId) {
+    var price = getReclaimPrice(catalogItemId);
+    if (price == null) return null;
+    perilCredits += price;
+    updateCreditsDisplay();
+    return price;
+  }
+
   window.LobbyMarket = {
     onPanelOpen: onPanelOpen,
     getCredits: function () {
@@ -426,5 +446,7 @@
     },
     getPriceByCatalogId: getPriceByCatalogId,
     getPriceHintByCatalogId: getPriceHintByCatalogId,
+    getReclaimPrice: getReclaimPrice,
+    sellCatalogItem: sellCatalogItem,
   };
 })();

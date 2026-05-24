@@ -1,5 +1,5 @@
 /**
- * 新手教程 — B 打开已装备背包储物格 + 卡槽 + 安全箱
+ * 新手教程 — B 打开已装备背包储物格 + 安全箱
  */
 (function () {
   "use strict";
@@ -40,7 +40,6 @@
       var from = e.target.closest(".action-cell--keycard");
       if (!from) return;
       var to = e.relatedTarget;
-      if (to && from.contains(to)) return;
       if (to && to.closest && to.closest(".action-cell--keycard")) return;
       hideKeycardDurability();
     });
@@ -49,24 +48,41 @@
   function rebuildStorage() {
     if (!window.PlayerLoadout) return;
     var loadout = window.PlayerLoadout.getLoadout();
-    var bp = window.PlayerLoadout.getBackpackState();
+    var bpMgr = window.PlayerLoadout.getBackpackManager();
 
-    if (!loadout.backpack) {
+    if (!loadout.backpack || !bpMgr) {
       if (storageTitleEl) storageTitleEl.textContent = "背包内容";
       if (storageMetaEl) storageMetaEl.textContent = "未装备背包";
-      window.PlayerLoadout.renderGrid(
-        storageGridEl,
-        { cols: 0, rows: 0, placed: [] },
-        "请在大厅仓库左侧装备背包"
-      );
+      if (window.GridStashUI) {
+        window.GridStashUI.mountExternalBoard(
+          storageGridEl,
+          null,
+          0,
+          0,
+          "actionBp"
+        );
+      } else {
+        storageGridEl.innerHTML =
+          '<p class="inv-grid-host__empty">请在大厅仓库左侧装备背包</p>';
+      }
       return;
     }
+
     if (storageTitleEl) storageTitleEl.textContent = loadout.backpack.name;
     if (storageMetaEl) {
       storageMetaEl.textContent =
         loadout.backpack.cols + " × " + loadout.backpack.rows;
     }
-    window.PlayerLoadout.renderGrid(storageGridEl, bp, "");
+
+    if (window.GridStashUI) {
+      window.GridStashUI.mountExternalBoard(
+        storageGridEl,
+        bpMgr,
+        loadout.backpack.cols,
+        loadout.backpack.rows,
+        "actionBp"
+      );
+    }
   }
 
   function renderCards() {
@@ -75,12 +91,11 @@
   }
 
   function renderSecure() {
-    if (!window.PlayerLoadout || !secureGridEl) return;
-    window.PlayerLoadout.renderGrid(
-      secureGridEl,
-      window.PlayerLoadout.getSecureState(),
-      ""
-    );
+    if (!secureGridEl) return;
+    var secure = window.PlayerLoadout && window.PlayerLoadout.getSecureManager();
+    if (window.GridStashUI && secure) {
+      window.GridStashUI.mountExternalBoard(secureGridEl, secure, 1, 2, "actionSecure");
+    }
   }
 
   function refreshAll() {

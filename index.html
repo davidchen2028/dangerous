@@ -6,9 +6,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>极危行动 — 行动基地</title>
-  <link rel="stylesheet" href="css/lobby.css?v=10">
+  <link rel="stylesheet" href="css/lobby.css?v=12">
   <link rel="stylesheet" href="css/market-page.css?v=2">
-  <link rel="stylesheet" href="css/action-scene.css?v=7">
+  <link rel="stylesheet" href="css/action-scene.css?v=12">
 </head>
 <body class="hub-home">
   <div class="lobby" aria-hidden="true"></div>
@@ -68,7 +68,8 @@
               <li><kbd>空格</kbd><span>跳跃（需站立且双脚着地）</span></li>
               <li><kbd>B</kbd> / <kbd>Tab</kbd><span>打开 / 关闭战术背包（自动显示鼠标）</span></li>
               <li><span class="tutorial-keys__mouse">鼠标</span><span>转动视角；点击画面锁定指针</span></li>
-              <li><kbd>Esc</kbd><span>返回大厅</span></li>
+              <li><kbd>Q</kbd><span>返回大厅</span></li>
+              <li><kbd>Esc</kbd><span>关闭背包 / 搜桶界面</span></li>
             </ul>
           </section>
 
@@ -123,14 +124,26 @@
           <aside class="lobby-loadout" id="lobbyLoadout" aria-label="身上装备"></aside>
           <div class="stash-main">
             <p class="stash-hint ui-hidden" id="stashHint">请先进入房间后再整理仓库</p>
-            <p class="stash-tip">拖拽整理 · 单击查黑市定价 · 双击装备到左侧 · 双击左侧装备卸回仓库</p>
-            <p class="stash-price-hint ui-hidden" id="stashPriceHint" role="status"></p>
+            <p class="stash-tip">拖拽整理 · 拖到左侧胸挂/背包槽装备 · 单击定价/回收</p>
+            <div class="stash-item-popover ui-hidden" id="stashItemPopover" role="dialog" aria-label="物品详情">
+              <p class="stash-item-popover__text" id="stashItemPopoverText"></p>
+              <div class="stash-item-popover__actions">
+                <button type="button" class="stash-item-popover__sell" id="stashItemSellBtn">官方回收</button>
+                <button type="button" class="stash-item-popover__close" id="stashItemPopoverClose">关闭</button>
+              </div>
+            </div>
             <div class="stash-grid" id="stashGrid" aria-label="仓库格子，6 列 10 行"></div>
           </div>
         </div>
-        <div class="lobby-loadout__secure-wrap">
-          <p class="loadout-section__title loadout-section__title--secure">安全箱 <span>1×2 · 死亡不掉落</span></p>
-          <div class="loadout-grid loadout-grid--secure" id="lobbySecureGrid"></div>
+        <div class="stash-subgrids">
+          <div class="stash-subgrids__block">
+            <p class="loadout-section__title">装备背包 <span id="lobbyBackpackMeta">未装备</span></p>
+            <div class="inv-grid-host" id="lobbyBackpackGrid"></div>
+          </div>
+          <div class="stash-subgrids__block">
+            <p class="loadout-section__title loadout-section__title--secure">安全箱 <span>1×2 · 死亡不掉落</span></p>
+            <div class="inv-grid-host" id="lobbySecureGrid"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -164,9 +177,32 @@
     <canvas class="action-scene__canvas" id="actionCanvas"></canvas>
     <button type="button" class="action-scene__back" id="btnActionBack" aria-label="返回大厅">×</button>
     <p class="action-scene__map-name" id="actionMapName">新手教程</p>
-    <p class="action-scene__hint" id="actionHint">WASD 移动 · E 刷房卡 · B 背包（显示鼠标）· Esc 返回</p>
+    <p class="action-scene__hint" id="actionHint">WASD 移动 · E 刷房卡 · F 搜桶(准星对准) · B 背包 · Q 返回大厅</p>
+    <div class="action-crosshair action-crosshair--hidden" id="actionCrosshair" aria-hidden="true"></div>
     <p class="action-durability-banner" id="actionDurabilityBanner" hidden role="status"></p>
     <p class="action-interact-hint" id="actionInteractHint" hidden>靠近安全门 · 按 E 刷房卡</p>
+
+    <div class="waste-bin-search" id="wasteBinSearch" hidden>
+      <div class="waste-bin-search__backdrop" id="wasteBinSearchBackdrop"></div>
+      <div class="waste-bin-search__panel" role="dialog" aria-label="搜刮废料桶">
+        <header class="waste-bin-search__head">
+          <h2 class="waste-bin-search__title">工业废料回收桶</h2>
+          <p class="waste-bin-search__sub">锈迹铁皮桶 · 机油渍与废铁渣</p>
+        </header>
+        <p class="waste-bin-search__status" id="wasteBinSearchStatus"></p>
+        <div class="waste-bin-search__grid-wrap">
+          <div class="inv-grid-host" id="wasteBinSearchGrid"></div>
+        </div>
+        <p class="waste-bin-search__tip">高价值物品出现更慢 · 单击拾取 · 占格污染背包</p>
+        <div class="waste-bin-search__actions">
+          <button type="button" class="waste-bin-search__take" id="wasteBinTakeAll">全部拾取</button>
+          <button type="button" class="waste-bin-search__close" id="wasteBinSearchClose">
+            <span>关闭</span>
+            <kbd class="waste-bin-search__kbd">Esc</kbd>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <div class="action-inventory" id="actionInventory" hidden>
       <div class="action-inventory__backdrop" id="actionInventoryBackdrop"></div>
@@ -205,14 +241,15 @@
   </script>
   <script src="js/socket.io.min.js?v=4"></script>
   <script src="js/lobby-ui.js?v=7"></script>
-  <script src="js/item-catalog.js?v=5"></script>
-  <script src="js/grid-inventory.js?v=2"></script>
-  <script src="js/grid-stash-ui.js?v=4"></script>
-  <script src="js/player-loadout.js?v=3"></script>
-  <script src="js/lobby-market.js?v=8"></script>
+  <script src="js/item-catalog.js?v=7"></script>
+  <script src="js/grid-inventory.js?v=3"></script>
+  <script src="js/grid-stash-ui.js?v=9"></script>
+  <script src="js/player-loadout.js?v=6"></script>
+  <script src="js/lobby-market.js?v=11"></script>
   <script src="js/stash.js?v=10"></script>
   <script src="js/net.js?v=4"></script>
-  <script src="js/action-inventory.js?v=6"></script>
-  <script type="module" src="js/action-scene.js?v=23"></script>
+  <script src="js/action-inventory.js?v=7"></script>
+  <script src="js/action-waste-bin.js?v=6"></script>
+  <script type="module" src="js/action-scene.js?v=35"></script>
 </body>
 </html>

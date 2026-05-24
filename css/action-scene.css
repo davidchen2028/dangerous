@@ -469,6 +469,234 @@ body.inventory-open .action-inventory * {
   font-size: 0.65rem;
 }
 
+/* 工业废料桶搜刮 */
+.waste-bin-search[hidden] {
+  display: none !important;
+}
+
+.waste-bin-search:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.waste-bin-search__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 8, 14, 0.72);
+}
+
+.waste-bin-search__panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 520px);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 1rem;
+  background: linear-gradient(165deg, #1a2430 0%, #0e141c 100%);
+  border: 1px solid rgba(80, 120, 150, 0.45);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+.waste-bin-search__title {
+  margin: 0;
+  font-size: 1rem;
+  color: #dce8f4;
+}
+
+.waste-bin-search__sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.72rem;
+  color: #7a8a98;
+}
+
+.waste-bin-search__status {
+  margin: 0.65rem 0 0.4rem;
+  font-size: 0.78rem;
+  color: #9ec4b0;
+  min-height: 1.2em;
+}
+
+.waste-bin-search__grid-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 0.35rem 0;
+  overflow-x: auto;
+}
+
+.waste-bin-loot-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.15rem;
+  min-height: 5.5rem;
+}
+
+.waste-bin-loot-card {
+  position: relative;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  padding: 0.2rem;
+  border: 2px solid rgba(120, 150, 180, 0.55);
+  border-radius: 4px;
+  background: rgba(28, 40, 52, 0.95) center / contain no-repeat;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.waste-bin-loot-card:hover {
+  border-color: rgba(150, 210, 170, 0.85);
+  transform: translateY(-2px);
+}
+
+.waste-bin-loot-card__name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0.15rem 0.2rem;
+  font-size: 0.58rem;
+  line-height: 1.15;
+  text-align: center;
+  color: #e8f0f8;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.78));
+  pointer-events: none;
+}
+
+.waste-bin-search__tip {
+  margin: 0.35rem 0 0.5rem;
+  font-size: 0.68rem;
+  color: #6a7a88;
+  text-align: center;
+}
+
+.waste-bin-search__actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.waste-bin-search__take,
+.waste-bin-search__close {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  border: none;
+}
+
+.waste-bin-search__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.waste-bin-search__kbd {
+  display: inline-block;
+  padding: 0.08rem 0.35rem;
+  font-family: inherit;
+  font-size: 0.62rem;
+  line-height: 1.35;
+  color: #9eb0c4;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(120, 140, 160, 0.45);
+  border-radius: 3px;
+}
+
+.waste-bin-search__take {
+  color: #0e1418;
+  font-weight: 600;
+  background: linear-gradient(180deg, #9ed4b0 0%, #5a9a70 100%);
+}
+
+.waste-bin-search__close {
+  color: #b8c8d8;
+  background: rgba(30, 40, 52, 0.9);
+  border: 1px solid rgba(90, 110, 130, 0.5);
+}
+
+body.waste-bin-open .action-scene__hint {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.waste-bin-item--hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.85);
+}
+
+.waste-bin-item--pop {
+  animation: waste-bin-pop 0.35s ease forwards;
+}
+
+@keyframes waste-bin-pop {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+body.waste-bin-open .action-scene__canvas {
+  cursor: default;
+}
+
+/* 屏幕中心准星 */
+.action-crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  pointer-events: none;
+  z-index: 25;
+  opacity: 0.88;
+}
+
+.action-crosshair::before,
+.action-crosshair::after {
+  content: "";
+  position: absolute;
+  background: rgba(220, 235, 245, 0.92);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.65);
+}
+
+.action-crosshair::before {
+  left: 50%;
+  top: 2px;
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+}
+
+.action-crosshair::after {
+  top: 50%;
+  left: 2px;
+  width: 14px;
+  height: 2px;
+  margin-top: -1px;
+}
+
+.action-crosshair--hidden {
+  display: none;
+}
+
+body.inventory-open .action-crosshair,
+body.waste-bin-open .action-crosshair,
+body.show-cursor .action-crosshair {
+  display: none;
+}
+
 @media (max-width: 720px) {
   .action-inventory__layout {
     flex-direction: column;

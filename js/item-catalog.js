@@ -49,7 +49,7 @@
       maxMarketPrice: 3200,
       flavor:
         "重型工业垃圾。背包实在没东西装时，才会勉强带走的垫底物资。",
-      image: "img/market/sealed-motor-oil.svg",
+      image: "img/market/sealed-motor-oil.png",
     },
     heavy_industrial_drill: {
       id: "heavy_industrial_drill",
@@ -75,7 +75,7 @@
       w: 1,
       h: 1,
       maxDurability: 10,
-      image: "img/market/keycard-silver.svg",
+      image: "img/market/keycard-side-entrance.png",
     },
     helm_basic: {
       id: "helm_basic",

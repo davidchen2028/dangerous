@@ -47,13 +47,22 @@
   /** 从现有 ItemCatalog 条目转换 */
   function itemDataFromCatalog(cat) {
     if (!cat) return null;
-    return createItemData({
+    var data = createItemData({
       id: cat.id,
       name: cat.name,
       icon: cat.image || null,
       width: cat.w,
       height: cat.h,
     });
+    if (cat.reclaimMin != null) data.reclaimMin = cat.reclaimMin;
+    if (cat.minMarketPrice != null) data.minMarketPrice = cat.minMarketPrice;
+    if (cat.maxMarketPrice != null) data.maxMarketPrice = cat.maxMarketPrice;
+    if (cat.rarity) data.rarity = cat.rarity;
+    if (cat.rarityLabel) data.rarityLabel = cat.rarityLabel;
+    if (cat.rarityIcon) data.rarityIcon = cat.rarityIcon;
+    if (cat.maxDurability != null) data.maxDurability = cat.maxDurability;
+    if (cat.durability != null) data.durability = cat.durability;
+    return data;
   }
 
   /**
