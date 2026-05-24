@@ -42,7 +42,7 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
   var JUMP_SPEED = 9;
   var BOUNDS_X = 5.5;
   var BOUNDS_Z_MIN = 1.2;
-  var BOUNDS_Z_MAX = 58.8;
+  var BOUNDS_Z_MAX = 77;
   var clouds = [];
   /** @type {{ minX: number, maxX: number, minY: number, maxY: number, minZ: number, maxZ: number }[]} */
   var colliders = [];
@@ -120,6 +120,18 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
   var CRATE_Z = [22, 28, 34, 38];
   var CRATE_X = [3.0, 4.0, 3.0, 4.0];
   var CRATE_GLB_URL = "models/wooden-crate.glb";
+
+  var DOOR_Z = 60;
+  var CORRIDOR_LEN = 15;
+  var CORRIDOR_W = 1.5;
+  var SECTOR_WALL_H = 3.5;
+  var DOOR_SIZE = { x: 1.5, y: 2.2, z: 0.28 };
+  var DOOR_GLB_URL = "models/security-door.glb";
+  var securityDoorRoot = null;
+  var doorUnlocked = false;
+  var doorSwipeColliders = [];
+  var durabilityBannerEl = document.getElementById("actionDurabilityBanner");
+  var interactHintEl = document.getElementById("actionInteractHint");
 
   function buildTruck(parent) {
     registerCollider(
@@ -536,6 +548,251 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     parent.add(truckRoot);
   }
 
+  function removeDoorColliders() {
+    var i;
+    for (i = doorSwipeColliders.length - 1; i >= 0; i--) {
+      var c = doorSwipeColliders[i];
+      var idx = colliders.indexOf(c);
+      if (idx >= 0) colliders.splice(idx, 1);
+    }
+    doorSwipeColliders.length = 0;
+  }
+
+  function registerDoorSwipeCollider(sx, sy, sz, px, py, pz) {
+    registerCollider(sx, sy, sz, px, py, pz);
+    doorSwipeColliders.push(colliders[colliders.length - 1]);
+  }
+
+  function setDoorGreen(root) {
+    if (!root) return;
+    root.traverse(function (child) {
+      if (!child.isMesh || !child.material) return;
+      var mats = Array.isArray(child.material)
+        ? child.material
+        : [child.material];
+      var m;
+      for (m = 0; m < mats.length; m++) {
+        if (mats[m].color) mats[m].color.setHex(0x2ecc55);
+        if (mats[m].emissive) mats[m].emissive.setHex(0x1a6630);
+        if (mats[m].emissiveIntensity !== undefined) {
+          mats[m].emissiveIntensity = 0.35;
+        }
+      }
+    });
+  }
+
+  function orientDoorUpright(model) {
+    var presets = [
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: Math.PI, z: 0 },
+      { x: 0, y: Math.PI / 2, z: 0 },
+      { x: 0, y: -Math.PI / 2, z: 0 },
+      { x: Math.PI / 2, y: 0, z: 0 },
+      { x: -Math.PI / 2, y: 0, z: 0 },
+    ];
+    var best = presets[0];
+    var bestScore = -1e9;
+    var i;
+    for (i = 0; i < presets.length; i++) {
+      var r = presets[i];
+      model.rotation.set(r.x, r.y, r.z);
+      model.updateMatrixWorld(true);
+      var box = new THREE.Box3().setFromObject(model);
+      var size = new THREE.Vector3();
+      box.getSize(size);
+      var score = 0;
+      if (size.y >= size.x && size.y >= size.z) score += 60;
+      if (size.z <= size.x * 0.35) score += 40;
+      if (size.x >= 1.0 && size.x <= 2.5) score += 20;
+      if (score > bestScore) {
+        bestScore = score;
+        best = r;
+      }
+    }
+    model.rotation.set(best.x, best.y, best.z);
+    model.updateMatrixWorld(true);
+  }
+
+  function placeSecurityDoor(model, parent) {
+    var root = new THREE.Group();
+    root.name = "SecurityDoor_GLB";
+    root.add(model);
+
+    model.scale.set(1, 1, 1);
+    orientDoorUpright(model);
+    root.updateMatrixWorld(true);
+    fitModelToBox(root, DOOR_SIZE);
+    fitModelToBox(root, DOOR_SIZE);
+
+    var box = new THREE.Box3().setFromObject(root);
+    var center = new THREE.Vector3();
+    box.getCenter(center);
+    root.position.set(
+      -center.x,
+      -box.min.y,
+      DOOR_Z - 0.12 - center.z
+    );
+
+    enableShadows(root);
+    parent.add(root);
+    securityDoorRoot = root;
+    if (doorUnlocked) setDoorGreen(securityDoorRoot);
+  }
+
+  function addDoorFallback(parent) {
+    var mesh = addBox(
+      parent,
+      DOOR_SIZE.x,
+      DOOR_SIZE.y,
+      DOOR_SIZE.z,
+      0,
+      DOOR_SIZE.y * 0.5,
+      DOOR_Z - 0.1,
+      doorUnlocked ? 0x2ecc55 : 0xe87820,
+      false
+    );
+    securityDoorRoot = mesh;
+  }
+
+  function buildCorridorBeyondDoor(parent) {
+    var midZ = DOOR_Z + CORRIDOR_LEN * 0.5 + 0.25;
+    var wallX = CORRIDOR_W * 0.5 + 0.25;
+    addBox(parent, CORRIDOR_W, 0.1, CORRIDOR_LEN, 0, 0.05, midZ, 0x5a5e64, false);
+    addBox(
+      parent,
+      0.5,
+      SECTOR_WALL_H,
+      CORRIDOR_LEN,
+      -wallX,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      0.5,
+      SECTOR_WALL_H,
+      CORRIDOR_LEN,
+      wallX,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      CORRIDOR_W,
+      SECTOR_WALL_H,
+      0.5,
+      0,
+      SECTOR_WALL_H * 0.5,
+      DOOR_Z + CORRIDOR_LEN + 0.25,
+      0x2e3338
+    );
+  }
+
+  function buildEndWallWithDoorGap(parent) {
+    var segW = (12 - CORRIDOR_W) * 0.5;
+    var segX = CORRIDOR_W * 0.5 + segW * 0.5;
+    var wallY = SECTOR_WALL_H * 0.5;
+    addBox(parent, segW, SECTOR_WALL_H, 0.5, -segX, wallY, DOOR_Z, 0x2e3338);
+    addBox(parent, segW, SECTOR_WALL_H, 0.5, segX, wallY, DOOR_Z, 0x2e3338);
+  }
+
+  function buildSecurityDoor(parent) {
+    registerDoorSwipeCollider(
+      DOOR_SIZE.x,
+      DOOR_SIZE.y,
+      DOOR_SIZE.z + 0.15,
+      0,
+      DOOR_SIZE.y * 0.5,
+      DOOR_Z - 0.08
+    );
+
+    var loader = new GLTFLoader();
+    loader.load(
+      DOOR_GLB_URL,
+      function (gltf) {
+        placeSecurityDoor(gltf.scene, parent);
+      },
+      undefined,
+      function (err) {
+        console.error("[ActionScene] 安全门模型加载失败", err);
+        addDoorFallback(parent);
+      }
+    );
+  }
+
+  function showDurabilityBanner(remaining, max) {
+    if (!durabilityBannerEl) return;
+    durabilityBannerEl.textContent =
+      "房卡耐久 " + remaining + " / " + max;
+    durabilityBannerEl.hidden = false;
+    if (durabilityBannerEl._hideTimer) {
+      clearTimeout(durabilityBannerEl._hideTimer);
+    }
+    durabilityBannerEl._hideTimer = setTimeout(function () {
+      durabilityBannerEl.hidden = true;
+    }, 2800);
+  }
+
+  function isNearSecurityDoor() {
+    return (
+      Math.abs(pos.x) < 2.2 &&
+      pos.z >= DOOR_Z - 5.5 &&
+      pos.z <= DOOR_Z + 0.8
+    );
+  }
+
+  function setInteractHintVisible(show) {
+    if (!interactHintEl) return;
+    interactHintEl.hidden = !show;
+    if (show && !doorUnlocked) {
+      interactHintEl.textContent = "靠近安全门 · 按 E 刷房卡";
+    }
+  }
+
+  function unlockSecurityDoor() {
+    if (doorUnlocked) return;
+    doorUnlocked = true;
+    removeDoorColliders();
+    if (securityDoorRoot) {
+      setDoorGreen(securityDoorRoot);
+      securityDoorRoot.position.x += 1.35;
+    }
+    setInteractHintVisible(false);
+  }
+
+  function trySwipeDoor() {
+    if (doorUnlocked) return;
+    if (!isNearSecurityDoor()) return;
+
+    if (!window.PlayerLoadout || !window.PlayerLoadout.findKeycard()) {
+      alert("需要装备「侧门仓库」房卡（卡槽或安全箱）。");
+      return;
+    }
+
+    var result = window.PlayerLoadout.consumeKeycardDurability(1);
+    if (!result) {
+      alert("房卡耐久已耗尽。");
+      return;
+    }
+
+    showDurabilityBanner(result.remaining, result.max);
+    unlockSecurityDoor();
+
+    if (window.ActionInventory && window.ActionInventory.isOpen()) {
+      window.ActionInventory.refresh();
+    }
+  }
+
+  function updateDoorInteraction() {
+    if (doorUnlocked) {
+      setInteractHintVisible(false);
+      return;
+    }
+    setInteractHintVisible(isNearSecurityDoor());
+  }
+
   /** 【新手教程】0 号模拟围区 — 与 Unity 生成器同规格 */
   function buildSectorZero(parent) {
     colliders = [];
@@ -560,11 +817,11 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     floor.position.set(0, -0.02, 30);
     root.add(floor);
 
-    // 走廊前后封口墙（与侧墙同高，挡住两端）
-    var endWallH = 3.5;
-    var endWallY = endWallH * 0.5;
-    addBox(root, 12, endWallH, 0.5, 0, endWallY, 0, 0x2e3338);
-    addBox(root, 12, endWallH, 0.5, 0, endWallY, 60, 0x2e3338);
+    // 起点封口墙
+    addBox(root, 12, SECTOR_WALL_H, 0.5, 0, SECTOR_WALL_H * 0.5, 0, 0x2e3338);
+    buildEndWallWithDoorGap(root);
+    buildCorridorBeyondDoor(root);
+    buildSecurityDoor(root);
   }
 
   function cloudMaterial(opacity) {
@@ -970,14 +1227,17 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
 
   function toggleInventory() {
     if (!window.ActionInventory) return;
-    var opened = window.ActionInventory.toggle();
-    if (opened) {
-      releasePointerForUi();
-    } else {
-      restoreGameCursor();
-      if (running && !pointerLocked) {
-        setHintVisible(true);
-      }
+    window.ActionInventory.toggle();
+  }
+
+  function onInventoryOpened() {
+    releasePointerForUi();
+  }
+
+  function onInventoryClosed() {
+    restoreGameCursor();
+    if (running && !pointerLocked) {
+      setHintVisible(true);
     }
   }
 
@@ -1011,6 +1271,7 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     updatePlayerTransform();
     updateHands(dt, moving);
     updateClouds(dt, animTime);
+    updateDoorInteraction();
     renderer.render(scene, camera);
   }
 
@@ -1074,6 +1335,13 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     document.body.classList.add("action-open");
     document.body.classList.remove("hub-home");
 
+    doorUnlocked = false;
+    securityDoorRoot = null;
+    doorSwipeColliders = [];
+    if (window.PlayerLoadout && window.PlayerLoadout.ensureTutorialKeycard) {
+      window.PlayerLoadout.ensureTutorialKeycard();
+    }
+
     startLoop();
     resetPlayer();
     setHintVisible(true);
@@ -1107,12 +1375,16 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
       return;
     }
 
+    if (e.code === "KeyE" && !e.repeat) {
+      e.preventDefault();
+      trySwipeDoor();
+      return;
+    }
+
     if (e.code === "Escape") {
       e.preventDefault();
       if (isInventoryOpen()) {
         window.ActionInventory.close();
-        restoreGameCursor();
-        setHintVisible(true);
         return;
       }
       exit();
@@ -1164,8 +1436,6 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     if (invBackdrop) {
       invBackdrop.addEventListener("click", function () {
         if (window.ActionInventory) window.ActionInventory.close();
-        restoreGameCursor();
-        setHintVisible(true);
       });
     }
 
@@ -1175,9 +1445,16 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
     document.addEventListener("pointerlockchange", onPointerLockChange);
     window.addEventListener("resize", resize);
 
-    window.ActionScene = { enter: enter, exit: exit, ready: function () {
-      return ready;
-    } };
+    window.ActionScene = {
+      enter: enter,
+      exit: exit,
+      ready: function () {
+        return ready;
+      },
+      onInventoryOpened: onInventoryOpened,
+      onInventoryClosed: onInventoryClosed,
+      showDurabilityBanner: showDurabilityBanner,
+    };
 
     if (typeof THREE === "undefined") {
       console.warn("[ActionScene] Three.js 未就绪，请通过 HTTP 服务打开页面。");

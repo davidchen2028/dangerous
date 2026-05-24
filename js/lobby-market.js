@@ -29,7 +29,7 @@
       subcats: [
         { id: "electronic", label: "电子物品", empty: false },
         { id: "intel", label: "军用情报", empty: true },
-        { id: "industrial", label: "工业与医疗物资", empty: true },
+        { id: "industrial", label: "工业与医疗物资", empty: false },
       ],
     },
     { id: "medical", label: "医疗消耗品", empty: true },
@@ -82,6 +82,42 @@
       image: "img/market/circuit-board.svg",
     },
     {
+      id: "sealed_motor_oil",
+      stashId: "spoil",
+      cat: "collectible",
+      sub: "industrial",
+      name: "密封的特种机油",
+      desc: "工业与医疗物资 · 重型工业垃圾",
+      w: 1,
+      h: 2,
+      rarity: "common",
+      rarityLabel: "普通",
+      rarityIcon: "🟢",
+      reclaimMin: 1200,
+      minMarketPrice: 1000,
+      maxMarketPrice: 3200,
+      price: 2100,
+      image: "img/market/sealed-motor-oil.svg",
+    },
+    {
+      id: "heavy_industrial_drill",
+      stashId: "hidrl",
+      cat: "collectible",
+      sub: "industrial",
+      name: "重型工业钻头",
+      desc: "工业与医疗物资 · 高价值但占满 6 格",
+      w: 3,
+      h: 2,
+      rarity: "epic",
+      rarityLabel: "史诗",
+      rarityIcon: "🟣",
+      reclaimMin: 38000,
+      minMarketPrice: 35000,
+      maxMarketPrice: 80000,
+      price: 57500,
+      image: "img/market/heavy-industrial-drill.svg",
+    },
+    {
       id: "keycard_side_door",
       stashId: "keycard",
       cat: "keycard",
@@ -109,6 +145,25 @@
     }
     if (product.w && product.h) return product.w + "×" + product.h;
     return "";
+  }
+
+  function productEconomyLine(product) {
+    var parts = [];
+    if (product.rarityIcon && product.rarityLabel) {
+      parts.push(product.rarityIcon + " " + product.rarityLabel);
+    }
+    if (product.reclaimMin != null) {
+      parts.push("回收保底 " + product.reclaimMin.toLocaleString());
+    }
+    if (product.minMarketPrice != null && product.maxMarketPrice != null) {
+      parts.push(
+        "限价 " +
+          product.minMarketPrice.toLocaleString() +
+          "–" +
+          product.maxMarketPrice.toLocaleString()
+      );
+    }
+    return parts.join(" · ");
   }
 
   function updateCreditsDisplay() {
@@ -177,8 +232,12 @@
 
     items.forEach(function (product) {
       var meta = productMeta(product);
+      var economy = productEconomyLine(product);
       var card = document.createElement("article");
       card.className = "market-card";
+      if (product.rarity) {
+        card.classList.add("market-card--" + product.rarity);
+      }
       card.innerHTML =
         '<div class="market-card__visual">' +
         '<img src="' +
@@ -193,6 +252,9 @@
           ? '<p class="market-card__desc">' + product.desc + "</p>"
           : "") +
         (meta ? '<span class="market-card__meta">' + meta + "</span>" : "") +
+        (economy
+          ? '<span class="market-card__economy">' + economy + "</span>"
+          : "") +
         '<div class="market-card__foot">' +
         '<span class="market-card__price">' +
         product.price.toLocaleString() +
@@ -302,10 +364,67 @@
     renderProducts();
   }
 
+  /**
+   * 按物品目录 id 查黑市定价；未上架则返回 null
+   * @param {string} catalogItemId
+   * @returns {number|null}
+   */
+  function findProductByCatalogId(catalogItemId) {
+    if (!catalogItemId) return null;
+    var i;
+    for (i = 0; i < PRODUCTS.length; i++) {
+      var p = PRODUCTS[i];
+      if (p.id === catalogItemId) return p;
+      if (p.stashId && window.ItemCatalog) {
+        var mapped = window.ItemCatalog.fromStashId(p.stashId);
+        if (mapped && mapped.id === catalogItemId) return p;
+      }
+    }
+    return null;
+  }
+
+  function getPriceByCatalogId(catalogItemId) {
+    var p = findProductByCatalogId(catalogItemId);
+    return p ? p.price : null;
+  }
+
+  /**
+   * 仓库单击物价：现货价 + 回收保底 + 限价区间
+   * @param {string} catalogItemId
+   * @returns {string|null}
+   */
+  function getPriceHintByCatalogId(catalogItemId) {
+    var p = findProductByCatalogId(catalogItemId);
+    if (!p) {
+      if (!window.ItemCatalog) return null;
+      var item = window.ItemCatalog.getItem(catalogItemId);
+      if (!item || item.reclaimMin == null) return null;
+      var line = item.name;
+      if (item.rarityIcon && item.rarityLabel) {
+        line += " · " + item.rarityIcon + " " + item.rarityLabel;
+      }
+      line +=
+        " · 回收保底 " +
+        item.reclaimMin.toLocaleString() +
+        " · 限价 " +
+        item.minMarketPrice.toLocaleString() +
+        "–" +
+        item.maxMarketPrice.toLocaleString();
+      return line;
+    }
+    var hint = p.name;
+    var economy = productEconomyLine(p);
+    if (economy) hint += " · " + economy;
+    hint += " · 现货 " + p.price.toLocaleString() + " 极危币";
+    return hint;
+  }
+
   window.LobbyMarket = {
     onPanelOpen: onPanelOpen,
     getCredits: function () {
       return perilCredits;
     },
+    getPriceByCatalogId: getPriceByCatalogId,
+    getPriceHintByCatalogId: getPriceHintByCatalogId,
   };
 })();

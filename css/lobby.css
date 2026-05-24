@@ -669,16 +669,123 @@ body.action-open .btn-hub--action {
   text-align: center;
 }
 
-/* 6 列 × 10 行 */
-.stash-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  grid-template-rows: repeat(10, 1fr);
-  gap: 4px;
-  padding: 0.75rem;
+/* 6×10 二维网格仓库（路线 B） */
+.stash-grid-board {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
   aspect-ratio: 6 / 10;
   max-height: min(58vh, 420px);
+  margin: 0 auto;
+  touch-action: none;
+  user-select: none;
+}
+
+.stash-grid-bg {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 3px;
+  padding: 4px;
+  box-sizing: border-box;
+}
+
+.stash-grid-bg__cell {
+  background: rgba(8, 12, 18, 0.92);
+  border: 1px solid rgba(55, 70, 90, 0.45);
+  border-radius: 3px;
+}
+
+.stash-items-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.stash-item {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: auto;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  background: rgba(35, 50, 65, 0.95) center / cover no-repeat;
+  border: 2px solid rgba(120, 150, 180, 0.55);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  transition: left 0.22s ease, top 0.22s ease, transform 0.15s ease;
+}
+
+.stash-item:active {
+  cursor: grabbing;
+}
+
+.stash-item--dragging {
+  opacity: 0.88;
+  z-index: 5;
+  transition: none;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.55);
+}
+
+.stash-item--bounce {
+  animation: stash-bounce 0.32s ease;
+}
+
+@keyframes stash-bounce {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(0.94);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.stash-item__label {
+  font-size: 0.6rem;
+  line-height: 1.2;
+  text-align: center;
+  color: #dce8f4;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+.stash-drop-preview {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 4;
+  transition: left 0.05s, top 0.05s;
+}
+
+.stash-drop-preview--ok {
+  background: rgba(80, 160, 120, 0.35);
+  border: 2px dashed rgba(120, 220, 160, 0.85);
+}
+
+.stash-drop-preview--bad {
+  background: rgba(160, 60, 60, 0.35);
+  border: 2px dashed rgba(220, 100, 100, 0.85);
+}
+
+.stash-grid {
   width: 100%;
+}
+
+.stash-price-hint {
+  margin: 0.35rem 0 0;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.82rem;
+  color: #b8e4c8;
+  background: rgba(40, 70, 55, 0.55);
+  border: 1px solid rgba(100, 180, 130, 0.45);
+  border-radius: 4px;
+  text-align: center;
 }
 
 .stash-cell {

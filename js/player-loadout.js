@@ -37,7 +37,79 @@
 
   function cloneItem(item) {
     if (!item) return null;
-    return Object.assign({}, item);
+    var c = Object.assign({}, item);
+    if (c.id === "keycard") {
+      if (c.maxDurability == null) c.maxDurability = 10;
+      if (c.durability == null) c.durability = c.maxDurability;
+    }
+    return c;
+  }
+
+  function isKeycard(item) {
+    return item && item.id === "keycard";
+  }
+
+  function findKeycard() {
+    var i;
+    for (i = 0; i < CARD_SLOTS; i++) {
+      if (isKeycard(loadout.cards[i])) {
+        return { source: "card", index: i, item: loadout.cards[i] };
+      }
+    }
+    for (i = 0; i < secureState.placed.length; i++) {
+      if (isKeycard(secureState.placed[i].item)) {
+        return {
+          source: "secure",
+          index: i,
+          item: secureState.placed[i].item,
+          placement: secureState.placed[i],
+        };
+      }
+    }
+    return null;
+  }
+
+  function removeSecurePlacement(placement) {
+    if (!placement) return;
+    occupy(
+      secureState,
+      placement.col,
+      placement.row,
+      placement.item.w,
+      placement.item.h,
+      false
+    );
+    var idx = secureState.placed.indexOf(placement);
+    if (idx >= 0) secureState.placed.splice(idx, 1);
+  }
+
+  function consumeKeycardDurability(amount) {
+    amount = amount || 1;
+    var found = findKeycard();
+    if (!found || !found.item || found.item.durability <= 0) return null;
+
+    found.item.durability -= amount;
+    var max = found.item.maxDurability || 10;
+    var remaining = found.item.durability;
+
+    if (remaining <= 0) {
+      if (found.source === "card") {
+        loadout.cards[found.index] = null;
+      } else {
+        removeSecurePlacement(found.placement);
+      }
+      remaining = 0;
+    }
+
+    return { remaining: remaining, max: max };
+  }
+
+  function ensureTutorialKeycard() {
+    if (findKeycard()) return;
+    if (!window.ItemCatalog) return;
+    var kc = window.ItemCatalog.getItem("keycard");
+    if (!kc) return;
+    loadout.cards[0] = cloneItem(kc);
   }
 
   function initContainer(state, cols, rows) {
@@ -112,7 +184,15 @@
         if (anchor) {
           cell.classList.add("loadout-grid__cell--item");
           cell.textContent = anchor.name.slice(0, mini ? 2 : 4);
-          cell.title = anchor.name;
+          if (isKeycard(anchor)) {
+            cell.classList.add("action-cell--keycard");
+            cell.dataset.durability = String(
+              anchor.durability != null ? anchor.durability : anchor.maxDurability || 10
+            );
+            cell.dataset.maxDurability = String(anchor.maxDurability || 10);
+          } else {
+            cell.title = anchor.name;
+          }
           if (anchor.w > 1) cell.style.gridColumn = "span " + anchor.w;
           if (anchor.h > 1) cell.style.gridRow = "span " + anchor.h;
         }
@@ -138,6 +218,37 @@
       inner +
       "</button>"
     );
+  }
+
+  function renderCardSlots(el, useActionClasses) {
+    if (!el) return;
+    el.innerHTML = "";
+    el.style.gridTemplateColumns = "repeat(" + CARD_SLOTS + ", 1fr)";
+    var c;
+    for (c = 0; c < CARD_SLOTS; c++) {
+      var card = loadout.cards[c];
+      var cell = document.createElement("div");
+      cell.className = useActionClasses
+        ? "action-grid__cell"
+        : "loadout-grid__cell loadout-grid__cell--mini";
+      if (card) {
+        cell.classList.add(
+          useActionClasses ? "action-grid__cell--item" : "loadout-grid__cell--item"
+        );
+        cell.textContent = card.name.slice(0, 4);
+        if (isKeycard(card)) {
+          cell.classList.add("action-cell--keycard");
+          cell.dataset.durability = String(card.durability);
+          cell.dataset.maxDurability = String(card.maxDurability || 10);
+        } else {
+          cell.title = card.name;
+        }
+      } else {
+        cell.textContent = "卡" + (c + 1);
+        cell.classList.add("action-grid__cell--empty");
+      }
+      el.appendChild(cell);
+    }
   }
 
   function renderLobby() {
@@ -233,7 +344,7 @@
     renderGrid(lobbySecureEl, secureState, "", false);
 
     lobbyLoadoutEl.querySelectorAll("[data-slot]").forEach(function (btn) {
-      btn.addEventListener("click", onSlotClick);
+      btn.addEventListener("dblclick", onSlotDblClick);
     });
   }
 
@@ -282,16 +393,33 @@
     return prev;
   }
 
-  function onSlotClick(e) {
+  function onSlotDblClick(e) {
+    e.preventDefault();
     var btn = e.currentTarget;
     var slotKey = btn.dataset.slot;
     var cardIndex = parseInt(btn.dataset.cardIndex, 10);
-    if (slotKey === "card" && !isNaN(cardIndex)) {
-      unequipSlot("card", cardIndex);
-    } else {
-      unequipSlot(slotKey);
+    var item =
+      slotKey === "card" && !isNaN(cardIndex)
+        ? loadout.cards[cardIndex]
+        : loadout[slotKey];
+    if (!item) return;
+
+    var removed =
+      slotKey === "card" && !isNaN(cardIndex)
+        ? unequipSlot("card", cardIndex)
+        : unequipSlot(slotKey);
+    if (!removed) return;
+
+    if (
+      window.GridStashUI &&
+      window.GridStashUI.tryAddCatalogItem(removed)
+    ) {
+      renderLobby();
+      return;
     }
-    renderLobby();
+
+    equipToSlot(slotKey, removed, cardIndex);
+    alert("仓库空间不足，无法卸下「" + removed.name + "」。");
   }
 
   function equipFromStashId(stashId) {
@@ -362,6 +490,32 @@
     },
     renderLobby: renderLobby,
     equipFromStashId: equipFromStashId,
+    findKeycard: findKeycard,
+    consumeKeycardDurability: consumeKeycardDurability,
+    ensureTutorialKeycard: ensureTutorialKeycard,
+    renderCardSlots: renderCardSlots,
+    isKeycard: isKeycard,
+    unequipToStash: function (slotKey, cardIndex) {
+      var item =
+        slotKey === "card" && cardIndex != null
+          ? loadout.cards[cardIndex]
+          : loadout[slotKey];
+      if (!item) return false;
+      var removed =
+        slotKey === "card" && cardIndex != null
+          ? unequipSlot("card", cardIndex)
+          : unequipSlot(slotKey);
+      if (!removed) return false;
+      if (
+        window.GridStashUI &&
+        window.GridStashUI.tryAddCatalogItem(removed)
+      ) {
+        renderLobby();
+        return true;
+      }
+      equipToSlot(slotKey, removed, cardIndex);
+      return false;
+    },
     tryPlaceLoot: tryPlaceInBackpackOrSecure,
     renderGrid: renderGrid,
   };

@@ -1,5 +1,5 @@
 /**
- * 新手教程 — B 打开已装备背包储物格 + 安全箱
+ * 新手教程 — B 打开已装备背包储物格 + 卡槽 + 安全箱
  */
 (function () {
   "use strict";
@@ -8,11 +8,43 @@
   var storageGridEl = document.getElementById("actionStorageGrid");
   var storageTitleEl = document.getElementById("actionStorageTitle");
   var storageMetaEl = document.getElementById("actionStorageMeta");
+  var cardGridEl = document.getElementById("actionCardGrid");
   var secureGridEl = document.getElementById("actionSecureGrid");
+  var keycardTipEl = document.getElementById("actionKeycardTip");
 
   if (!panel || !storageGridEl) return;
 
   var open = false;
+  var hoverBound = false;
+
+  function showKeycardDurability(cell) {
+    if (!keycardTipEl || !cell) return;
+    keycardTipEl.textContent =
+      "房卡耐久 " + cell.dataset.durability + " / " + cell.dataset.maxDurability;
+    keycardTipEl.classList.remove("ui-hidden");
+  }
+
+  function hideKeycardDurability() {
+    if (!keycardTipEl) return;
+    keycardTipEl.classList.add("ui-hidden");
+  }
+
+  function bindKeycardHover(root) {
+    if (!root || hoverBound) return;
+    hoverBound = true;
+    root.addEventListener("mouseover", function (e) {
+      var cell = e.target.closest(".action-cell--keycard");
+      if (cell) showKeycardDurability(cell);
+    });
+    root.addEventListener("mouseout", function (e) {
+      var from = e.target.closest(".action-cell--keycard");
+      if (!from) return;
+      var to = e.relatedTarget;
+      if (to && from.contains(to)) return;
+      if (to && to.closest && to.closest(".action-cell--keycard")) return;
+      hideKeycardDurability();
+    });
+  }
 
   function rebuildStorage() {
     if (!window.PlayerLoadout) return;
@@ -37,6 +69,11 @@
     window.PlayerLoadout.renderGrid(storageGridEl, bp, "");
   }
 
+  function renderCards() {
+    if (!window.PlayerLoadout || !cardGridEl) return;
+    window.PlayerLoadout.renderCardSlots(cardGridEl, true);
+  }
+
   function renderSecure() {
     if (!window.PlayerLoadout || !secureGridEl) return;
     window.PlayerLoadout.renderGrid(
@@ -46,16 +83,37 @@
     );
   }
 
+  function refreshAll() {
+    rebuildStorage();
+    renderCards();
+    renderSecure();
+  }
+
+  function notifySceneInventory(opened) {
+    if (window.ActionScene) {
+      if (opened && window.ActionScene.onInventoryOpened) {
+        window.ActionScene.onInventoryOpened();
+      } else if (!opened && window.ActionScene.onInventoryClosed) {
+        window.ActionScene.onInventoryClosed();
+      }
+    }
+  }
+
   function setOpen(next) {
     open = next;
     panel.hidden = !open;
     document.body.classList.toggle("inventory-open", open);
     document.body.classList.toggle("show-cursor", open);
     if (open) {
-      rebuildStorage();
-      renderSecure();
+      refreshAll();
+      notifySceneInventory(true);
+    } else {
+      hideKeycardDurability();
+      notifySceneInventory(false);
     }
   }
+
+  bindKeycardHover(panel);
 
   window.ActionInventory = {
     toggle: function () {
@@ -71,15 +129,9 @@
     tryAddItem: function (item) {
       if (!window.PlayerLoadout) return false;
       var ok = window.PlayerLoadout.tryPlaceLoot(item);
-      if (open) {
-        rebuildStorage();
-        renderSecure();
-      }
+      if (open) refreshAll();
       return ok;
     },
-    refresh: function () {
-      rebuildStorage();
-      renderSecure();
-    },
+    refresh: refreshAll,
   };
 })();

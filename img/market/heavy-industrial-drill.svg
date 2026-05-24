@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 128" fill="none">
+  <defs>
+    <linearGradient id="bit" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6a5a88"/>
+      <stop offset="50%" stop-color="#9b7ec8"/>
+      <stop offset="100%" stop-color="#5a4878"/>
+    </linearGradient>
+    <linearGradient id="shank" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4a4a58"/>
+      <stop offset="100%" stop-color="#2a2a34"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#c49bff" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#7b4fd4" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="192" height="128" fill="url(#glow)" rx="8"/>
+  <g transform="translate(16 36)">
+    <rect x="0" y="22" width="120" height="28" rx="6" fill="url(#shank)" stroke="#1a1a22" stroke-width="2"/>
+    <rect x="118" y="10" width="52" height="52" rx="8" fill="url(#bit)" stroke="#3d2a5c" stroke-width="2"/>
+    <path d="M130 22 L158 22 L154 50 L134 50 Z" fill="#b89ae8" opacity="0.5"/>
+    <path d="M138 18 L148 58 M148 18 L138 58" stroke="#e8d4ff" stroke-width="2" opacity="0.4"/>
+    <circle cx="144" cy="36" r="6" fill="#7b4fd4" opacity="0.6"/>
+    <rect x="8" y="30" width="24" height="12" rx="2" fill="#7b4fd4" opacity="0.85"/>
+    <text x="20" y="39" text-anchor="middle" fill="#f0e8ff" font-family="system-ui,sans-serif" font-size="7" font-weight="700">EPIC</text>
+  </g>
+  <text x="96" y="108" text-anchor="middle" fill="#b89ae8" font-family="system-ui,sans-serif" font-size="10" font-weight="600" opacity="0.9">3×2</text>
+</svg>

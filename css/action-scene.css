@@ -409,6 +409,66 @@ body.inventory-open .action-inventory * {
   cursor: default;
 }
 
+.action-durability-banner {
+  position: fixed;
+  top: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  margin: 0;
+  padding: 0.55rem 1.35rem;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(8, 14, 22, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+}
+
+.action-interact-hint {
+  position: fixed;
+  bottom: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  margin: 0;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  color: rgba(220, 235, 255, 0.9);
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.action-inventory__cards {
+  margin-top: 0.75rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(70, 90, 110, 0.28);
+}
+
+.action-grid--cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  max-width: 280px;
+}
+
+.action-keycard-tip {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: #8ec4a8;
+  text-align: center;
+}
+
+.action-grid__cell--empty {
+  color: rgba(120, 140, 160, 0.45);
+  font-size: 0.65rem;
+}
+
 @media (max-width: 720px) {
   .action-inventory__layout {
     flex-direction: column;

@@ -6,8 +6,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>极危行动 — 行动基地</title>
-  <link rel="stylesheet" href="css/lobby.css?v=8">
-  <link rel="stylesheet" href="css/market-page.css?v=1">
+  <link rel="stylesheet" href="css/lobby.css?v=10">
+  <link rel="stylesheet" href="css/market-page.css?v=2">
   <link rel="stylesheet" href="css/action-scene.css?v=7">
 </head>
 <body class="hub-home">
@@ -123,8 +123,9 @@
           <aside class="lobby-loadout" id="lobbyLoadout" aria-label="身上装备"></aside>
           <div class="stash-main">
             <p class="stash-hint ui-hidden" id="stashHint">请先进入房间后再整理仓库</p>
-            <p class="stash-tip">双击可装备物品到左侧栏位 · 头盔/护甲栏预留待设计</p>
-            <div class="stash-grid" id="stashGrid" aria-label="仓库格子，共 60 格"></div>
+            <p class="stash-tip">拖拽整理 · 单击查黑市定价 · 双击装备到左侧 · 双击左侧装备卸回仓库</p>
+            <p class="stash-price-hint ui-hidden" id="stashPriceHint" role="status"></p>
+            <div class="stash-grid" id="stashGrid" aria-label="仓库格子，6 列 10 行"></div>
           </div>
         </div>
         <div class="lobby-loadout__secure-wrap">
@@ -163,7 +164,9 @@
     <canvas class="action-scene__canvas" id="actionCanvas"></canvas>
     <button type="button" class="action-scene__back" id="btnActionBack" aria-label="返回大厅">×</button>
     <p class="action-scene__map-name" id="actionMapName">新手教程</p>
-    <p class="action-scene__hint" id="actionHint">WASD 移动 · B 背包（显示鼠标）· Esc 返回</p>
+    <p class="action-scene__hint" id="actionHint">WASD 移动 · E 刷房卡 · B 背包（显示鼠标）· Esc 返回</p>
+    <p class="action-durability-banner" id="actionDurabilityBanner" hidden role="status"></p>
+    <p class="action-interact-hint" id="actionInteractHint" hidden>靠近安全门 · 按 E 刷房卡</p>
 
     <div class="action-inventory" id="actionInventory" hidden>
       <div class="action-inventory__backdrop" id="actionInventoryBackdrop"></div>
@@ -173,6 +176,14 @@
           <span class="action-inventory__meta" id="actionStorageMeta">未装备背包</span>
         </header>
         <div class="action-grid action-grid--storage" id="actionStorageGrid"></div>
+        <section class="action-inventory__cards">
+          <header class="action-inventory__secure-head">
+            <h3>卡槽</h3>
+            <span>房卡耐久悬停可见</span>
+          </header>
+          <div class="action-grid action-grid--cards" id="actionCardGrid"></div>
+          <p class="action-keycard-tip ui-hidden" id="actionKeycardTip" aria-live="polite"></p>
+        </section>
         <section class="action-inventory__secure">
           <header class="action-inventory__secure-head">
             <h3>安全箱</h3>
@@ -194,13 +205,14 @@
   </script>
   <script src="js/socket.io.min.js?v=4"></script>
   <script src="js/lobby-ui.js?v=7"></script>
-  <script src="js/item-catalog.js?v=2"></script>
-  <script src="js/grid-inventory.js?v=1"></script>
-  <script src="js/player-loadout.js?v=1"></script>
-  <script src="js/lobby-market.js?v=5"></script>
-  <script src="js/stash.js?v=9"></script>
+  <script src="js/item-catalog.js?v=5"></script>
+  <script src="js/grid-inventory.js?v=2"></script>
+  <script src="js/grid-stash-ui.js?v=4"></script>
+  <script src="js/player-loadout.js?v=3"></script>
+  <script src="js/lobby-market.js?v=8"></script>
+  <script src="js/stash.js?v=10"></script>
   <script src="js/net.js?v=4"></script>
-  <script src="js/action-inventory.js?v=5"></script>
-  <script type="module" src="js/action-scene.js?v=22"></script>
+  <script src="js/action-inventory.js?v=6"></script>
+  <script type="module" src="js/action-scene.js?v=23"></script>
 </body>
 </html>

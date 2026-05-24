@@ -256,6 +256,29 @@
   color: #5a6878;
 }
 
+.market-card__economy {
+  font-size: 0.625rem;
+  color: #6a9a78;
+  line-height: 1.35;
+}
+
+.market-card--common {
+  border-color: rgba(80, 140, 90, 0.35);
+}
+
+.market-card--epic {
+  border-color: rgba(140, 90, 200, 0.55);
+  box-shadow: 0 0 18px rgba(120, 70, 180, 0.15);
+}
+
+.market-card--epic .market-card__economy {
+  color: #b89ae8;
+}
+
+.market-card--epic .market-card__name {
+  color: #e4d4f8;
+}
+
 .market-card__foot {
   display: flex;
   align-items: center;

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="can" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4a5a48"/>
+      <stop offset="100%" stop-color="#2a3228"/>
+    </linearGradient>
+    <linearGradient id="label" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3d8f52"/>
+      <stop offset="100%" stop-color="#2a6b3a"/>
+    </linearGradient>
+  </defs>
+  <rect x="38" y="28" width="52" height="72" rx="6" fill="url(#can)" stroke="#1a2018" stroke-width="2"/>
+  <rect x="48" y="18" width="32" height="14" rx="3" fill="#3a4540" stroke="#1a2018" stroke-width="1.5"/>
+  <rect x="42" y="48" width="44" height="28" rx="3" fill="url(#label)" opacity="0.92"/>
+  <text x="64" y="62" text-anchor="middle" fill="#e8f4ea" font-family="system-ui,sans-serif" font-size="9" font-weight="700">OIL</text>
+  <text x="64" y="74" text-anchor="middle" fill="#b8dcc0" font-family="system-ui,sans-serif" font-size="7">SEALED</text>
+  <ellipse cx="64" cy="102" rx="28" ry="6" fill="#000" opacity="0.25"/>
+</svg>
