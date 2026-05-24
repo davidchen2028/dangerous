@@ -1,0 +1,242 @@
+/* 3D 行动场景 */
+
+.action-scene {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: #4aabf5;
+}
+
+.action-scene[hidden] {
+  display: none !important;
+}
+
+.action-scene__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.action-scene__error {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #e8ecf0;
+  text-align: center;
+  background: rgba(12, 16, 22, 0.92);
+  pointer-events: auto;
+}
+
+.action-scene__error code {
+  padding: 0.1rem 0.35rem;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+
+.action-scene__back {
+  position: fixed;
+  top: max(1rem, env(safe-area-inset-top, 0px));
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  z-index: 45;
+  min-width: 3rem;
+  min-height: 3rem;
+  width: 3rem;
+  height: 3rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  line-height: 1;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(20, 40, 25, 0.75);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  transition: background 0.2s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.action-scene__back:hover {
+  color: #fff;
+  background: rgba(40, 80, 50, 0.9);
+  transform: scale(1.06);
+}
+
+.action-scene__map-name {
+  position: fixed;
+  top: max(1rem, env(safe-area-inset-top, 0px));
+  left: max(1rem, env(safe-area-inset-left, 0px));
+  z-index: 45;
+  padding: 0.35rem 0.75rem;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(15, 35, 20, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.action-scene__hint {
+  position: fixed;
+  left: 50%;
+  bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 45;
+  padding: 0.45rem 0.85rem;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(15, 35, 20, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  pointer-events: none;
+  transition: opacity 0.35s;
+}
+
+.action-scene__hint--hidden {
+  opacity: 0;
+}
+
+body.action-open .lobby {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+body.action-open .ui-layer {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 战术背包（B / Tab） */
+.action-inventory {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  pointer-events: auto;
+}
+
+.action-inventory[hidden] {
+  display: none !important;
+}
+
+.action-inventory__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 8, 12, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.action-inventory__panel {
+  position: relative;
+  z-index: 2;
+  width: min(360px, 92vw);
+  padding: 0.85rem 1rem 1rem;
+  background: linear-gradient(165deg, #1a2028 0%, #12161c 100%);
+  border: 1px solid rgba(80, 100, 120, 0.4);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+
+.action-inventory__head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(70, 90, 110, 0.3);
+}
+
+.action-inventory__title {
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: #b8c8d8;
+}
+
+.action-inventory__meta {
+  font-size: 0.75rem;
+  color: rgba(140, 160, 180, 0.75);
+}
+
+.action-inventory__grid {
+  display: grid;
+  gap: 3px;
+  aspect-ratio: 1;
+  width: 100%;
+  max-height: min(52vh, 320px);
+}
+
+.action-inventory__cell {
+  min-width: 0;
+  min-height: 0;
+  background: rgba(8, 12, 18, 0.9);
+  border: 1px solid rgba(55, 70, 90, 0.5);
+  border-radius: 3px;
+}
+
+.action-inventory__cell--part {
+  background: rgba(20, 28, 38, 0.5);
+  border-color: rgba(40, 55, 70, 0.35);
+}
+
+.action-inventory__cell--item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 0.65rem;
+  line-height: 1.2;
+  text-align: center;
+  color: #d0e0f0;
+  background: rgba(35, 50, 65, 0.95);
+  border-color: rgba(100, 140, 170, 0.45);
+}
+
+.action-inventory__foot {
+  margin-top: 0.65rem;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 0.7rem;
+  color: #7a8a9a;
+  text-align: center;
+}
+
+body.inventory-open .action-scene__canvas {
+  cursor: default;
+}
+
+body.inventory-open .action-scene__hint {
+  opacity: 0;
+}
+
+/* 打开背包时显示系统鼠标 */
+body.show-cursor,
+body.show-cursor .action-scene__canvas {
+  cursor: default !important;
+}
+
+body.inventory-open .action-inventory,
+body.inventory-open .action-inventory * {
+  cursor: default;
+}

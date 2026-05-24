@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>极危行动 — 行动基地</title>
+  <link rel="stylesheet" href="css/lobby.css?v=7">
+  <link rel="stylesheet" href="css/action-scene.css?v=6">
+</head>
+<body class="hub-home">
+  <div class="lobby" aria-hidden="true"></div>
+
+  <div class="ui-layer">
+    <button type="button" class="btn-hub btn-hub--room" id="btnRoom">房间</button>
+    <button type="button" class="btn-hub btn-hub--stash" id="btnStash">仓库</button>
+    <button type="button" class="btn-hub btn-hub--market" id="btnMarket">市场</button>
+    <button type="button" class="btn-hub btn-hub--tutorial" id="btnTutorial">教程</button>
+    <button type="button" class="btn-hub btn-hub--action" id="btnAction">新手<br>教程</button>
+
+    <div class="hub-panel" id="roomPanel" hidden>
+      <div class="hub-panel__backdrop" id="roomBackdrop"></div>
+      <button type="button" class="btn-close-ring" id="btnRoomClose" aria-label="返回大厅">×</button>
+      <div class="hub-panel__box hub-panel__box--room">
+        <header class="hub-panel__head">
+          <h2 class="hub-panel__title">房间</h2>
+        </header>
+        <div class="room-panel__body">
+          <label class="room-bar__field">
+            <span class="room-bar__label">昵称</span>
+            <input type="text" id="inputNickname" class="room-bar__input" maxlength="16" placeholder="你的名字" autocomplete="username">
+          </label>
+          <label class="room-bar__field">
+            <span class="room-bar__label">房间号</span>
+            <input type="text" id="inputRoom" class="room-bar__input room-bar__input--wide" maxlength="32" value="main" autocomplete="off">
+          </label>
+          <button type="button" class="room-bar__join" id="btnJoin">进入</button>
+          <p class="room-bar__status net-status--off" id="netStatus">未连接</p>
+          <p class="room-bar__error" id="joinError"></p>
+          <aside class="friend-panel friend-panel--inline" id="friendPanel" aria-label="好友列表">
+            <h3 class="friend-panel__title">好友列表</h3>
+            <p class="friend-panel__count" id="friendCount">0 / 3</p>
+            <ul class="friend-list" id="friendList"></ul>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <div class="hub-panel" id="tutorialPanel" hidden>
+      <div class="hub-panel__backdrop" id="tutorialBackdrop"></div>
+      <button type="button" class="btn-close-ring" id="btnTutorialClose" aria-label="返回大厅">×</button>
+      <div class="hub-panel__box hub-panel__box--tutorial">
+        <header class="hub-panel__head">
+          <h2 class="hub-panel__title">操作教程</h2>
+          <span class="hub-panel__meta">战术射击规范</span>
+        </header>
+        <div class="tutorial-panel__body">
+          <p class="tutorial-panel__lead">进入「新手教程」后，角色移动与身位按制作人设定数据运行。键位如下：</p>
+
+          <section class="tutorial-section">
+            <h3 class="tutorial-section__title">键位</h3>
+            <ul class="tutorial-keys">
+              <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>前后左右移动</span></li>
+              <li><kbd>Shift</kbd><span>奔跑（蹲下时无法奔跑）</span></li>
+              <li><kbd>C</kbd><span>按住蹲下；松开且头顶无遮挡时站起</span></li>
+              <li><kbd>空格</kbd><span>跳跃（需站立且双脚着地）</span></li>
+              <li><kbd>B</kbd> / <kbd>Tab</kbd><span>打开 / 关闭战术背包（自动显示鼠标）</span></li>
+              <li><span class="tutorial-keys__mouse">鼠标</span><span>转动视角；点击画面锁定指针</span></li>
+              <li><kbd>Esc</kbd><span>返回大厅</span></li>
+            </ul>
+          </section>
+
+          <section class="tutorial-section">
+            <h3 class="tutorial-section__title">身位与蹲伏</h3>
+            <ul class="tutorial-list">
+              <li>站立身高 <strong>1.8 m</strong>，碰撞半径 <strong>0.4 m</strong>。</li>
+              <li>按住 <kbd>C</kbd> 平滑蹲下至 <strong>1.2 m</strong>，降低暴露面积。</li>
+              <li>松开 <kbd>C</kbd> 后，仅当头顶没有障碍物时，才会平滑恢复至 <strong>1.8 m</strong> 站立。</li>
+            </ul>
+          </section>
+
+          <section class="tutorial-section">
+            <h3 class="tutorial-section__title">移动速度</h3>
+            <ul class="tutorial-list">
+              <li>走路（默认）：<strong>2.5 m/s</strong> 战术步速。</li>
+              <li><kbd>Shift</kbd> 奔跑：<strong>5.5 m/s</strong>；<strong>蹲伏时无法奔跑</strong>。</li>
+              <li>蹲伏移动：<strong>1.2 m/s</strong>，适合掩体间静默转移。</li>
+            </ul>
+          </section>
+
+          <section class="tutorial-section">
+            <h3 class="tutorial-section__title">大厅与背包</h3>
+            <ul class="tutorial-list">
+              <li>大厅点<strong>「市场」</strong>进入黑市交易所，使用<strong>极危币</strong>购买物资。</li>
+              <li>进入「新手教程」后按 <kbd>B</kbd> 打开<strong>格子背包</strong>，会自动显示鼠标。</li>
+              <li>官方货源约每 <strong>60 秒</strong>补货；在大厅购买的物品进入教程后会放入背包。</li>
+            </ul>
+          </section>
+
+          <section class="tutorial-section">
+            <h3 class="tutorial-section__title">跳跃与重力</h3>
+            <ul class="tutorial-list">
+              <li>跳跃高度约 <strong>0.8 m</strong>，需站立状态且着地时才能起跳。</li>
+              <li>空中下落按标准重力计算，体感<strong>偏沉</strong>，避免轻飘感，便于控枪与落点判断。</li>
+            </ul>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div class="hub-panel" id="marketPanel" hidden>
+      <div class="hub-panel__backdrop" id="marketBackdrop"></div>
+      <button type="button" class="btn-close-ring" id="btnMarketClose" aria-label="返回大厅">×</button>
+      <div class="hub-panel__box hub-panel__box--market">
+        <header class="hub-panel__head">
+          <h2 class="hub-panel__title">黑市交易所</h2>
+          <span class="hub-panel__meta" id="hubMarketCredits">极危币：5,000</span>
+        </header>
+        <p class="hub-market__sub">官方货源每 60 秒补货 · 结算货币：极危币</p>
+        <div class="hub-market__list" id="hubMarketList"></div>
+        <p class="hub-market__foot">在大厅购买 · 进入新手教程后物品入背包</p>
+      </div>
+    </div>
+
+    <div class="hub-panel" id="stashPanel" hidden>
+      <div class="hub-panel__backdrop" id="stashBackdrop"></div>
+      <button type="button" class="btn-close-ring" id="btnStashClose" aria-label="返回大厅">×</button>
+      <div class="hub-panel__box">
+        <header class="hub-panel__head">
+          <h2 class="hub-panel__title" id="stashTitle">仓库</h2>
+          <span class="hub-panel__meta">6 × 10</span>
+        </header>
+        <p class="stash-hint ui-hidden" id="stashHint">请先进入房间后再整理仓库</p>
+        <div class="stash-grid" id="stashGrid" aria-label="仓库格子，共 60 格"></div>
+      </div>
+    </div>
+
+    <section class="chat-panel ui-hidden" id="chatPanel" aria-label="大厅聊天">
+      <div class="chat-log" id="chatLog"></div>
+      <form class="chat-form" id="chatForm">
+        <input type="text" id="chatInput" class="chat-form__input" placeholder="回车发送…" maxlength="200" autocomplete="off">
+      </form>
+    </section>
+  </div>
+
+  <div class="action-scene" id="actionScene" hidden>
+    <canvas class="action-scene__canvas" id="actionCanvas"></canvas>
+    <button type="button" class="action-scene__back" id="btnActionBack" aria-label="返回大厅">×</button>
+    <p class="action-scene__map-name" id="actionMapName">新手教程</p>
+    <p class="action-scene__hint" id="actionHint">WASD 移动 · B 背包（显示鼠标）· Esc 返回</p>
+
+    <div class="action-inventory" id="actionInventory" hidden>
+      <div class="action-inventory__backdrop" id="actionInventoryBackdrop"></div>
+      <div class="action-inventory__panel" role="dialog" aria-label="战术背包">
+        <header class="action-inventory__head">
+          <h2 class="action-inventory__title" id="actionInventoryTitle">轻型战术包</h2>
+          <span class="action-inventory__meta" id="actionInventoryMeta">4 × 4</span>
+        </header>
+        <div class="action-inventory__grid" id="actionInventoryGrid"></div>
+        <p class="action-inventory__foot">B / Tab 关闭 · 点击空白处也可关闭</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/vendor/three.min.js?v=1"></script>
+  <script src="js/socket.io.min.js?v=4"></script>
+  <script src="js/lobby-ui.js?v=6"></script>
+  <script src="js/lobby-market.js?v=1"></script>
+  <script src="js/stash.js?v=4"></script>
+  <script src="js/net.js?v=4"></script>
+  <script src="js/action-inventory.js?v=3"></script>
+  <script src="js/action-scene.js?v=12"></script>
+</body>
+</html>
