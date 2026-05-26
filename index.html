@@ -6,9 +6,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>极危行动 — 行动基地</title>
-  <link rel="stylesheet" href="css/lobby.css?v=12">
+  <link rel="stylesheet" href="css/lobby.css?v=13">
   <link rel="stylesheet" href="css/market-page.css?v=2">
-  <link rel="stylesheet" href="css/action-scene.css?v=12">
+  <link rel="stylesheet" href="css/action-scene.css?v=14">
 </head>
 <body class="hub-home">
   <div class="lobby" aria-hidden="true"></div>
@@ -124,7 +124,7 @@
           <aside class="lobby-loadout" id="lobbyLoadout" aria-label="身上装备"></aside>
           <div class="stash-main">
             <p class="stash-hint ui-hidden" id="stashHint">请先进入房间后再整理仓库</p>
-            <p class="stash-tip">拖拽整理 · 拖到左侧胸挂/背包槽装备 · 单击定价/回收</p>
+            <p class="stash-tip">拖拽整理 · 子弹可拖入下方胸挂快取/背包 · 拖到左侧槽位装备</p>
             <div class="stash-item-popover ui-hidden" id="stashItemPopover" role="dialog" aria-label="物品详情">
               <p class="stash-item-popover__text" id="stashItemPopoverText"></p>
               <div class="stash-item-popover__actions">
@@ -136,6 +136,10 @@
           </div>
         </div>
         <div class="stash-subgrids">
+          <div class="stash-subgrids__block">
+            <p class="loadout-section__title">胸挂快取 <span id="lobbyRigMeta">未装备</span></p>
+            <div class="inv-grid-host" id="lobbyRigGrid"></div>
+          </div>
           <div class="stash-subgrids__block">
             <p class="loadout-section__title">装备背包 <span id="lobbyBackpackMeta">未装备</span></p>
             <div class="inv-grid-host" id="lobbyBackpackGrid"></div>
@@ -173,14 +177,43 @@
     <p class="market-page__foot">结算货币：极危币 · 购买后物品进入左下角「仓库」</p>
   </div>
 
+  <div class="action-load-screen" id="actionLoadScreen" hidden aria-live="polite">
+    <div class="action-load-screen__inner">
+      <h1 class="action-load-screen__title">极危行动</h1>
+      <p class="action-load-screen__subtitle">Dangerous</p>
+      <p class="action-load-screen__status" id="actionLoadStatus">正在加载场景资源…</p>
+      <div class="action-load-screen__bar" aria-hidden="true">
+        <div class="action-load-screen__bar-fill" id="actionLoadProgress"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="action-scene" id="actionScene" hidden>
     <canvas class="action-scene__canvas" id="actionCanvas"></canvas>
     <button type="button" class="action-scene__back" id="btnActionBack" aria-label="返回大厅">×</button>
     <p class="action-scene__map-name" id="actionMapName">新手教程</p>
-    <p class="action-scene__hint" id="actionHint">WASD 移动 · E 刷房卡 · F 搜桶(准星对准) · B 背包 · Q 返回大厅</p>
+    <p class="action-scene__hint" id="actionHint">WASD 移动 · E 开门/开锁 · F 搜桶 · B 背包 · Q 返回大厅</p>
     <div class="action-crosshair action-crosshair--hidden" id="actionCrosshair" aria-hidden="true"></div>
+    <p class="action-ammo-hud action-ammo-hud--hidden" id="actionAmmoHud" aria-live="polite"></p>
     <p class="action-durability-banner" id="actionDurabilityBanner" hidden role="status"></p>
-    <p class="action-interact-hint" id="actionInteractHint" hidden>靠近安全门 · 按 E 刷房卡</p>
+    <p class="action-interact-hint" id="actionInteractHint" hidden>靠近安全门 · 按 E 开门</p>
+
+    <div class="lockpick-qte" id="lockpickQte" hidden role="dialog" aria-label="开锁校准">
+      <div class="lockpick-qte__panel">
+        <h2 class="lockpick-qte__title">锁芯校准</h2>
+        <p class="lockpick-qte__hint">指针在绿色区域时按空格 · 连续成功 3 次开启宝箱</p>
+        <div class="lockpick-qte__track" aria-hidden="true">
+          <div class="lockpick-qte__zone lockpick-qte__zone--green"></div>
+          <div class="lockpick-qte__pointer"></div>
+        </div>
+        <div class="lockpick-qte__counters" aria-label="成功次数">
+          <span class="lockpick-qte__pip"></span>
+          <span class="lockpick-qte__pip"></span>
+          <span class="lockpick-qte__pip"></span>
+        </div>
+        <p class="lockpick-qte__foot"><kbd>空格</kbd> 判定 · <kbd>Esc</kbd> 取消</p>
+      </div>
+    </div>
 
     <div class="waste-bin-search" id="wasteBinSearch" hidden>
       <div class="waste-bin-search__backdrop" id="wasteBinSearchBackdrop"></div>
@@ -241,15 +274,18 @@
   </script>
   <script src="js/socket.io.min.js?v=4"></script>
   <script src="js/lobby-ui.js?v=7"></script>
-  <script src="js/item-catalog.js?v=7"></script>
+  <script src="js/item-catalog.js?v=10"></script>
   <script src="js/grid-inventory.js?v=3"></script>
-  <script src="js/grid-stash-ui.js?v=9"></script>
-  <script src="js/player-loadout.js?v=6"></script>
-  <script src="js/lobby-market.js?v=11"></script>
-  <script src="js/stash.js?v=10"></script>
+  <script src="js/grid-stash-ui.js?v=14"></script>
+  <script src="js/player-loadout.js?v=12"></script>
+  <script src="js/lobby-market.js?v=14"></script>
+  <script src="js/stash.js?v=12"></script>
   <script src="js/net.js?v=4"></script>
   <script src="js/action-inventory.js?v=7"></script>
+  <script src="js/lockpicking-qte.js?v=1"></script>
+  <script src="js/world-loot-box.js?v=2"></script>
   <script src="js/action-waste-bin.js?v=6"></script>
-  <script type="module" src="js/action-scene.js?v=35"></script>
+  <script src="js/action-weapon.js?v=11"></script>
+  <script type="module" src="js/action-scene.js?v=44"></script>
 </body>
 </html>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="UZI冲锋枪">
+  <defs>
+    <linearGradient id="metal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4a4f58"/>
+      <stop offset="50%" stop-color="#7a828c"/>
+      <stop offset="100%" stop-color="#2e3338"/>
+    </linearGradient>
+    <linearGradient id="grip" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3a2818"/>
+      <stop offset="100%" stop-color="#1a1008"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="64" cy="108" rx="40" ry="8" fill="#000" opacity="0.22"/>
+  <g transform="translate(8 44)">
+    <rect x="8" y="28" width="72" height="14" rx="3" fill="url(#metal)" stroke="#1a1e22" stroke-width="1.2"/>
+    <rect x="72" y="24" width="28" height="22" rx="2" fill="url(#metal)" stroke="#1a1e22"/>
+    <rect x="4" y="32" width="18" height="36" rx="3" fill="url(#grip)" stroke="#2a1810"/>
+    <rect x="78" y="8" width="10" height="32" rx="2" fill="#2a3038" stroke="#111"/>
+    <rect x="52" y="38" width="22" height="10" rx="2" fill="#1e2228"/>
+    <circle cx="90" cy="35" r="5" fill="#1a1e22" stroke="#555"/>
+  </g>
+  <text x="64" y="22" text-anchor="middle" fill="#9aa4b0" font-size="10" font-family="PingFang SC, sans-serif">UZI</text>
+</svg>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="ÄÜP9">
+  <defs>
+    <linearGradient id="case" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8a6a2a"/>
+      <stop offset="45%" stop-color="#d4b04a"/>
+      <stop offset="100%" stop-color="#6a5020"/>
+    </linearGradient>
+    <linearGradient id="tip" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#9a9aa4"/>
+      <stop offset="100%" stop-color="#e8e8f0"/>
+    </linearGradient>
+    <radialGradient id="rim" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#c9a84a"/>
+      <stop offset="100%" stop-color="#5a4518"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="64" cy="108" rx="38" ry="8" fill="#000" opacity="0.25"/>
+  <g transform="rotate(-12 64 64)">
+    <rect x="22" y="52" width="72" height="24" rx="4" fill="url(#case)" stroke="#4a3810" stroke-width="1.5"/>
+    <path d="M94 52 L118 64 L94 76 Z" fill="url(#tip)" stroke="#6a6a74" stroke-width="1.2"/>
+    <ellipse cx="28" cy="64" rx="10" ry="12" fill="url(#rim)" stroke="#3a2e10" stroke-width="1.2"/>
+    <path d="M34 58 H78 M34 70 H78" stroke="#b89230" stroke-width="1" opacity="0.5"/>
+    <circle cx="52" cy="64" r="3" fill="#2a2210" opacity="0.35"/>
+  </g>
+  <text x="64" y="24" text-anchor="middle" fill="#c9a84a" font-size="9" font-family="PingFang SC, sans-serif">7.62×39</text>
+</svg>

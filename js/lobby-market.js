@@ -16,13 +16,13 @@
   var activeSub = "electronic";
 
   var CATEGORIES = [
-    { id: "weapon", label: "武器", empty: true },
+    { id: "weapon", label: "武器", empty: false },
     { id: "attachment", label: "配件", empty: true },
     { id: "helmet", label: "头盔", empty: true },
     { id: "armor", label: "护甲", empty: true },
     { id: "rig", label: "胸挂", empty: false },
     { id: "backpack", label: "背包", empty: false },
-    { id: "ammo", label: "子弹", empty: true },
+    { id: "ammo", label: "子弹", empty: false },
     {
       id: "collectible",
       label: "收集品",
@@ -33,7 +33,7 @@
       ],
     },
     { id: "medical", label: "医疗消耗品", empty: true },
-    { id: "keycard", label: "钥匙卡", empty: false },
+    { id: "keycard", label: "钥匙卡", empty: true },
   ];
 
   var PRODUCTS = [
@@ -118,15 +118,35 @@
       image: "img/market/heavy-industrial-drill.svg",
     },
     {
-      id: "keycard_side_door",
-      stashId: "keycard",
-      cat: "keycard",
-      name: "侧门仓库",
-      desc: "一张卡，银色的",
+      id: "uzi_smg",
+      stashId: "uzism",
+      cat: "weapon",
+      name: "UZI 冲锋枪",
+      desc: "主武器 · 占 6 格（3×2）",
+      w: 3,
+      h: 2,
+      rarity: "rare",
+      rarityLabel: "稀有",
+      rarityIcon: "🔵",
+      reclaimMin: 2900,
+      price: 5800,
+      image: "img/market/uzi-smg.svg",
+    },
+    {
+      id: "brass_bullet",
+      stashId: "brslv",
+      cat: "ammo",
+      name: "黄铜子弹",
+      desc: "60 发/组 · 1×1 · 黄铜制式",
       w: 1,
       h: 1,
-      price: 50000,
-      image: "img/market/keycard-side-entrance.png",
+      stackSize: 60,
+      rarity: "common",
+      rarityLabel: "普通",
+      rarityIcon: "🟢",
+      reclaimMin: 12000,
+      price: 30000,
+      image: "img/market/brass-bullet.svg",
     },
   ];
 
@@ -143,7 +163,13 @@
     if (product.cols && product.rows) {
       return product.cols + "×" + product.rows + " 储物格";
     }
-    if (product.w && product.h) return product.w + "×" + product.h;
+    if (product.stackSize) {
+      return product.stackSize + " 发/组 · " + (product.w || 1) + "×" + (product.h || 1);
+    }
+    if (product.w && product.h) {
+      var cells = product.w * product.h;
+      return product.w + "×" + product.h + (cells > 1 ? " · " + cells + " 格" : "");
+    }
     return "";
   }
 

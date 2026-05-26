@@ -31,7 +31,9 @@
     tryAddMarketItem: tryAddMarketItem,
     onPanelOpen: function () {
       updateStashHint();
-      if (window.GridStashUI) window.GridStashUI.render();
+      if (window.GridStashUI) {
+        window.GridStashUI.render();
+      }
       if (window.PlayerLoadout) window.PlayerLoadout.renderLobby();
     },
     close: function () {},

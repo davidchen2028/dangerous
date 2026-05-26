@@ -62,6 +62,7 @@
     if (cat.rarityIcon) data.rarityIcon = cat.rarityIcon;
     if (cat.maxDurability != null) data.maxDurability = cat.maxDurability;
     if (cat.durability != null) data.durability = cat.durability;
+    if (cat.stackSize != null) data.stackSize = cat.stackSize;
     return data;
   }
 

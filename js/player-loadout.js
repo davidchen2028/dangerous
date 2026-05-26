@@ -21,7 +21,7 @@
     cards: [null, null, null, null],
   };
 
-  var rigSlots = [];
+  var rigManager = null;
   var backpackManager = null;
 
   var SLOT_LABELS = {
@@ -214,12 +214,45 @@
     return false;
   }
 
+  function getRigGridSize(rigItem) {
+    var n = (rigItem && rigItem.rigSlots) || 6;
+    var cols = 3;
+    return { cols: cols, rows: Math.ceil(n / cols) };
+  }
+
+  function resetRigGrid(rigItem) {
+    if (!G || !rigItem) {
+      rigManager = null;
+      return;
+    }
+    var sz = getRigGridSize(rigItem);
+    rigManager = new G.GridManager(sz.cols, sz.rows);
+  }
+
   function resetBackpackGrid(cols, rows) {
     if (!G || !cols || !rows) {
       backpackManager = null;
       return;
     }
     backpackManager = new G.GridManager(cols, rows);
+  }
+
+  function moveRigItemsToStash() {
+    if (!rigManager || !window.GridStashUI) return;
+    var stash = window.GridStashUI.getManager();
+    if (!stash) return;
+    var items = rigManager.items.slice();
+    var i;
+    for (i = 0; i < items.length; i++) {
+      var inst = items[i];
+      var ox = inst.x;
+      var oy = inst.y;
+      rigManager.removeItem(inst);
+      if (!stash.tryAutoPlace(inst)) {
+        rigManager.placeItem(inst, ox, oy);
+      }
+    }
+    window.GridStashUI.render();
   }
 
   function moveBackpackItemsToStash() {
@@ -298,6 +331,8 @@
     var html = "";
     html += '<p class="lobby-loadout__title">身上装备</p>';
     html +=
+      '<p class="lobby-loadout__hint">双击卸下 · 可拖到仓库/下方胸挂格</p>';
+    html +=
       '<div class="loadout-row loadout-row--dual">' +
       slotHtml("primary", true) +
       slotHtml("melee", true) +
@@ -361,22 +396,17 @@
     var rigEl = document.getElementById("lobbyRigPreview");
     var bpEl = document.getElementById("lobbyBpPreview");
 
-    if (!loadout.rig) {
-      if (rigEl) rigEl.innerHTML = '<span class="loadout-preview__hint">未装备</span>';
-    } else if (rigEl) {
-      rigEl.style.gridTemplateColumns = "repeat(3, 1fr)";
-      var n = loadout.rig.rigSlots || 6;
-      rigEl.innerHTML = "";
-      var i;
-      for (i = 0; i < n; i++) {
-        var cell = document.createElement("div");
-        cell.className = "loadout-grid__cell loadout-grid__cell--mini";
-        if (rigSlots[i]) {
-          cell.classList.add("loadout-grid__cell--item");
-          cell.textContent = rigSlots[i].name.slice(0, 2);
-          cell.title = rigSlots[i].name;
-        }
-        rigEl.appendChild(cell);
+    if (rigEl) {
+      if (!loadout.rig) {
+        rigEl.innerHTML = '<span class="loadout-preview__hint">未装备</span>';
+      } else {
+        var rigSz = getRigGridSize(loadout.rig);
+        rigEl.innerHTML =
+          '<span class="loadout-preview__hint">' +
+          rigSz.cols +
+          "×" +
+          rigSz.rows +
+          " · 1×1 · 整理见下方胸挂格</span>";
       }
     }
 
@@ -397,6 +427,9 @@
       btn.addEventListener("dblclick", onSlotDblClick);
     });
 
+    if (window.GridStashUI && window.GridStashUI.bindLoadoutSlots) {
+      window.GridStashUI.bindLoadoutSlots();
+    }
     if (window.GridStashUI) window.GridStashUI.render();
   }
 
@@ -411,9 +444,7 @@
 
     if (slotKey === "rig") {
       loadout.rig = cloneItem(item);
-      rigSlots = [];
-      var i;
-      for (i = 0; i < (item.rigSlots || 6); i++) rigSlots.push(null);
+      resetRigGrid(item);
       return true;
     }
     if (slotKey === "backpack") {
@@ -436,7 +467,8 @@
     loadout[slotKey] = null;
     if (slotKey === "rig") {
       loadout.rig = null;
-      rigSlots = [];
+      moveRigItemsToStash();
+      resetRigGrid(null);
     }
     if (slotKey === "backpack") {
       loadout.backpack = null;
@@ -482,6 +514,7 @@
     if (item.type === "armor") return equipToSlot("armor", item);
     if (item.type === "rig") return equipToSlot("rig", item);
     if (item.type === "backpack") return equipToSlot("backpack", item);
+    if (item.type === "weapon_primary") return equipToSlot("primary", item);
     if (item.id === "keycard") {
       var i;
       for (i = 0; i < CARD_SLOTS; i++) {
@@ -498,6 +531,7 @@
     if (item.type === "armor") return equipToSlot("armor", item);
     if (item.type === "rig") return equipToSlot("rig", item);
     if (item.type === "backpack") return equipToSlot("backpack", item);
+    if (item.type === "weapon_primary") return equipToSlot("primary", item);
     if (item.id === "keycard") {
       var i;
       for (i = 0; i < CARD_SLOTS; i++) {
@@ -507,24 +541,82 @@
     return false;
   }
 
+  function countBrassInManager(mgr) {
+    if (!mgr) return 0;
+    var total = 0;
+    var i;
+    for (i = 0; i < mgr.items.length; i++) {
+      var inst = mgr.items[i];
+      if (!inst.itemData || inst.itemData.id !== "brass_bullet") continue;
+      total += inst.itemData.stackSize != null ? inst.itemData.stackSize : 1;
+    }
+    return total;
+  }
+
+  function getBrassAmmoCount() {
+    return (
+      countBrassInManager(rigManager) +
+      countBrassInManager(backpackManager) +
+      countBrassInManager(getSecureManager())
+    );
+  }
+
+  function consumeBrassFromManager(mgr, amount) {
+    if (!mgr || amount <= 0) return amount;
+    var left = amount;
+    var toTouch = mgr.items.slice();
+    var j;
+    for (j = 0; j < toTouch.length && left > 0; j++) {
+      var inst = toTouch[j];
+      if (!inst.itemData || inst.itemData.id !== "brass_bullet") continue;
+      var n = inst.itemData.stackSize != null ? inst.itemData.stackSize : 1;
+      if (n <= left) {
+        mgr.removeItem(inst);
+        left -= n;
+      } else {
+        inst.itemData.stackSize = n - left;
+        left = 0;
+      }
+    }
+    return left;
+  }
+
+  function consumeBrassAmmo(amount) {
+    amount = amount || 1;
+    if (getBrassAmmoCount() < amount) {
+      return { ok: false, remaining: getBrassAmmoCount() };
+    }
+
+    var left = consumeBrassFromManager(rigManager, amount);
+    if (left > 0) left = consumeBrassFromManager(backpackManager, left);
+    if (left > 0) left = consumeBrassFromManager(getSecureManager(), left);
+
+    if (left > 0) {
+      return { ok: false, remaining: getBrassAmmoCount() };
+    }
+
+    if (window.GridStashUI) window.GridStashUI.render();
+    renderLobby();
+    return { ok: true, remaining: getBrassAmmoCount() };
+  }
+
   function tryPlaceInBackpackOrSecure(item) {
     if (!item || !G) return false;
     var cat = item;
     var data = G.itemDataFromCatalog(cat);
     if (!data) return false;
     var inst = G.createInventoryItem(data);
+    if (
+      rigManager &&
+      item.w === 1 &&
+      item.h === 1 &&
+      rigManager.tryAutoPlace(inst)
+    ) {
+      return true;
+    }
     var secure = getSecureManager();
     if (secure && secure.tryAutoPlace(inst)) return true;
     if (backpackManager && backpackManager.tryAutoPlace(inst)) return true;
-    if (loadout.rig && item.w === 1 && item.h === 1) {
-      var i;
-      for (i = 0; i < rigSlots.length; i++) {
-        if (!rigSlots[i]) {
-          rigSlots[i] = cloneItem(item);
-          return true;
-        }
-      }
-    }
     return false;
   }
 
@@ -537,6 +629,16 @@
     getBackpackManager: function () {
       return backpackManager;
     },
+    getRigManager: function () {
+      return rigManager;
+    },
+    getRigGridSize: getRigGridSize,
+    canStoreInRig: function (itemOrData) {
+      if (!itemOrData) return false;
+      var w = itemOrData.w != null ? itemOrData.w : itemOrData.width;
+      var h = itemOrData.h != null ? itemOrData.h : itemOrData.height;
+      return w === 1 && h === 1;
+    },
     getSecureManager: getSecureManager,
     renderLobby: renderLobby,
     equipFromStashId: equipFromStashId,
@@ -547,6 +649,8 @@
     findKeycard: findKeycard,
     consumeKeycardDurability: consumeKeycardDurability,
     ensureTutorialKeycard: ensureTutorialKeycard,
+    getBrassAmmoCount: getBrassAmmoCount,
+    consumeBrassAmmo: consumeBrassAmmo,
     renderCardSlots: renderCardSlots,
     isKeycard: isKeycard,
     unequipToStash: function (slotKey, cardIndex) {

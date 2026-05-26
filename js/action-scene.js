@@ -87,6 +87,117 @@ if (typeof window !== "undefined") {
     if (loadErrorEl) loadErrorEl.hidden = true;
   }
 
+  function getGltfLoader() {
+    if (!sharedGltfLoader) {
+      sharedGltfLoader = new GLTFLoader();
+    }
+    return sharedGltfLoader;
+  }
+
+  function getActionPreloadUrls() {
+    var urls = [
+      TRUCK_GLB_URL,
+      BARRIER_GLB_URL,
+      CRATE_GLB_URL,
+      DOOR_GLB_URL,
+      ARMS_GLB_URL,
+    ];
+    if (window.ActionWeapon && window.ActionWeapon.UZI_GLB_URL) {
+      urls.push(window.ActionWeapon.UZI_GLB_URL);
+    }
+    if (window.ActionWasteBin && window.ActionWasteBin.BIN_GLB_URL) {
+      urls.push(window.ActionWasteBin.BIN_GLB_URL);
+    }
+    if (window.WorldLootBox && window.WorldLootBox.CHEST_GLB_URL) {
+      urls.push(window.WorldLootBox.CHEST_GLB_URL);
+    }
+    return urls;
+  }
+
+  function preloadGltfUrl(url) {
+    return new Promise(function (resolve) {
+      if (gltfCache[url]) {
+        resolve(true);
+        return;
+      }
+      getGltfLoader().load(
+        url,
+        function (gltf) {
+          gltfCache[url] = gltf;
+          resolve(true);
+        },
+        undefined,
+        function (err) {
+          console.warn("[ActionScene] 预加载失败:", url, err);
+          resolve(false);
+        }
+      );
+    });
+  }
+
+  function preloadAllActionAssets(onProgress) {
+    var urls = getActionPreloadUrls();
+    var done = 0;
+    var total = urls.length;
+
+    function tickOne() {
+      done += 1;
+      if (onProgress) {
+        onProgress(done, total);
+      }
+    }
+
+    return Promise.all(
+      urls.map(function (url) {
+        return preloadGltfUrl(url).then(function () {
+          tickOne();
+        });
+      })
+    );
+  }
+
+  function showEnterLoading() {
+    if (!loadScreenEl) return;
+    loadScreenEl.hidden = false;
+    document.body.classList.add("action-loading");
+    updateEnterLoadingProgress(0, 1);
+  }
+
+  function hideEnterLoading() {
+    if (loadScreenEl) loadScreenEl.hidden = true;
+    document.body.classList.remove("action-loading");
+  }
+
+  function updateEnterLoadingProgress(done, total) {
+    var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    if (loadProgressEl) {
+      loadProgressEl.style.width = pct + "%";
+    }
+    if (loadStatusEl) {
+      loadStatusEl.textContent =
+        done >= total
+          ? "正在进入场景…"
+          : "正在加载场景资源 " + done + " / " + total + "…";
+    }
+  }
+
+  function loadGltfCached(url, onSuccess, onError) {
+    var cached = gltfCache[url];
+    if (cached) {
+      onSuccess({ scene: cached.scene.clone(true) });
+      return;
+    }
+    getGltfLoader().load(
+      url,
+      function (gltf) {
+        gltfCache[url] = gltf;
+        onSuccess(gltf);
+      },
+      undefined,
+      onError
+    );
+  }
+
   function registerCollider(sx, sy, sz, px, py, pz) {
     colliders.push({
       minX: px - sx * 0.5,
@@ -161,6 +272,14 @@ if (typeof window !== "undefined") {
   var durabilityBannerEl = document.getElementById("actionDurabilityBanner");
   var interactHintEl = document.getElementById("actionInteractHint");
   var crosshairEl = document.getElementById("actionCrosshair");
+  var loadScreenEl = document.getElementById("actionLoadScreen");
+  var loadProgressEl = document.getElementById("actionLoadProgress");
+  var loadStatusEl = document.getElementById("actionLoadStatus");
+
+  var gltfCache = Object.create(null);
+  var sharedGltfLoader = null;
+  var assetsPreloaded = false;
+  var enterInProgress = false;
 
   function buildTruck(parent) {
     registerCollider(
@@ -172,20 +291,10 @@ if (typeof window !== "undefined") {
       TRUCK_CENTER.z
     );
 
-    var loader = new GLTFLoader();
-    loader.load(
+    loadGltfCached(
       TRUCK_GLB_URL,
       function (gltf) {
         placeTruckModel(gltf.scene, parent);
-      },
-      function (xhr) {
-        if (xhr.total) {
-          console.log(
-            "[ActionScene] 卡车加载 " +
-              Math.round((xhr.loaded / xhr.total) * 100) +
-              "%"
-          );
-        }
       },
       function (err) {
         console.error("[ActionScene] 卡车模型加载失败", err);
@@ -300,8 +409,7 @@ if (typeof window !== "undefined") {
 
   function loadFpsArms(camera) {
     if (!camera) return;
-    var loader = new GLTFLoader();
-    loader.load(
+    loadGltfCached(
       ARMS_GLB_URL,
       function (gltf) {
         var model = gltf.scene;
@@ -321,6 +429,12 @@ if (typeof window !== "undefined") {
         fpsArmsRoot = pivot;
         removeFallbackHands(camera);
         camera.add(fpsArmsRoot);
+        if (window.ActionWeapon) {
+          if (window.ActionWeapon.hasUziEquipped()) {
+            fpsArmsRoot.visible = false;
+          }
+          window.ActionWeapon.sync();
+        }
       },
       undefined,
       function (err) {
@@ -531,8 +645,7 @@ if (typeof window !== "undefined") {
       );
     }
 
-    var loader = new GLTFLoader();
-    loader.load(
+    loadGltfCached(
       CRATE_GLB_URL,
       function (gltf) {
         for (j = 0; j < CRATE_Z.length; j++) {
@@ -544,7 +657,6 @@ if (typeof window !== "undefined") {
           );
         }
       },
-      undefined,
       function (err) {
         console.error("[ActionScene] 木箱模型加载失败", err);
         for (j = 0; j < CRATE_Z.length; j++) {
@@ -577,15 +689,13 @@ if (typeof window !== "undefined") {
       );
     }
 
-    var loader = new GLTFLoader();
-    loader.load(
+    loadGltfCached(
       BARRIER_GLB_URL,
       function (gltf) {
         for (i = 0; i < BARRIER_Z.length; i++) {
           placeBarrierInstance(gltf.scene.clone(true), parent, BARRIER_Z[i]);
         }
       },
-      undefined,
       function (err) {
         console.error("[ActionScene] 水泥墙模型加载失败", err);
         for (i = 0; i < BARRIER_Z.length; i++) {
@@ -737,6 +847,9 @@ if (typeof window !== "undefined") {
 
   function clearInputKeys() {
     keys = Object.create(null);
+    if (window.ActionWeapon && window.ActionWeapon.clearInput) {
+      window.ActionWeapon.clearInput();
+    }
   }
 
   function releaseKeyFromEvent(e) {
@@ -1019,13 +1132,11 @@ if (typeof window !== "undefined") {
       DOOR_Z - 0.08
     );
 
-    var loader = new GLTFLoader();
-    loader.load(
+    loadGltfCached(
       DOOR_GLB_URL,
       function (gltf) {
         placeSecurityDoor(gltf.scene, parent);
       },
-      undefined,
       function (err) {
         console.error("[ActionScene] 安全门模型加载失败", err);
         addDoorFallback(parent);
@@ -1058,7 +1169,7 @@ if (typeof window !== "undefined") {
     if (!interactHintEl) return;
     interactHintEl.hidden = !show;
     if (show && !doorUnlocked) {
-      interactHintEl.textContent = "靠近安全门 · 按 E 刷房卡";
+      interactHintEl.textContent = "靠近安全门 · 按 E 开门";
     }
   }
 
@@ -1077,26 +1188,7 @@ if (typeof window !== "undefined") {
   function trySwipeDoor() {
     if (doorUnlocked) return;
     if (!isNearSecurityDoor()) return;
-
-    if (!window.PlayerLoadout || !window.PlayerLoadout.findKeycard()) {
-      alert("需要装备「侧门仓库」房卡（卡槽或安全箱）。");
-      return;
-    }
-
-    var result = window.PlayerLoadout.consumeKeycardDurability(1);
-    if (!result) {
-      alert("房卡耐久已耗尽。");
-      return;
-    }
-
-    if (result.remaining > 0) {
-      showDurabilityBanner(result.remaining, result.max);
-    }
     unlockSecurityDoor();
-
-    if (window.ActionInventory && window.ActionInventory.isOpen()) {
-      window.ActionInventory.refresh();
-    }
   }
 
   function updateCrosshair() {
@@ -1107,24 +1199,38 @@ if (typeof window !== "undefined") {
       !isUiBlocking() &&
       document.body.classList.contains("action-open");
     crosshairEl.classList.toggle("action-crosshair--hidden", !show);
+    if (window.ActionWeapon && window.ActionWeapon.hasUziEquipped) {
+      crosshairEl.classList.toggle(
+        "action-crosshair--weapon",
+        show && window.ActionWeapon.hasUziEquipped()
+      );
+    }
   }
 
   function updateInteractHints() {
     updateCrosshair();
 
-    if (
-      doorUnlocked &&
-      window.ActionWasteBin &&
-      camera &&
-      canvas
-    ) {
-      window.ActionWasteBin.updateAim(pos.x, pos.z, camera);
-      if (window.ActionWasteBin.isAimedAtBin()) {
-        setInteractHintVisible(true);
-        if (interactHintEl) {
-          interactHintEl.textContent = "准星对准废料桶 · 按 F 翻找";
+    if (doorUnlocked && camera && canvas) {
+      if (window.WorldLootBox && !window.WorldLootBox.isOpened()) {
+        window.WorldLootBox.updateAim(pos.x, pos.z, camera);
+        if (window.WorldLootBox.isAimed()) {
+          setInteractHintVisible(true);
+          if (interactHintEl) {
+            interactHintEl.textContent = "准星对准海盗宝箱 · 按 E 开锁";
+          }
+          return;
         }
-        return;
+      }
+
+      if (window.ActionWasteBin) {
+        window.ActionWasteBin.updateAim(pos.x, pos.z, camera);
+        if (window.ActionWasteBin.isAimedAtBin()) {
+          setInteractHintVisible(true);
+          if (interactHintEl) {
+            interactHintEl.textContent = "准星对准废料桶 · 按 F 翻找";
+          }
+          return;
+        }
       }
     }
 
@@ -1168,6 +1274,13 @@ if (typeof window !== "undefined") {
     buildBinRoomAtEnd(root);
     buildSecurityDoor(root);
     buildIndustrialWasteBins(root);
+    if (window.WorldLootBox && window.WorldLootBox.build) {
+      window.WorldLootBox.build(root, {
+        loadGltfCached: loadGltfCached,
+        fitModelToBox: fitModelToBox,
+        registerCollider: registerCollider,
+      });
+    }
   }
 
   function placeWasteBinModel(model, parent, centerX, centerZ, binIndex) {
@@ -1237,8 +1350,7 @@ if (typeof window !== "undefined") {
     var url = window.ActionWasteBin.BIN_GLB_URL;
     var i;
 
-    var loader = new GLTFLoader();
-    loader.load(
+    loadGltfCached(
       url,
       function (gltf) {
         for (i = 0; i < positions.length; i++) {
@@ -1251,7 +1363,6 @@ if (typeof window !== "undefined") {
           );
         }
       },
-      undefined,
       function (err) {
         console.error("[ActionScene] 废料桶模型加载失败", err);
         for (i = 0; i < positions.length; i++) {
@@ -1452,6 +1563,25 @@ if (typeof window !== "undefined") {
     return mesh;
   }
 
+  function mountActionWeapon() {
+    if (!window.ActionWeapon || !camera) return;
+    window.ActionWeapon.mount(camera, canvas, {
+      loadGltfCached: loadGltfCached,
+      prepareFpsViewModel: prepareFpsViewModel,
+      fitModelToBox: fitModelToBox,
+      getArmsRoot: function () {
+        return fpsArmsRoot;
+      },
+      getHandAnchor: function () {
+        return {
+          x: 0,
+          y: (HAND_BASE.left.y + HAND_BASE.right.y) * 0.5,
+          z: (HAND_BASE.left.z + HAND_BASE.right.z) * 0.5,
+        };
+      },
+    });
+  }
+
   function initScene() {
     if (scene) return true;
 
@@ -1471,7 +1601,7 @@ if (typeof window !== "undefined") {
       bodyCapsule = createUnityCapsule();
       player.add(bodyCapsule);
 
-      camera = new THREE.PerspectiveCamera(72, 1, 0.05, 120);
+      camera = new THREE.PerspectiveCamera(72, 1, 0.01, 120);
       camera.position.set(0, bodyHeightCurrent * EYE_RATIO, 0);
       camera.rotation.order = "YXZ";
       player.add(camera);
@@ -1483,6 +1613,8 @@ if (typeof window !== "undefined") {
       camera.add(leftHand);
       camera.add(rightHand);
       loadFpsArms(camera);
+
+      mountActionWeapon();
 
       renderer = new THREE.WebGLRenderer({
         canvas: canvas,
@@ -1661,6 +1793,10 @@ if (typeof window !== "undefined") {
       hand.rotation.z = base.rz + sway * phase;
     }
 
+    if (window.ActionWeapon && window.ActionWeapon.hasUziEquipped()) {
+      return;
+    }
+
     if (fpsArmsRoot) {
       fpsArmsRoot.position.x = fpsArmsAlignX + sway * 0.1;
       fpsArmsRoot.position.y = fpsArmsRestY - bob * 0.75 + jumpTuck;
@@ -1683,7 +1819,8 @@ if (typeof window !== "undefined") {
   function isUiBlocking() {
     return (
       isInventoryOpen() ||
-      (window.ActionWasteBin && window.ActionWasteBin.isOpen())
+      (window.ActionWasteBin && window.ActionWasteBin.isOpen()) ||
+      (window.LockpickingQTE && window.LockpickingQTE.isOpen())
     );
   }
 
@@ -1708,6 +1845,7 @@ if (typeof window !== "undefined") {
   function onInventoryOpened() {
     clearInputKeys();
     releasePointerForUi();
+    if (window.ActionWeapon) window.ActionWeapon.sync();
   }
 
   function onInventoryClosed() {
@@ -1749,6 +1887,31 @@ if (typeof window !== "undefined") {
       updateClouds(dt, animTime);
     }
     updateInteractHints();
+
+    if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
+      window.LockpickingQTE.update(dt);
+    }
+
+    if (window.ActionWeapon) {
+      window.ActionWeapon.update(
+        dt,
+        {
+          bob: moving ? Math.sin(animTime * 11) * 0.035 : 0,
+          sway: moving ? Math.cos(animTime * 11) * 0.025 : 0,
+          jumpTuck: grounded ? 0 : Math.min(Math.max(-velY * 0.018, -0.06), 0.14),
+          grounded: grounded,
+        },
+        {
+          pointerLocked: pointerLocked,
+          uiBlocking: isUiBlocking(),
+          running: running,
+        }
+      );
+      pitch += window.ActionWeapon.consumeRecoilPitch();
+      var maxPitch = Math.PI / 2 - 0.05;
+      pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
+    }
+
     renderer.render(scene, camera);
   }
 
@@ -1795,34 +1958,31 @@ if (typeof window !== "undefined") {
     }
   }
 
-  function enter() {
-    if (typeof THREE === "undefined") {
-      actionRoot.hidden = false;
-      document.body.classList.add("action-open");
-      showLoadError("Three.js 未加载，请检查 js/vendor/three.module.min.js 是否存在。");
-      return;
-    }
-
-    if (window.LobbyUI && window.LobbyUI.goHome) {
-      window.LobbyUI.goHome();
-    }
+  function finishEnterAfterPreload() {
+    enterInProgress = false;
+    hideEnterLoading();
+    hideLoadError();
 
     actionRoot.hidden = false;
     document.body.classList.remove("room-open", "stash-open", "tutorial-open");
     document.body.classList.add("action-open");
     document.body.classList.remove("hub-home");
 
-    clearInputKeys();
-    resetSecurityDoorState();
-    if (window.ActionWasteBin && window.ActionWasteBin.resetForNewRun) {
-      window.ActionWasteBin.resetForNewRun();
-    }
-    if (window.PlayerLoadout && window.PlayerLoadout.ensureTutorialKeycard) {
-      window.PlayerLoadout.ensureTutorialKeycard();
+    if (!initScene()) {
+      showLoadError("3D 场景初始化失败，请刷新页面重试。");
+      return;
     }
 
+    mountActionWeapon();
     startLoop();
     resetPlayer();
+    if (window.ActionWeapon) {
+      window.ActionWeapon.sync();
+      requestAnimationFrame(function () {
+        if (window.ActionWeapon) window.ActionWeapon.sync();
+      });
+    }
+    setWeaponHint();
     setHintVisible(true);
 
     requestAnimationFrame(function () {
@@ -1831,7 +1991,82 @@ if (typeof window !== "undefined") {
     });
   }
 
+  function enter() {
+    if (typeof THREE === "undefined") {
+      actionRoot.hidden = false;
+      document.body.classList.add("action-open");
+      showLoadError("Three.js 未加载，请检查 js/vendor/three.module.min.js 是否存在。");
+      return;
+    }
+
+    if (enterInProgress) return;
+    enterInProgress = true;
+
+    if (window.LobbyUI && window.LobbyUI.goHome) {
+      window.LobbyUI.goHome();
+    }
+
+    actionRoot.hidden = true;
+    document.body.classList.remove("room-open", "stash-open", "tutorial-open");
+    document.body.classList.remove("hub-home");
+
+    clearInputKeys();
+    resetSecurityDoorState();
+    if (window.ActionWasteBin && window.ActionWasteBin.resetForNewRun) {
+      window.ActionWasteBin.resetForNewRun();
+    }
+    if (window.WorldLootBox && window.WorldLootBox.resetForNewRun) {
+      window.WorldLootBox.resetForNewRun();
+    }
+    if (window.LockpickingQTE && window.LockpickingQTE.close) {
+      window.LockpickingQTE.close();
+    }
+    showEnterLoading();
+
+    var preloadPromise;
+    if (assetsPreloaded) {
+      updateEnterLoadingProgress(1, 1);
+      preloadPromise = Promise.resolve();
+    } else {
+      var urls = getActionPreloadUrls();
+      preloadPromise = preloadAllActionAssets(function (done, total) {
+        updateEnterLoadingProgress(done, total);
+      }).then(function () {
+        assetsPreloaded = true;
+      });
+    }
+
+    preloadPromise
+      .then(function () {
+        var n = getActionPreloadUrls().length;
+        updateEnterLoadingProgress(n, n);
+        finishEnterAfterPreload();
+      })
+      .catch(function (err) {
+        console.error("[ActionScene] 进入场景失败", err);
+        enterInProgress = false;
+        hideEnterLoading();
+        actionRoot.hidden = false;
+        document.body.classList.add("action-open");
+        showLoadError(err.message || String(err));
+      });
+  }
+
+  function setWeaponHint() {
+    if (!hintEl) return;
+    if (window.ActionWeapon && window.ActionWeapon.hasUziEquipped()) {
+      hintEl.textContent =
+        "WASD 移动 · 左键连发 · 右键开镜 · E 开门/宝箱 · F 搜桶 · B 背包 · Q 返回";
+    } else {
+      hintEl.textContent =
+        "WASD 移动 · E 开门/宝箱 · F 搜桶(准星对准) · B 背包 · Q 返回大厅";
+    }
+  }
+
   function exit() {
+    enterInProgress = false;
+    hideEnterLoading();
+    if (window.ActionWeapon) window.ActionWeapon.dispose();
     clearInputKeys();
     if (window.ActionWasteBin && window.ActionWasteBin.close) {
       window.ActionWasteBin.close();
@@ -1860,6 +2095,23 @@ if (typeof window !== "undefined") {
 
     if (e.code === "KeyE" && !e.repeat) {
       e.preventDefault();
+      if (doorUnlocked && window.WorldLootBox) {
+        if (camera && window.WorldLootBox.updateAim) {
+          window.WorldLootBox.updateAim(pos.x, pos.z, camera);
+        }
+        if (window.WorldLootBox.tryStartLockpick()) {
+          releasePointerForUi();
+          return;
+        }
+        if (
+          window.WorldLootBox.isOpened &&
+          window.WorldLootBox.isOpened() &&
+          window.WorldLootBox.playerNear(pos.x, pos.z)
+        ) {
+          alert("宝箱已经开启过了。");
+          return;
+        }
+      }
       trySwipeDoor();
       return;
     }
@@ -1867,7 +2119,7 @@ if (typeof window !== "undefined") {
     if (e.code === "KeyF" && !e.repeat) {
       e.preventDefault();
       if (!doorUnlocked) {
-        alert("需要先刷房卡打开安全门，才能进入走廊搜刮废料桶。");
+        alert("需要先按 E 打开安全门，才能进入走廊搜刮废料桶。");
         return;
       }
       if (window.ActionWasteBin) {
@@ -1896,6 +2148,10 @@ if (typeof window !== "undefined") {
 
     if (e.code === "Escape") {
       e.preventDefault();
+      if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
+        window.LockpickingQTE.close();
+        return;
+      }
       if (window.ActionWasteBin && window.ActionWasteBin.isOpen()) {
         window.ActionWasteBin.close();
         return;
@@ -1913,6 +2169,9 @@ if (typeof window !== "undefined") {
     keys[e.key] = true;
     if (e.code === "Space" && !e.repeat) {
       e.preventDefault();
+      if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
+        return;
+      }
       tryJump();
     }
   }
@@ -1951,6 +2210,19 @@ if (typeof window !== "undefined") {
     if (btnBack) btnBack.addEventListener("click", exit);
     canvas.addEventListener("click", function () {
       if (running && !pointerLocked && !isUiBlocking()) requestLock();
+    });
+    canvas.addEventListener("mousedown", function (e) {
+      if (!running || isUiBlocking()) return;
+      if (window.ActionWeapon) window.ActionWeapon.onPointerDown(e);
+    });
+    canvas.addEventListener("mouseup", function (e) {
+      if (window.ActionWeapon) window.ActionWeapon.onPointerUp(e);
+    });
+    canvas.addEventListener("contextmenu", function (e) {
+      if (running && pointerLocked) e.preventDefault();
+    });
+    window.addEventListener("mouseup", function (e) {
+      if (window.ActionWeapon) window.ActionWeapon.onPointerUp(e);
     });
 
     var invBackdrop = document.getElementById("actionInventoryBackdrop");

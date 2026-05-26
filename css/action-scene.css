@@ -1,3 +1,73 @@
+/* 进入教程 — 全屏加载 */
+
+.action-load-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  color: #fff;
+}
+
+.action-load-screen[hidden] {
+  display: none !important;
+}
+
+body.action-loading .ui-layer,
+body.action-loading .lobby {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.action-load-screen__inner {
+  text-align: center;
+  padding: 2rem 1.5rem;
+  max-width: 22rem;
+}
+
+.action-load-screen__title {
+  margin: 0;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: clamp(2rem, 8vw, 3rem);
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-indent: 0.28em;
+}
+
+.action-load-screen__subtitle {
+  margin: 0.55rem 0 0;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: clamp(1rem, 4vw, 1.35rem);
+  font-weight: 300;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.action-load-screen__status {
+  margin: 1.6rem 0 0.65rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.action-load-screen__bar {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.action-load-screen__bar-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6a8a9a 0%, #d8e8f0 100%);
+  transition: width 0.25s ease;
+}
+
 /* 3D 行动场景 */
 
 .action-scene {
@@ -691,10 +761,175 @@ body.waste-bin-open .action-scene__canvas {
   display: none;
 }
 
+.action-crosshair--ads {
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  opacity: 0.95;
+}
+
+.action-crosshair--ads::before {
+  height: 10px;
+  top: 0;
+}
+
+.action-crosshair--ads::after {
+  width: 10px;
+  left: 0;
+}
+
+.action-crosshair--weapon::before,
+.action-crosshair--weapon::after {
+  background: rgba(255, 230, 200, 0.9);
+}
+
+.action-ammo-hud {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  bottom: max(4.5rem, env(safe-area-inset-bottom, 0px));
+  z-index: 26;
+  margin: 0;
+  padding: 0.35rem 0.65rem;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  color: rgba(230, 240, 248, 0.92);
+  background: rgba(8, 12, 18, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.action-ammo-hud[hidden] {
+  display: none !important;
+}
+
+.action-ammo-hud--empty {
+  color: #f0a060;
+}
+
 body.inventory-open .action-crosshair,
 body.waste-bin-open .action-crosshair,
+body.lockpick-qte-open .action-crosshair,
 body.show-cursor .action-crosshair {
   display: none;
+}
+
+/* —— QTE 开锁校准 —— */
+.lockpick-qte {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.lockpick-qte[hidden] {
+  display: none !important;
+}
+
+.lockpick-qte__panel {
+  width: min(92vw, 420px);
+  padding: 1.25rem 1.35rem 1.1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 200, 140, 0.35);
+  background: linear-gradient(180deg, rgba(18, 24, 22, 0.96), rgba(8, 12, 10, 0.98));
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65);
+}
+
+.lockpick-qte__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #c8e6d0;
+  letter-spacing: 0.06em;
+}
+
+.lockpick-qte__hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.78rem;
+  color: rgba(200, 220, 210, 0.72);
+}
+
+.lockpick-qte__track {
+  position: relative;
+  height: 2.4rem;
+  border-radius: 6px;
+  overflow: hidden;
+  background: linear-gradient(90deg, #4a1818 0%, #4a1818 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.lockpick-qte__zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.lockpick-qte__zone--green {
+  background: linear-gradient(
+    180deg,
+    rgba(60, 180, 90, 0.85),
+    rgba(30, 120, 55, 0.9)
+  );
+  box-shadow: inset 0 0 12px rgba(120, 255, 160, 0.35);
+}
+
+.lockpick-qte__pointer {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 4px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: #f0f4f8;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.85);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.lockpick-qte__counters {
+  display: flex;
+  justify-content: center;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+}
+
+.lockpick-qte__pip {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(30, 40, 36, 0.9);
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.lockpick-qte__pip--on {
+  background: linear-gradient(180deg, #5fd67a, #2a9e4a);
+  box-shadow: 0 0 10px rgba(80, 220, 110, 0.55);
+  border-color: rgba(160, 255, 190, 0.5);
+}
+
+.lockpick-qte__pip--fail {
+  background: linear-gradient(180deg, #e85a5a, #8a2020);
+  box-shadow: 0 0 8px rgba(255, 80, 80, 0.45);
+}
+
+.lockpick-qte__foot {
+  margin: 0.65rem 0 0;
+  text-align: center;
+  font-size: 0.72rem;
+  color: rgba(180, 200, 190, 0.65);
+}
+
+.lockpick-qte__foot kbd {
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 @media (max-width: 720px) {

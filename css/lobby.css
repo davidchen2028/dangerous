@@ -513,6 +513,25 @@ body.action-open .btn-hub--action {
   color: #9ab0c8;
 }
 
+.lobby-loadout__hint {
+  margin: 0 0 0.45rem;
+  font-size: 0.65rem;
+  color: #6a7a88;
+}
+
+.loadout-slot--dragging {
+  opacity: 0.55;
+  outline: 2px dashed rgba(120, 180, 220, 0.85);
+}
+
+body.loadout-drag-active {
+  cursor: grabbing;
+}
+
+body.loadout-drag-active .loadout-slot {
+  cursor: grabbing;
+}
+
 .stash-main {
   flex: 1;
   min-width: 0;

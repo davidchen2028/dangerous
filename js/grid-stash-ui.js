@@ -12,6 +12,8 @@
   var STASH_ROWS = G.GridManager.STASH_ROWS;
 
   var stashHost = document.getElementById("stashGrid");
+  var rigHost = document.getElementById("lobbyRigGrid");
+  var rigMetaEl = document.getElementById("lobbyRigMeta");
   var secureHost = document.getElementById("lobbySecureGrid");
   var backpackHost = document.getElementById("lobbyBackpackGrid");
   var backpackMetaEl = document.getElementById("lobbyBackpackMeta");
@@ -32,6 +34,8 @@
   var selectedBoardId = null;
   var seeded = false;
   var didDragThisGesture = false;
+  var loadoutPending = null;
+  var loadoutDragActive = false;
 
   function catalogToItem(cat) {
     if (!cat || !window.ItemCatalog) return null;
@@ -77,8 +81,48 @@
         data.durability = data.maxDurability;
       }
     }
+    if (catItem.stackSize != null && data.stackSize == null) {
+      data.stackSize = catItem.stackSize;
+    }
     var inst = G.createInventoryItem(data);
     return mgr.tryAutoPlace(inst);
+  }
+
+  /** 身上装备 → 网格物品数据（保留 stackSize 等） */
+  function equippedItemToGridData(item) {
+    if (!item || !window.ItemCatalog) return null;
+    var cat = window.ItemCatalog.getItem(item.id);
+    if (!cat) return null;
+    var data = G.itemDataFromCatalog(cat);
+    if (!data) return null;
+    if (item.stackSize != null) data.stackSize = item.stackSize;
+    if (item.durability != null) data.durability = item.durability;
+    if (item.maxDurability != null) data.maxDurability = item.maxDurability;
+    return data;
+  }
+
+  function tryPlaceEquippedInStash(item, clientX, clientY) {
+    var data = equippedItemToGridData(item);
+    if (!data) return false;
+    var inst = G.createInventoryItem(data);
+    var target =
+      clientX != null && clientY != null
+        ? findBoardAt(clientX, clientY)
+        : null;
+    if (target && target.id === "stash" && !target.disabled) {
+      var pos = pointerToGrid(target, clientX, clientY, inst);
+      if (
+        target.manager.isSpaceAvailable(
+          pos.col,
+          pos.row,
+          data.width,
+          data.height
+        )
+      ) {
+        return target.manager.placeItem(inst, pos.col, pos.row);
+      }
+    }
+    return stashManager.tryAutoPlace(inst);
   }
 
   function getBackpackManager() {
@@ -90,6 +134,21 @@
 
   function syncBackpackManagerFromLoadout() {
     backpackManager = getBackpackManager();
+  }
+
+  function getRigManager() {
+    if (!window.PlayerLoadout) return null;
+    return window.PlayerLoadout.getRigManager
+      ? window.PlayerLoadout.getRigManager()
+      : null;
+  }
+
+  function canPlaceInRig(itemData) {
+    if (!itemData) return false;
+    if (window.PlayerLoadout && window.PlayerLoadout.canStoreInRig) {
+      return window.PlayerLoadout.canStoreInRig(itemData);
+    }
+    return itemData.width === 1 && itemData.height === 1;
   }
 
   function allBoards() {
@@ -235,6 +294,12 @@
       return true;
     }
 
+    if (slotKey === "primary" && loadout.primary) {
+      if (!tryAddCatalogItem(loadout.primary)) {
+        alert("仓库已满，无法替换当前主武器。");
+        return false;
+      }
+    }
     if (slotKey === "rig" && loadout.rig) {
       if (!tryAddCatalogItem(loadout.rig)) {
         alert("仓库已满，无法替换当前胸挂。");
@@ -410,6 +475,8 @@
           : inst.itemData.maxDurability || 10) +
         "/" +
         (inst.itemData.maxDurability || 10);
+    } else if (inst.itemData.stackSize != null && inst.itemData.stackSize > 1) {
+      label.textContent = "×" + inst.itemData.stackSize;
     } else {
       label.textContent = inst.itemData.name;
     }
@@ -445,7 +512,12 @@
 
     el.addEventListener("dblclick", function (e) {
       e.preventDefault();
-      if (board.id === "stash" || board.id === "secure" || board.id === "backpack") {
+      if (
+        board.id === "stash" ||
+        board.id === "rig" ||
+        board.id === "secure" ||
+        board.id === "backpack"
+      ) {
         tryEquipFromGrid(inst, board);
       }
     });
@@ -528,13 +600,15 @@
       return;
     }
     var pos = pointerToGrid(target, e.clientX, e.clientY, drag.item);
-    var ok = target.manager.isSpaceAvailable(
-      pos.col,
-      pos.row,
-      drag.item.itemData.width,
-      drag.item.itemData.height,
-      drag.board === target ? drag.item : null
-    );
+    var ok =
+      (target.id !== "rig" || canPlaceInRig(drag.item.itemData)) &&
+      target.manager.isSpaceAvailable(
+        pos.col,
+        pos.row,
+        drag.item.itemData.width,
+        drag.item.itemData.height,
+        drag.board === target ? drag.item : null
+      );
     hideAllPreviews();
     setPreview(
       target,
@@ -576,9 +650,13 @@
 
     if (target && !target.disabled) {
       var pos = pointerToGrid(target, e.clientX, e.clientY, inst);
+      var rigOk =
+        target.id !== "rig" || canPlaceInRig(inst.itemData);
       if (source === target) {
-        placed = target.manager.placeItem(inst, pos.col, pos.row);
+        placed =
+          rigOk && target.manager.placeItem(inst, pos.col, pos.row);
       } else if (
+        rigOk &&
         target.manager.isSpaceAvailable(
           pos.col,
           pos.row,
@@ -636,6 +714,7 @@
       bp_light: "bplgt",
       helm_basic: "helm1",
       armr_basic: "armr1",
+      uzi_smg: "uzism",
     };
     var stashId = equipMap[inst.itemData.id];
     if (!stashId) return;
@@ -650,8 +729,26 @@
   function rebuildBoardList() {
     syncBackpackManagerFromLoadout();
     var loadout = window.PlayerLoadout && window.PlayerLoadout.getLoadout();
+    var rig = loadout && loadout.rig;
+    var rigMgr = getRigManager();
+    var rigDims =
+      rig && window.PlayerLoadout.getRigGridSize
+        ? window.PlayerLoadout.getRigGridSize(rig)
+        : { cols: 0, rows: 0 };
+    var rigDisabled = !rig || !rigMgr;
     var bp = loadout && loadout.backpack;
     var bpDisabled = !bp || !backpackManager;
+
+    if (rigMetaEl) {
+      rigMetaEl.textContent = rig
+        ? rig.name +
+          " " +
+          rigDims.cols +
+          "×" +
+          rigDims.rows +
+          " · 仅 1×1"
+        : "未装备 · 请双击仓库胸挂装备";
+    }
 
     if (backpackMetaEl) {
       backpackMetaEl.textContent = bp
@@ -667,6 +764,14 @@
         cols: STASH_COLS,
         rows: STASH_ROWS,
         disabled: false,
+      },
+      {
+        id: "rig",
+        host: rigHost,
+        manager: rigMgr,
+        cols: rigDims.cols,
+        rows: rigDims.rows,
+        disabled: rigDisabled,
       },
       {
         id: "backpack",
@@ -693,7 +798,9 @@
       '<p class="inv-grid-host__empty">' +
       (board.id === "backpack"
         ? "未装备背包"
-        : "暂无格子") +
+        : board.id === "rig"
+          ? "未装备胸挂"
+          : "暂无格子") +
       "</p>";
     board.el = null;
   }
@@ -702,6 +809,7 @@
     purgeDepletedKeycardsInManager(stashManager);
     purgeDepletedKeycardsInManager(secureManager);
     purgeDepletedKeycardsInManager(getBackpackManager());
+    purgeDepletedKeycardsInManager(getRigManager());
     rebuildBoardList();
     var i;
     for (i = 0; i < boards.length; i++) {
@@ -715,15 +823,213 @@
     }
   }
 
-  function seedDemoIfEmpty() {
-    if (seeded || stashManager.items.length > 0) return;
-    seeded = true;
-    var demos = ["circuit", "medkit", "bolt"];
+  function countStashItem(id) {
+    var n = 0;
     var i;
-    for (i = 0; i < demos.length; i++) {
-      var cat =
-        window.ItemCatalog && window.ItemCatalog.getItem(demos[i]);
-      if (cat) tryAddToManager(stashManager, cat);
+    for (i = 0; i < stashManager.items.length; i++) {
+      if (stashManager.items[i].itemData.id === id) n += 1;
+    }
+    return n;
+  }
+
+  var STARTER_KIT_STORAGE_KEY = "dangerous_starter_kit_granted";
+
+  function isStarterKitGranted() {
+    try {
+      if (localStorage.getItem(STARTER_KIT_STORAGE_KEY) === "1") return true;
+      if (localStorage.getItem("dangerous_starter_kit_v1") === "1") {
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function markStarterKitGranted() {
+    try {
+      localStorage.setItem(STARTER_KIT_STORAGE_KEY, "1");
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  /** 仅首次进游戏：UZI ×1 + 黄铜子弹 60发 ×2（之后卖掉也不会再刷） */
+  function placeStarterKitOnce() {
+    if (!window.ItemCatalog) return false;
+
+    var changed = false;
+    var bulletStacks = countStashItem("brass_bullet");
+
+    if (countStashItem("uzi_smg") < 1) {
+      var uzi = window.ItemCatalog.getItem("uzi_smg");
+      if (uzi) {
+        var uziData = catalogToItem(uzi);
+        if (uziData) {
+          var uziInst = G.createInventoryItem(uziData);
+          if (
+            stashManager.tryAutoPlace(uziInst) ||
+            stashManager.placeItem(uziInst, 0, 0)
+          ) {
+            changed = true;
+          } else {
+            console.warn("[GridStash] 新手 UZI 无法放入仓库，请整理格子");
+          }
+        }
+      }
+    }
+
+    var bullet = window.ItemCatalog.getItem("brass_bullet");
+    while (bulletStacks < 2 && bullet) {
+      var stack = Object.assign({}, bullet);
+      stack.stackSize = 60;
+      var bulletData = catalogToItem(stack);
+      if (!bulletData) break;
+      var bulletInst = G.createInventoryItem(bulletData);
+      if (
+        stashManager.tryAutoPlace(bulletInst) ||
+        stashManager.placeItem(bulletInst, 0, 3)
+      ) {
+        bulletStacks += 1;
+        changed = true;
+      } else {
+        break;
+      }
+    }
+
+    return changed;
+  }
+
+  function seedStarterKit() {
+    if (seeded) return;
+    seeded = true;
+    if (isStarterKitGranted()) return;
+    if (!window.ItemCatalog) return;
+
+    var changed = placeStarterKitOnce();
+    markStarterKitGranted();
+    if (changed) renderAll();
+  }
+
+  function getEquippedFromSlot(slotKey, cardIndex) {
+    if (!window.PlayerLoadout) return null;
+    var loadout = window.PlayerLoadout.getLoadout();
+    if (slotKey === "card") {
+      if (cardIndex == null || isNaN(cardIndex)) return null;
+      return loadout.cards[cardIndex];
+    }
+    if (slotKey === "rig") return loadout.rig;
+    if (slotKey === "backpack") return loadout.backpack;
+    return loadout[slotKey];
+  }
+
+  function clearLoadoutDragUi() {
+    loadoutPending = null;
+    loadoutDragActive = false;
+    var nodes = document.querySelectorAll(".loadout-slot--dragging");
+    var i;
+    for (i = 0; i < nodes.length; i++) {
+      nodes[i].classList.remove("loadout-slot--dragging");
+    }
+    document.body.classList.remove("loadout-drag-active");
+  }
+
+  function onLoadoutPointerMove(e) {
+    if (!loadoutPending || e.pointerId !== loadoutPending.pointerId) return;
+    if (
+      !loadoutDragActive &&
+      pointerDistFromStart(e, loadoutPending.startX, loadoutPending.startY) >=
+        DRAG_THRESHOLD_PX
+    ) {
+      loadoutDragActive = true;
+      loadoutPending.btn.classList.add("loadout-slot--dragging");
+      document.body.classList.add("loadout-drag-active");
+    }
+    if (!loadoutDragActive) return;
+    var target = findBoardAt(e.clientX, e.clientY);
+    hideAllPreviews();
+    if (target && target.id === "stash" && !target.disabled) {
+      var data = equippedItemToGridData(loadoutPending.item);
+      if (!data) return;
+      var fakeInst = { itemData: data, x: 0, y: 0 };
+      var pos = pointerToGrid(target, e.clientX, e.clientY, fakeInst);
+      var ok = target.manager.isSpaceAvailable(
+        pos.col,
+        pos.row,
+        data.width,
+        data.height
+      );
+      setPreview(target, pos.col, pos.row, data.width, data.height, ok);
+    }
+  }
+
+  function onLoadoutPointerUp(e) {
+    if (!loadoutPending || e.pointerId !== loadoutPending.pointerId) return;
+    window.removeEventListener("pointermove", onLoadoutPointerMove);
+    window.removeEventListener("pointerup", onLoadoutPointerUp);
+    window.removeEventListener("pointercancel", onLoadoutPointerUp);
+    hideAllPreviews();
+
+    var pending = loadoutPending;
+    var wasDrag = loadoutDragActive;
+    clearLoadoutDragUi();
+
+    if (!wasDrag) return;
+
+    if (!window.PlayerLoadout) return;
+    var removed =
+      pending.slotKey === "card" && pending.cardIndex != null
+        ? window.PlayerLoadout.unequipSlot("card", pending.cardIndex)
+        : window.PlayerLoadout.unequipSlot(pending.slotKey);
+    if (!removed) return;
+
+    var placed = tryPlaceEquippedInStash(removed, e.clientX, e.clientY);
+    if (!placed) {
+      window.PlayerLoadout.equipToSlot(
+        pending.slotKey,
+        removed,
+        pending.cardIndex
+      );
+      alert("仓库已满或该格放不下，已放回身上。");
+    }
+    renderAll();
+    window.PlayerLoadout.renderLobby();
+  }
+
+  function bindLoadoutSlots() {
+    var root = document.getElementById("lobbyLoadout");
+    if (!root) return;
+    var slots = root.querySelectorAll(".loadout-slot");
+    var i;
+    for (i = 0; i < slots.length; i++) {
+      (function (btn) {
+        if (btn.dataset.loadoutDragBound === "1") return;
+        btn.dataset.loadoutDragBound = "1";
+        btn.addEventListener("pointerdown", function (ev) {
+          if (ev.button !== 0) return;
+          var slotKey = btn.dataset.slot;
+          if (!slotKey) return;
+          var cardIndex =
+            btn.dataset.cardIndex != null
+              ? parseInt(btn.dataset.cardIndex, 10)
+              : null;
+          var item = getEquippedFromSlot(slotKey, cardIndex);
+          if (!item) return;
+          loadoutPending = {
+            slotKey: slotKey,
+            cardIndex: cardIndex,
+            item: item,
+            btn: btn,
+            pointerId: ev.pointerId,
+            startX: ev.clientX,
+            startY: ev.clientY,
+          };
+          loadoutDragActive = false;
+          window.addEventListener("pointermove", onLoadoutPointerMove);
+          window.addEventListener("pointerup", onLoadoutPointerUp);
+          window.addEventListener("pointercancel", onLoadoutPointerUp);
+        });
+      })(slots[i]);
     }
   }
 
@@ -797,13 +1103,15 @@
     if (popoverSellBtn) {
       popoverSellBtn.addEventListener("click", sellSelectedItem);
     }
-    seedDemoIfEmpty();
+    seedStarterKit();
     renderAll();
+    bindLoadoutSlots();
   }
 
   window.GridStashUI = {
     init: init,
     render: renderAll,
+    bindLoadoutSlots: bindLoadoutSlots,
     tryAddMarketItem: tryAddMarketItem,
     tryAddCatalogItem: tryAddCatalogItem,
     getManager: function () {
