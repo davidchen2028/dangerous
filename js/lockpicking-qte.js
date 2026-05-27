@@ -22,6 +22,8 @@
   var pointerEl = null;
   var greenEl = null;
   var counterEls = [];
+  var animId = 0;
+  var lastFrameTs = 0;
 
   function ensureAudio() {
     if (!window.AudioContext && !window.webkitAudioContext) return null;
@@ -105,6 +107,7 @@
   function setPointerVisual() {
     if (!pointerEl) return;
     pointerEl.style.left = pointerT * 100 + "%";
+    pointerEl.style.transform = "translateX(-50%)";
   }
 
   function isInGreenZone(t) {
@@ -189,11 +192,41 @@
 
     rootEl.hidden = false;
     document.body.classList.add("lockpick-qte-open");
+    startAnimLoop();
     return true;
+  }
+
+  function stopAnimLoop() {
+    if (animId) {
+      cancelAnimationFrame(animId);
+      animId = 0;
+    }
+    lastFrameTs = 0;
+  }
+
+  function animLoop(ts) {
+    if (!active) {
+      stopAnimLoop();
+      return;
+    }
+    animId = requestAnimationFrame(animLoop);
+    var dt = 0;
+    if (lastFrameTs > 0) {
+      dt = Math.min((ts - lastFrameTs) / 1000, 0.05);
+    }
+    lastFrameTs = ts;
+    if (dt > 0) update(dt);
+  }
+
+  function startAnimLoop() {
+    stopAnimLoop();
+    lastFrameTs = 0;
+    animId = requestAnimationFrame(animLoop);
   }
 
   function close() {
     active = false;
+    stopAnimLoop();
     onSuccessCb = null;
     onFailCb = null;
     if (rootEl) rootEl.hidden = true;

@@ -48,7 +48,6 @@ if (typeof window !== "undefined") {
   var JUMP_SPEED = 9;
   var BOUNDS_X = 5.5;
   var BOUNDS_Z_MIN = 1.2;
-  var BOUNDS_Z_MAX = 81;
   var clouds = [];
   /** @type {{ minX: number, maxX: number, minY: number, maxY: number, minZ: number, maxZ: number }[]} */
   var colliders = [];
@@ -104,9 +103,6 @@ if (typeof window !== "undefined") {
     ];
     if (window.ActionWeapon && window.ActionWeapon.UZI_GLB_URL) {
       urls.push(window.ActionWeapon.UZI_GLB_URL);
-    }
-    if (window.ActionWasteBin && window.ActionWasteBin.BIN_GLB_URL) {
-      urls.push(window.ActionWasteBin.BIN_GLB_URL);
     }
     if (window.WorldLootBox && window.WorldLootBox.CHEST_GLB_URL) {
       urls.push(window.WorldLootBox.CHEST_GLB_URL);
@@ -241,9 +237,16 @@ if (typeof window !== "undefined") {
   var DOOR_Z = 60;
   var CORRIDOR_LEN = 15;
   var CORRIDOR_W = 1.5;
-  /** 走廊尽头 5×5 m 搜刮间（两桶居中） */
+  /** 走廊尽头 5×5 m 搜刮间（中央海盗宝箱） */
   var BIN_ROOM_SIZE = 5;
   var BIN_ROOM_CENTER_Z = DOOR_Z + CORRIDOR_LEN + BIN_ROOM_SIZE * 0.5;
+  /** 宝箱后方 10 m 撤离走廊 + 3×3 m 撤离点 */
+  var EVAC_CORRIDOR_LEN = 10;
+  var EVAC_ROOM_SIZE = 3;
+  var EVAC_CORRIDOR_START_Z = DOOR_Z + CORRIDOR_LEN + BIN_ROOM_SIZE;
+  var EVAC_ROOM_START_Z = EVAC_CORRIDOR_START_Z + EVAC_CORRIDOR_LEN;
+  var EVAC_ROOM_CENTER_Z = EVAC_ROOM_START_Z + EVAC_ROOM_SIZE * 0.5;
+  var BOUNDS_Z_MAX = EVAC_ROOM_START_Z + EVAC_ROOM_SIZE + 0.35;
   var BIN_SPACING_X = 0.55;
   var SECTOR_WALL_H = 3.5;
   var DOOR_SIZE = { x: 1.5, y: 2.2, z: 0.28 };
@@ -271,6 +274,10 @@ if (typeof window !== "undefined") {
   var DOOR_OPEN_OFFSET_X = 1.35;
   var durabilityBannerEl = document.getElementById("actionDurabilityBanner");
   var interactHintEl = document.getElementById("actionInteractHint");
+  var evacOverlayEl = document.getElementById("actionEvac");
+  var evacCountdownEl = document.getElementById("actionEvacTimer");
+  var evacCounting = false;
+  var evacTimeLeft = 0;
   var crosshairEl = document.getElementById("actionCrosshair");
   var loadScreenEl = document.getElementById("actionLoadScreen");
   var loadProgressEl = document.getElementById("actionLoadProgress");
@@ -834,7 +841,94 @@ if (typeof window !== "undefined") {
     applyDoorMaterial(root, 0x2ecc55, 0x1a6630, 0.35);
   }
 
+  function resetEvacState() {
+    evacCounting = false;
+    evacTimeLeft = 0;
+    document.body.classList.remove("evac-counting");
+    if (evacOverlayEl) evacOverlayEl.hidden = true;
+    if (evacCountdownEl) evacCountdownEl.textContent = "10";
+  }
+
+  function isInEvacZone() {
+    var halfX = EVAC_ROOM_SIZE * 0.5 - CAPSULE_RADIUS - 0.05;
+    return (
+      Math.abs(pos.x) <= halfX &&
+      pos.z >= EVAC_ROOM_START_Z + 0.25 &&
+      pos.z <= EVAC_ROOM_START_Z + EVAC_ROOM_SIZE - 0.25
+    );
+  }
+
+  function updateEvacTimerDisplay() {
+    if (!evacCountdownEl) return;
+    var n = Math.max(0, Math.ceil(evacTimeLeft));
+    evacCountdownEl.textContent = String(n);
+  }
+
+  function cancelEvacCountdown() {
+    if (!evacCounting) return;
+    evacCounting = false;
+    evacTimeLeft = 10;
+    document.body.classList.remove("evac-counting");
+    if (evacOverlayEl) evacOverlayEl.hidden = true;
+    updateEvacTimerDisplay();
+  }
+
+  function tryStartEvacCountdown() {
+    if (evacCounting) return;
+    evacCounting = true;
+    evacTimeLeft = 10;
+    if (window.WorldLootBox && window.WorldLootBox.closeChestPanel) {
+      window.WorldLootBox.closeChestPanel();
+    }
+    if (window.ActionInventory && window.ActionInventory.close) {
+      window.ActionInventory.close();
+    }
+    if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
+      window.LockpickingQTE.close();
+    }
+    document.body.classList.add("evac-counting");
+    if (evacOverlayEl) evacOverlayEl.hidden = false;
+    updateEvacTimerDisplay();
+  }
+
+  /** 撤离区内倒计时；离开区域则取消，再次进入重新计 10 秒。 */
+  function updateEvacZone(dt) {
+    if (evacCounting) {
+      if (isInEvacZone()) {
+        updateEvacCountdown(dt);
+      } else {
+        cancelEvacCountdown();
+      }
+      return;
+    }
+    if (isInEvacZone()) {
+      tryStartEvacCountdown();
+    }
+  }
+
+  function updateEvacCountdown(dt) {
+    if (!evacCounting) return;
+    evacTimeLeft -= dt;
+    updateEvacTimerDisplay();
+    if (evacTimeLeft <= 0) {
+      evacCounting = false;
+      completeEvacToLobby();
+    }
+  }
+
+  function completeEvacToLobby() {
+    if (evacOverlayEl) evacOverlayEl.hidden = true;
+    if (window.WorldLootBox && window.WorldLootBox.closeChestPanel) {
+      window.WorldLootBox.closeChestPanel();
+    }
+    exit();
+    if (window.LobbyUI && window.LobbyUI.goHome) {
+      window.LobbyUI.goHome();
+    }
+  }
+
   function resetSecurityDoorState() {
+    resetEvacState();
     doorUnlocked = false;
     removeDoorColliders();
     ensureDoorColliders();
@@ -1051,7 +1145,6 @@ if (typeof window !== "undefined") {
   function buildBinRoomAtEnd(parent) {
     var midZ = BIN_ROOM_CENTER_Z + 0.25;
     var wallX = BIN_ROOM_SIZE * 0.5 + 0.25;
-    var backZ = DOOR_Z + CORRIDOR_LEN + BIN_ROOM_SIZE + 0.25;
 
     addBox(parent, BIN_ROOM_SIZE, 0.1, BIN_ROOM_SIZE, 0, 0.05, midZ, 0x5a5e64, false);
     addBox(
@@ -1074,9 +1167,142 @@ if (typeof window !== "undefined") {
       midZ,
       0x2e3338
     );
+    buildBinRoomBackOpening(parent);
+    buildBinRoomSideSeals(parent);
+    buildBinRoomEntryWings(parent);
+  }
+
+  /** 搜刮间后侧通往撤离走廊的开口（两侧挡墙） */
+  function buildBinRoomBackOpening(parent) {
+    var backZ = EVAC_CORRIDOR_START_Z + 0.25;
+    var wingW = (BIN_ROOM_SIZE - CORRIDOR_W) * 0.5;
+    var wingCx = CORRIDOR_W * 0.5 + wingW * 0.5;
     addBox(
       parent,
-      BIN_ROOM_SIZE,
+      wingW,
+      SECTOR_WALL_H,
+      0.5,
+      -wingCx,
+      SECTOR_WALL_H * 0.5,
+      backZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      wingW,
+      SECTOR_WALL_H,
+      0.5,
+      wingCx,
+      SECTOR_WALL_H * 0.5,
+      backZ,
+      0x2e3338
+    );
+  }
+
+  /** 宝箱后 10 m 撤离走廊 */
+  function buildEvacCorridor(parent) {
+    var midZ = EVAC_CORRIDOR_START_Z + EVAC_CORRIDOR_LEN * 0.5 + 0.25;
+    var wallX = CORRIDOR_W * 0.5 + 0.25;
+    addBox(
+      parent,
+      CORRIDOR_W,
+      0.1,
+      EVAC_CORRIDOR_LEN,
+      0,
+      0.05,
+      midZ,
+      0x5a5e64,
+      false
+    );
+    addBox(
+      parent,
+      0.5,
+      SECTOR_WALL_H,
+      EVAC_CORRIDOR_LEN,
+      -wallX,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      0.5,
+      SECTOR_WALL_H,
+      EVAC_CORRIDOR_LEN,
+      wallX,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+  }
+
+  function buildEvacCorridorSideSeals(parent) {
+    var midZ = EVAC_CORRIDOR_START_Z + EVAC_CORRIDOR_LEN * 0.5 + 0.25;
+    var innerX = CORRIDOR_W * 0.5 + 0.25;
+    var outerX = 6.25;
+    var fillW = outerX - innerX;
+    var fillCx = innerX + fillW * 0.5;
+    addBox(
+      parent,
+      fillW,
+      SECTOR_WALL_H,
+      EVAC_CORRIDOR_LEN,
+      -fillCx,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      fillW,
+      SECTOR_WALL_H,
+      EVAC_CORRIDOR_LEN,
+      fillCx,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+  }
+
+  /** 撤离点 3×3 m */
+  function buildEvacRoom(parent) {
+    var midZ = EVAC_ROOM_CENTER_Z + 0.25;
+    var wallX = EVAC_ROOM_SIZE * 0.5 + 0.25;
+    var backZ = EVAC_ROOM_START_Z + EVAC_ROOM_SIZE + 0.25;
+    addBox(
+      parent,
+      EVAC_ROOM_SIZE,
+      0.1,
+      EVAC_ROOM_SIZE,
+      0,
+      0.05,
+      midZ,
+      0x4a5e68,
+      false
+    );
+    addBox(
+      parent,
+      0.5,
+      SECTOR_WALL_H,
+      EVAC_ROOM_SIZE,
+      -wallX,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      0.5,
+      SECTOR_WALL_H,
+      EVAC_ROOM_SIZE,
+      wallX,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      EVAC_ROOM_SIZE,
       SECTOR_WALL_H,
       0.5,
       0,
@@ -1084,13 +1310,41 @@ if (typeof window !== "undefined") {
       backZ,
       0x2e3338
     );
-    buildBinRoomSideSeals(parent);
-    buildBinRoomEntryWings(parent);
+    buildEvacRoomSideSeals(parent);
   }
 
-  /** 主围区侧墙延长到走廊+搜刮间 */
+  function buildEvacRoomSideSeals(parent) {
+    var midZ = EVAC_ROOM_CENTER_Z + 0.25;
+    var innerX = EVAC_ROOM_SIZE * 0.5 + 0.25;
+    var outerX = 6.25;
+    var fillW = outerX - innerX;
+    var fillCx = innerX + fillW * 0.5;
+    addBox(
+      parent,
+      fillW,
+      SECTOR_WALL_H,
+      EVAC_ROOM_SIZE,
+      -fillCx,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+    addBox(
+      parent,
+      fillW,
+      SECTOR_WALL_H,
+      EVAC_ROOM_SIZE,
+      fillCx,
+      SECTOR_WALL_H * 0.5,
+      midZ,
+      0x2e3338
+    );
+  }
+
+  /** 主围区侧墙延长到走廊+搜刮间+撤离区 */
   function buildSectorWallExtension(parent) {
-    var extLen = CORRIDOR_LEN + BIN_ROOM_SIZE;
+    var extLen =
+      CORRIDOR_LEN + BIN_ROOM_SIZE + EVAC_CORRIDOR_LEN + EVAC_ROOM_SIZE;
     var extMidZ = DOOR_Z + extLen * 0.5 + 0.25;
     addBox(
       parent,
@@ -1210,27 +1464,51 @@ if (typeof window !== "undefined") {
   function updateInteractHints() {
     updateCrosshair();
 
-    if (doorUnlocked && camera && canvas) {
-      if (window.WorldLootBox && !window.WorldLootBox.isOpened()) {
-        window.WorldLootBox.updateAim(pos.x, pos.z, camera);
-        if (window.WorldLootBox.isAimed()) {
-          setInteractHintVisible(true);
-          if (interactHintEl) {
-            interactHintEl.textContent = "准星对准海盗宝箱 · 按 E 开锁";
-          }
-          return;
+    if (doorUnlocked && camera && canvas && window.WorldLootBox) {
+      window.WorldLootBox.updateAim(pos.x, pos.z, camera);
+      if (
+        !window.WorldLootBox.isOpened() &&
+        window.WorldLootBox.isAimed()
+      ) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = "准星对准海盗宝箱 · 按 E 开锁";
         }
+        return;
       }
-
-      if (window.ActionWasteBin) {
-        window.ActionWasteBin.updateAim(pos.x, pos.z, camera);
-        if (window.ActionWasteBin.isAimedAtBin()) {
-          setInteractHintVisible(true);
-          if (interactHintEl) {
-            interactHintEl.textContent = "准星对准废料桶 · 按 F 翻找";
-          }
-          return;
+      if (
+        window.WorldLootBox.isOpened() &&
+        window.WorldLootBox.playerNear(pos.x, pos.z)
+      ) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = "按 E 查看海盗宝箱";
         }
+        return;
+      }
+      if (evacCounting && isInEvacZone()) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent =
+            "撤离倒计时 " +
+            Math.max(0, Math.ceil(evacTimeLeft)) +
+            " 秒 · 离开区域将重置";
+        }
+        return;
+      }
+      if (isInEvacZone()) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = "进入撤离点 · 自动开始 10 秒倒计时";
+        }
+        return;
+      }
+      if (pos.z >= EVAC_CORRIDOR_START_Z + 1) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = "前方撤离走廊 · 进入 3×3 撤离点";
+        }
+        return;
       }
     }
 
@@ -1272,8 +1550,10 @@ if (typeof window !== "undefined") {
     buildCorridorSideSeals(root);
     buildSectorWallExtension(root);
     buildBinRoomAtEnd(root);
+    buildEvacCorridor(root);
+    buildEvacCorridorSideSeals(root);
+    buildEvacRoom(root);
     buildSecurityDoor(root);
-    buildIndustrialWasteBins(root);
     if (window.WorldLootBox && window.WorldLootBox.build) {
       window.WorldLootBox.build(root, {
         loadGltfCached: loadGltfCached,
@@ -1281,115 +1561,6 @@ if (typeof window !== "undefined") {
         registerCollider: registerCollider,
       });
     }
-  }
-
-  function placeWasteBinModel(model, parent, centerX, centerZ, binIndex) {
-    var root = new THREE.Group();
-    root.name = "IndustrialWasteBin_GLB";
-    root.add(model);
-
-    model.scale.set(1, 1, 1);
-    model.updateMatrixWorld(true);
-
-    var box = new THREE.Box3().setFromObject(root);
-    var size = new THREE.Vector3();
-    box.getSize(size);
-    var binSize =
-      window.ActionWasteBin && window.ActionWasteBin.BIN_SIZE
-        ? window.ActionWasteBin.BIN_SIZE
-        : { x: 0.95, y: 1.15, z: 0.95 };
-    fitModelToBox(root, binSize);
-    fitModelToBox(root, binSize);
-
-    box = new THREE.Box3().setFromObject(root);
-    var center = new THREE.Vector3();
-    box.getCenter(center);
-    root.position.set(centerX - center.x, -box.min.y, centerZ - center.z);
-
-    parent.add(root);
-
-    root.updateMatrixWorld(true);
-
-    if (typeof THREE !== "undefined" && window.ActionWasteBin && binIndex != null) {
-      var pickMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(binSize.x, binSize.y, binSize.z),
-        new THREE.MeshBasicMaterial({
-          visible: false,
-          depthWrite: false,
-        })
-      );
-      pickMesh.name = "BinPickVolume";
-      pickMesh.position.set(0, binSize.y * 0.5, 0);
-      root.add(pickMesh);
-      if (window.ActionWasteBin.registerBinPickMesh) {
-        window.ActionWasteBin.registerBinPickMesh(binIndex, pickMesh);
-      }
-      var worldPos = new THREE.Vector3();
-      root.getWorldPosition(worldPos);
-      window.ActionWasteBin.syncBinWorldCenter(
-        binIndex,
-        worldPos.x,
-        worldPos.y + binSize.y * 0.55,
-        worldPos.z
-      );
-    }
-
-    registerCollider(
-      binSize.x,
-      binSize.y,
-      binSize.z,
-      centerX,
-      binSize.y * 0.5,
-      centerZ
-    );
-  }
-
-  function buildIndustrialWasteBins(parent) {
-    if (!window.ActionWasteBin) return;
-    var positions = window.ActionWasteBin.getBinPositions();
-    var url = window.ActionWasteBin.BIN_GLB_URL;
-    var i;
-
-    loadGltfCached(
-      url,
-      function (gltf) {
-        for (i = 0; i < positions.length; i++) {
-          placeWasteBinModel(
-            gltf.scene.clone(true),
-            parent,
-            positions[i].x,
-            positions[i].z,
-            i
-          );
-        }
-      },
-      function (err) {
-        console.error("[ActionScene] 废料桶模型加载失败", err);
-        for (i = 0; i < positions.length; i++) {
-          addBox(
-            parent,
-            0.95,
-            1.15,
-            0.95,
-            positions[i].x,
-            0.575,
-            positions[i].z,
-            0x2a4a6a,
-            false
-          );
-          if (window.ActionWasteBin) {
-            if (window.ActionWasteBin.syncBinWorldCenter) {
-              window.ActionWasteBin.syncBinWorldCenter(
-                i,
-                positions[i].x,
-                0.95,
-                positions[i].z
-              );
-            }
-          }
-        }
-      }
-    );
   }
 
   function cloudMaterial(opacity) {
@@ -1819,8 +1990,8 @@ if (typeof window !== "undefined") {
   function isUiBlocking() {
     return (
       isInventoryOpen() ||
-      (window.ActionWasteBin && window.ActionWasteBin.isOpen()) ||
-      (window.LockpickingQTE && window.LockpickingQTE.isOpen())
+      (window.LockpickingQTE && window.LockpickingQTE.isOpen()) ||
+      (window.WorldLootBox && window.WorldLootBox.isPanelOpen())
     );
   }
 
@@ -1860,7 +2031,15 @@ if (typeof window !== "undefined") {
     animId = requestAnimationFrame(tick);
     var dt = Math.min(clock.getDelta(), 0.05);
 
+    if (doorUnlocked) {
+      updateEvacZone(dt);
+    }
+
     if (isUiBlocking()) {
+      if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
+        window.LockpickingQTE.update(dt);
+      }
+      updatePlayerTransform();
       renderer.render(scene, camera);
       return;
     }
@@ -1883,7 +2062,7 @@ if (typeof window !== "undefined") {
     updateCrouch(dt);
     updatePlayerTransform();
     updateHands(dt, moving);
-    if (pos.z < DOOR_Z + CORRIDOR_LEN + BIN_ROOM_SIZE + 2) {
+    if (pos.z < EVAC_ROOM_START_Z + EVAC_ROOM_SIZE + 2) {
       updateClouds(dt, animTime);
     }
     updateInteractHints();
@@ -2002,6 +2181,10 @@ if (typeof window !== "undefined") {
     if (enterInProgress) return;
     enterInProgress = true;
 
+    if (window.PlayerStatePersist && window.PlayerStatePersist.save) {
+      window.PlayerStatePersist.save();
+    }
+
     if (window.LobbyUI && window.LobbyUI.goHome) {
       window.LobbyUI.goHome();
     }
@@ -2012,9 +2195,6 @@ if (typeof window !== "undefined") {
 
     clearInputKeys();
     resetSecurityDoorState();
-    if (window.ActionWasteBin && window.ActionWasteBin.resetForNewRun) {
-      window.ActionWasteBin.resetForNewRun();
-    }
     if (window.WorldLootBox && window.WorldLootBox.resetForNewRun) {
       window.WorldLootBox.resetForNewRun();
     }
@@ -2056,21 +2236,22 @@ if (typeof window !== "undefined") {
     if (!hintEl) return;
     if (window.ActionWeapon && window.ActionWeapon.hasUziEquipped()) {
       hintEl.textContent =
-        "WASD 移动 · 左键连发 · 右键开镜 · E 开门/宝箱 · F 搜桶 · B 背包 · Q 返回";
+        "WASD 移动 · 左键连发 · 右键开镜 · E 开门/宝箱 · B 背包 · Q 返回";
     } else {
       hintEl.textContent =
-        "WASD 移动 · E 开门/宝箱 · F 搜桶(准星对准) · B 背包 · Q 返回大厅";
+        "WASD 移动 · E 开门/宝箱 · B 背包 · Q 返回大厅";
     }
   }
 
   function exit() {
+    if (window.PlayerStatePersist && window.PlayerStatePersist.save) {
+      window.PlayerStatePersist.save();
+    }
+    resetEvacState();
     enterInProgress = false;
     hideEnterLoading();
     if (window.ActionWeapon) window.ActionWeapon.dispose();
     clearInputKeys();
-    if (window.ActionWasteBin && window.ActionWasteBin.close) {
-      window.ActionWasteBin.close();
-    }
     if (window.ActionInventory) window.ActionInventory.close();
     restoreGameCursor();
     if (document.pointerLockElement === canvas && document.exitPointerLock) {
@@ -2104,39 +2285,15 @@ if (typeof window !== "undefined") {
           return;
         }
         if (
-          window.WorldLootBox.isOpened &&
           window.WorldLootBox.isOpened() &&
           window.WorldLootBox.playerNear(pos.x, pos.z)
         ) {
-          alert("宝箱已经开启过了。");
+          window.WorldLootBox.openChestPanel();
+          releasePointerForUi();
           return;
         }
       }
       trySwipeDoor();
-      return;
-    }
-
-    if (e.code === "KeyF" && !e.repeat) {
-      e.preventDefault();
-      if (!doorUnlocked) {
-        alert("需要先按 E 打开安全门，才能进入走廊搜刮废料桶。");
-        return;
-      }
-      if (window.ActionWasteBin) {
-        if (camera && window.ActionWasteBin.updateAim) {
-          window.ActionWasteBin.updateAim(pos.x, pos.z, camera);
-        }
-        if (window.ActionWasteBin.tryOpenAimed(pos.x, pos.z)) {
-          return;
-        }
-        if (
-          window.ActionWasteBin.isNearAnyBin &&
-          window.ActionWasteBin.isNearAnyBin(pos.x, pos.z) &&
-          !window.ActionWasteBin.isAimedAtBin()
-        ) {
-          alert("请将准星对准废料桶后再按 F。");
-        }
-      }
       return;
     }
 
@@ -2152,8 +2309,8 @@ if (typeof window !== "undefined") {
         window.LockpickingQTE.close();
         return;
       }
-      if (window.ActionWasteBin && window.ActionWasteBin.isOpen()) {
-        window.ActionWasteBin.close();
+      if (window.WorldLootBox && window.WorldLootBox.isPanelOpen()) {
+        window.WorldLootBox.closeChestPanel();
         return;
       }
       if (isInventoryOpen()) {

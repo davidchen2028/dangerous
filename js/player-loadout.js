@@ -237,6 +237,54 @@
     backpackManager = new G.GridManager(cols, rows);
   }
 
+  function serializeSlotItem(item) {
+    if (!item) return null;
+    var o = { id: item.id };
+    if (item.durability != null) o.durability = item.durability;
+    if (item.maxDurability != null) o.maxDurability = item.maxDurability;
+    if (item.stackSize != null) o.stackSize = item.stackSize;
+    return o;
+  }
+
+  function itemFromPersistSlot(saved) {
+    if (!saved || !saved.id || !window.ItemCatalog) return null;
+    var cat = window.ItemCatalog.getItem(saved.id);
+    if (!cat) return null;
+    var item = Object.assign({}, cat);
+    if (saved.durability != null) item.durability = saved.durability;
+    if (saved.maxDurability != null) item.maxDurability = saved.maxDurability;
+    if (saved.stackSize != null) item.stackSize = saved.stackSize;
+    return item;
+  }
+
+  function hardResetLoadout() {
+    loadout.primary = null;
+    loadout.melee = null;
+    loadout.secondary = null;
+    loadout.pistol = null;
+    loadout.helmet = null;
+    loadout.armor = null;
+    loadout.rig = null;
+    loadout.backpack = null;
+    loadout.cards = [null, null, null, null];
+    rigManager = null;
+    backpackManager = null;
+  }
+
+  function deserializeIntoManager(manager, items) {
+    if (!manager || !G || !items || !items.length) return;
+    manager.deserialize(items, function (itemId, entry) {
+      var cat = window.ItemCatalog && window.ItemCatalog.getItem(itemId);
+      if (!cat) return null;
+      var data = G.itemDataFromCatalog(cat);
+      if (!data || !entry) return data;
+      if (entry.durability != null) data.durability = entry.durability;
+      if (entry.maxDurability != null) data.maxDurability = entry.maxDurability;
+      if (entry.stackSize != null) data.stackSize = entry.stackSize;
+      return data;
+    });
+  }
+
   function moveRigItemsToStash() {
     if (!rigManager || !window.GridStashUI) return;
     var stash = window.GridStashUI.getManager();
@@ -600,6 +648,45 @@
     return { ok: true, remaining: getBrassAmmoCount() };
   }
 
+  function tryPlaceLootInBackpackOnly(item) {
+    if (!item || !G || !loadout.backpack || !backpackManager) return false;
+    var data = G.itemDataFromCatalog(item);
+    if (!data) return false;
+    var inst = G.createInventoryItem(data);
+    return backpackManager.tryAutoPlace(inst);
+  }
+
+  function tryPlaceLootInSecureOnly(item) {
+    if (!item || !G) return false;
+    var secure = getSecureManager();
+    if (!secure) return false;
+    var data = G.itemDataFromCatalog(item);
+    if (!data) return false;
+    var inst = G.createInventoryItem(data);
+    return secure.tryAutoPlace(inst);
+  }
+
+  /**
+   * 宝箱双击：先安全箱，再背包。
+   * @returns {"secure"|"backpack"|false}
+   */
+  function tryPlaceLootInSecureThenBackpack(item) {
+    if (!item || !G) return false;
+    var data = G.itemDataFromCatalog(item);
+    if (!data) return false;
+
+    var secure = getSecureManager();
+    if (secure) {
+      var instSecure = G.createInventoryItem(data);
+      if (secure.tryAutoPlace(instSecure)) return "secure";
+    }
+
+    if (!loadout.backpack || !backpackManager) return false;
+    var instBackpack = G.createInventoryItem(data);
+    if (backpackManager.tryAutoPlace(instBackpack)) return "backpack";
+    return false;
+  }
+
   function tryPlaceInBackpackOrSecure(item) {
     if (!item || !G) return false;
     var cat = item;
@@ -620,12 +707,75 @@
     return false;
   }
 
-  renderLobby();
+  function exportPersistState() {
+    var c;
+    var cards = [];
+    for (c = 0; c < CARD_SLOTS; c++) {
+      cards.push(serializeSlotItem(loadout.cards[c]));
+    }
+    return {
+      primary: serializeSlotItem(loadout.primary),
+      melee: serializeSlotItem(loadout.melee),
+      secondary: serializeSlotItem(loadout.secondary),
+      pistol: serializeSlotItem(loadout.pistol),
+      helmet: serializeSlotItem(loadout.helmet),
+      armor: serializeSlotItem(loadout.armor),
+      rig: serializeSlotItem(loadout.rig),
+      backpack: serializeSlotItem(loadout.backpack),
+      cards: cards,
+      rigItems: rigManager ? rigManager.serialize() : [],
+      backpackItems: backpackManager ? backpackManager.serialize() : [],
+    };
+  }
+
+  function importPersistState(data) {
+    if (!data) return false;
+    hardResetLoadout();
+
+    var item;
+    item = itemFromPersistSlot(data.primary);
+    if (item) equipToSlot("primary", item);
+    item = itemFromPersistSlot(data.melee);
+    if (item) equipToSlot("melee", item);
+    item = itemFromPersistSlot(data.secondary);
+    if (item) equipToSlot("secondary", item);
+    item = itemFromPersistSlot(data.pistol);
+    if (item) equipToSlot("pistol", item);
+    item = itemFromPersistSlot(data.helmet);
+    if (item) equipToSlot("helmet", item);
+    item = itemFromPersistSlot(data.armor);
+    if (item) equipToSlot("armor", item);
+
+    item = itemFromPersistSlot(data.rig);
+    if (item) {
+      equipToSlot("rig", item);
+      deserializeIntoManager(rigManager, data.rigItems);
+    }
+
+    item = itemFromPersistSlot(data.backpack);
+    if (item) {
+      equipToSlot("backpack", item);
+      deserializeIntoManager(backpackManager, data.backpackItems);
+    }
+
+    if (data.cards && data.cards.length) {
+      var c;
+      for (c = 0; c < CARD_SLOTS && c < data.cards.length; c++) {
+        item = itemFromPersistSlot(data.cards[c]);
+        if (item) equipToSlot("card", item, c);
+      }
+    }
+
+    purgeDepletedKeycards();
+    return true;
+  }
 
   window.PlayerLoadout = {
     getLoadout: function () {
       return loadout;
     },
+    exportPersistState: exportPersistState,
+    importPersistState: importPersistState,
     getBackpackManager: function () {
       return backpackManager;
     },
@@ -675,5 +825,8 @@
       return false;
     },
     tryPlaceLoot: tryPlaceInBackpackOrSecure,
+    tryPlaceLootInBackpackOnly: tryPlaceLootInBackpackOnly,
+    tryPlaceLootInSecureOnly: tryPlaceLootInSecureOnly,
+    tryPlaceLootInSecureThenBackpack: tryPlaceLootInSecureThenBackpack,
   };
 })();

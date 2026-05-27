@@ -86,14 +86,10 @@
     }
   }
 
-  btnRoom.addEventListener("click", openRoom);
-  btnStash.addEventListener("click", openStash);
-  if (btnTutorial) {
-    btnTutorial.addEventListener("click", openTutorial);
-  }
-  if (btnMarket) {
-    btnMarket.addEventListener("click", openMarket);
-  }
+  if (btnRoom) btnRoom.addEventListener("click", openRoom);
+  if (btnStash) btnStash.addEventListener("click", openStash);
+  if (btnTutorial) btnTutorial.addEventListener("click", openTutorial);
+  if (btnMarket) btnMarket.addEventListener("click", openMarket);
   bindClose(btnRoomClose, roomBackdrop);
   bindClose(btnStashClose, stashBackdrop);
   bindClose(btnTutorialClose, tutorialBackdrop);

@@ -539,187 +539,6 @@ body.inventory-open .action-inventory * {
   font-size: 0.65rem;
 }
 
-/* 工业废料桶搜刮 */
-.waste-bin-search[hidden] {
-  display: none !important;
-}
-
-.waste-bin-search:not([hidden]) {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-}
-
-.waste-bin-search__backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(4, 8, 14, 0.72);
-}
-
-.waste-bin-search__panel {
-  position: relative;
-  z-index: 1;
-  width: min(100%, 520px);
-  max-height: 90vh;
-  overflow: auto;
-  padding: 1rem;
-  background: linear-gradient(165deg, #1a2430 0%, #0e141c 100%);
-  border: 1px solid rgba(80, 120, 150, 0.45);
-  border-radius: 8px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
-}
-
-.waste-bin-search__title {
-  margin: 0;
-  font-size: 1rem;
-  color: #dce8f4;
-}
-
-.waste-bin-search__sub {
-  margin: 0.2rem 0 0;
-  font-size: 0.72rem;
-  color: #7a8a98;
-}
-
-.waste-bin-search__status {
-  margin: 0.65rem 0 0.4rem;
-  font-size: 0.78rem;
-  color: #9ec4b0;
-  min-height: 1.2em;
-}
-
-.waste-bin-search__grid-wrap {
-  display: flex;
-  justify-content: center;
-  margin: 0.35rem 0;
-  overflow-x: auto;
-}
-
-.waste-bin-loot-row {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 0.45rem;
-  padding: 0.35rem 0.15rem;
-  min-height: 5.5rem;
-}
-
-.waste-bin-loot-card {
-  position: relative;
-  flex: 0 0 auto;
-  box-sizing: border-box;
-  padding: 0.2rem;
-  border: 2px solid rgba(120, 150, 180, 0.55);
-  border-radius: 4px;
-  background: rgba(28, 40, 52, 0.95) center / contain no-repeat;
-  cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease;
-}
-
-.waste-bin-loot-card:hover {
-  border-color: rgba(150, 210, 170, 0.85);
-  transform: translateY(-2px);
-}
-
-.waste-bin-loot-card__name {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 0.15rem 0.2rem;
-  font-size: 0.58rem;
-  line-height: 1.15;
-  text-align: center;
-  color: #e8f0f8;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.78));
-  pointer-events: none;
-}
-
-.waste-bin-search__tip {
-  margin: 0.35rem 0 0.5rem;
-  font-size: 0.68rem;
-  color: #6a7a88;
-  text-align: center;
-}
-
-.waste-bin-search__actions {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.waste-bin-search__take,
-.waste-bin-search__close {
-  flex: 1;
-  padding: 0.4rem 0.5rem;
-  font-size: 0.75rem;
-  border-radius: 4px;
-  cursor: pointer;
-  border: none;
-}
-
-.waste-bin-search__close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-}
-
-.waste-bin-search__kbd {
-  display: inline-block;
-  padding: 0.08rem 0.35rem;
-  font-family: inherit;
-  font-size: 0.62rem;
-  line-height: 1.35;
-  color: #9eb0c4;
-  background: rgba(0, 0, 0, 0.28);
-  border: 1px solid rgba(120, 140, 160, 0.45);
-  border-radius: 3px;
-}
-
-.waste-bin-search__take {
-  color: #0e1418;
-  font-weight: 600;
-  background: linear-gradient(180deg, #9ed4b0 0%, #5a9a70 100%);
-}
-
-.waste-bin-search__close {
-  color: #b8c8d8;
-  background: rgba(30, 40, 52, 0.9);
-  border: 1px solid rgba(90, 110, 130, 0.5);
-}
-
-body.waste-bin-open .action-scene__hint {
-  opacity: 0;
-  visibility: hidden;
-}
-
-.waste-bin-item--hidden {
-  opacity: 0;
-  pointer-events: none;
-  transform: scale(0.85);
-}
-
-.waste-bin-item--pop {
-  animation: waste-bin-pop 0.35s ease forwards;
-}
-
-@keyframes waste-bin-pop {
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-body.waste-bin-open .action-scene__canvas {
-  cursor: default;
-}
-
 /* 屏幕中心准星 */
 .action-crosshair {
   position: fixed;
@@ -809,7 +628,6 @@ body.waste-bin-open .action-scene__canvas {
 }
 
 body.inventory-open .action-crosshair,
-body.waste-bin-open .action-crosshair,
 body.lockpick-qte-open .action-crosshair,
 body.show-cursor .action-crosshair {
   display: none;
@@ -930,6 +748,180 @@ body.show-cursor .action-crosshair {
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* 海盗宝箱 4×4 内部网格 */
+.pirate-chest-loot {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.pirate-chest-loot[hidden] {
+  display: none !important;
+}
+
+.pirate-chest-loot__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 8, 12, 0.72);
+}
+
+.pirate-chest-loot__panel {
+  position: relative;
+  z-index: 1;
+  width: min(22rem, 92vw);
+  padding: 1rem 1.1rem 1.15rem;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 150, 100, 0.35);
+  background: linear-gradient(165deg, rgba(22, 32, 28, 0.97), rgba(12, 18, 16, 0.98));
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+
+.pirate-chest-loot__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.pirate-chest-loot__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #d4e8c8;
+  letter-spacing: 0.04em;
+}
+
+.pirate-chest-loot__close {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: #c8d8c0;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pirate-chest-loot__status {
+  margin: 0 0 0.65rem;
+  font-size: 0.72rem;
+  color: rgba(180, 210, 170, 0.75);
+  text-align: center;
+}
+
+.pirate-chest-loot__foot {
+  margin: 0.75rem 0 0;
+  text-align: center;
+  font-size: 0.68rem;
+  color: rgba(160, 190, 150, 0.6);
+}
+
+.pirate-chest-loot__grid {
+  --inv-cell: 2.35rem;
+}
+
+.pirate-chest-loot__item {
+  cursor: pointer;
+}
+
+.pirate-chest-loot__item--hidden {
+  background-color: #080808 !important;
+  background-image: none !important;
+  border-color: rgba(40, 40, 40, 0.9);
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.85);
+}
+
+.pirate-chest-loot__item--hidden .inv-item__label {
+  opacity: 0;
+}
+
+.pirate-chest-loot__item--pop {
+  animation: pirate-chest-reveal 0.45s ease;
+}
+
+@keyframes pirate-chest-reveal {
+  0% {
+    transform: scale(0.92);
+    filter: brightness(0.2);
+  }
+  60% {
+    transform: scale(1.04);
+    filter: brightness(1.15);
+  }
+  100% {
+    transform: scale(1);
+    filter: none;
+  }
+}
+
+body.pirate-chest-loot-open .action-crosshair,
+body.pirate-chest-loot-open .action-scene__hint {
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.pirate-chest-loot-open .pirate-chest-loot,
+body.pirate-chest-loot-open .pirate-chest-loot * {
+  cursor: default;
+}
+
+/* 撤离点倒计时 */
+.action-evac {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 12vh;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 18, 14, 0.82) 0%,
+    rgba(8, 18, 14, 0.35) 45%,
+    transparent 70%
+  );
+}
+
+.action-evac[hidden] {
+  display: none !important;
+}
+
+.action-evac__title {
+  margin: 0;
+  font-size: clamp(1.35rem, 4.5vw, 2rem);
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  text-indent: 0.35em;
+  color: #b8f0c8;
+  text-shadow: 0 0 24px rgba(80, 200, 120, 0.45);
+}
+
+.action-evac__timer {
+  margin: 0.85rem 0 0;
+  font-size: clamp(3rem, 14vw, 5.5rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 4px 28px rgba(0, 0, 0, 0.65);
+}
+
+body.evac-counting .action-crosshair,
+body.evac-counting .action-scene__hint,
+body.evac-counting .action-interact-hint {
+  opacity: 0;
+  pointer-events: none;
 }
 
 @media (max-width: 720px) {

@@ -36,6 +36,7 @@
   var didDragThisGesture = false;
   var loadoutPending = null;
   var loadoutDragActive = false;
+  var persistReady = false;
 
   function catalogToItem(cat) {
     if (!cat || !window.ItemCatalog) return null;
@@ -378,10 +379,15 @@
     );
   }
 
+  function hostGridClass(board) {
+    if (board.id === "stash") return "stash-grid inv-grid-host";
+    return "inv-grid-host";
+  }
+
   function buildBoardDom(board) {
     if (!board.host) return;
     board.host.innerHTML = "";
-    board.host.className = "inv-grid-host";
+    board.host.className = hostGridClass(board);
 
     var wrap = document.createElement("div");
     wrap.className = "inv-grid-board";
@@ -805,6 +811,32 @@
     board.el = null;
   }
 
+  function resolvePersistEntry(itemId, entry) {
+    var cat = window.ItemCatalog && window.ItemCatalog.getItem(itemId);
+    if (!cat) return null;
+    var data = G.itemDataFromCatalog(cat);
+    if (!data || !entry) return data;
+    if (entry.durability != null) data.durability = entry.durability;
+    if (entry.maxDurability != null) data.maxDurability = entry.maxDurability;
+    if (entry.stackSize != null) data.stackSize = entry.stackSize;
+    return data;
+  }
+
+  function deserializeIntoManager(manager, items) {
+    if (!manager) return;
+    manager.deserialize(items || [], resolvePersistEntry);
+  }
+
+  function notifyPersist() {
+    if (
+      persistReady &&
+      window.PlayerStatePersist &&
+      window.PlayerStatePersist.scheduleSave
+    ) {
+      window.PlayerStatePersist.scheduleSave();
+    }
+  }
+
   function renderAll() {
     purgeDepletedKeycardsInManager(stashManager);
     purgeDepletedKeycardsInManager(secureManager);
@@ -821,6 +853,7 @@
       buildBoardDom(b);
       renderBoard(b);
     }
+    notifyPersist();
   }
 
   function countStashItem(id) {
@@ -1096,6 +1129,15 @@
     renderBoard(board);
   }
 
+  function refreshStashPanel() {
+    renderAll();
+    if (window.PlayerLoadout && window.PlayerLoadout.renderLobby) {
+      window.PlayerLoadout.renderLobby();
+    }
+    var layout = document.querySelector(".hub-panel__box--stash > .stash-layout");
+    if (layout) layout.scrollTop = 0;
+  }
+
   function init() {
     if (popoverCloseBtn) {
       popoverCloseBtn.addEventListener("click", hidePopover);
@@ -1103,14 +1145,41 @@
     if (popoverSellBtn) {
       popoverSellBtn.addEventListener("click", sellSelectedItem);
     }
-    seedStarterKit();
-    renderAll();
     bindLoadoutSlots();
+  }
+
+  function exportPersistState() {
+    return {
+      stash: stashManager.serialize(),
+      secure: secureManager.serialize(),
+    };
+  }
+
+  function importPersistState(data) {
+    if (!data) return false;
+    stashManager = G.GridManager.createStash();
+    secureManager = new G.GridManager(1, 2);
+    deserializeIntoManager(stashManager, data.stash);
+    deserializeIntoManager(secureManager, data.secure);
+    seeded = true;
+    return true;
+  }
+
+  function enablePersist() {
+    persistReady = true;
   }
 
   window.GridStashUI = {
     init: init,
+    ensureSeeded: seedStarterKit,
+    markSeeded: function () {
+      seeded = true;
+    },
+    enablePersist: enablePersist,
+    exportPersistState: exportPersistState,
+    importPersistState: importPersistState,
     render: renderAll,
+    refreshStashPanel: refreshStashPanel,
     bindLoadoutSlots: bindLoadoutSlots,
     tryAddMarketItem: tryAddMarketItem,
     tryAddCatalogItem: tryAddCatalogItem,

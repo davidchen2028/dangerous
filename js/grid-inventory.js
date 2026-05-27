@@ -315,25 +315,35 @@
   /** 简单序列化（后续可同步服务器） */
   GridManager.prototype.serialize = function () {
     return this.items.map(function (it) {
-      return {
+      var entry = {
         instanceId: it.instanceId,
         itemId: it.itemData.id,
         x: it.x,
         y: it.y,
       };
+      if (it.itemData.durability != null) {
+        entry.durability = it.itemData.durability;
+      }
+      if (it.itemData.maxDurability != null) {
+        entry.maxDurability = it.itemData.maxDurability;
+      }
+      if (it.itemData.stackSize != null) {
+        entry.stackSize = it.itemData.stackSize;
+      }
+      return entry;
     });
   };
 
   /**
    * @param {Array<{instanceId:number,itemId:string,x:number,y:number}>} data
-   * @param {function(string): ItemData|null} resolveItemData
+   * @param {function(string, Object): ItemData|null} resolveItemData
    */
   GridManager.prototype.deserialize = function (data, resolveItemData) {
     var self = this;
     this._initGrid();
     this.items = [];
     (data || []).forEach(function (entry) {
-      var idata = resolveItemData(entry.itemId);
+      var idata = resolveItemData(entry.itemId, entry);
       if (!idata) return;
       var inst = createInventoryItem(idata, -1, -1, entry.instanceId);
       if (entry.instanceId >= _instanceSeq) {

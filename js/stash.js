@@ -23,7 +23,11 @@
 
   window.LobbyStash = {
     applyFullStash: function () {
-      if (window.GridStashUI) window.GridStashUI.render();
+      if (window.GridStashUI && window.GridStashUI.refreshStashPanel) {
+        window.GridStashUI.refreshStashPanel();
+      } else if (window.GridStashUI) {
+        window.GridStashUI.render();
+      }
     },
     setCell: function () {
       /* 旧版逐格 API 已弃用，保留空实现兼容 */
@@ -31,7 +35,9 @@
     tryAddMarketItem: tryAddMarketItem,
     onPanelOpen: function () {
       updateStashHint();
-      if (window.GridStashUI) {
+      if (window.GridStashUI && window.GridStashUI.refreshStashPanel) {
+        window.GridStashUI.refreshStashPanel();
+      } else if (window.GridStashUI) {
         window.GridStashUI.render();
       }
       if (window.PlayerLoadout) window.PlayerLoadout.renderLobby();

@@ -266,9 +266,19 @@
   border-color: rgba(80, 140, 90, 0.35);
 }
 
+.market-card--rare {
+  border-color: rgba(80, 140, 210, 0.45);
+  box-shadow: 0 0 14px rgba(50, 100, 170, 0.12);
+}
+
 .market-card--epic {
   border-color: rgba(140, 90, 200, 0.55);
   box-shadow: 0 0 18px rgba(120, 70, 180, 0.15);
+}
+
+.market-card--legendary {
+  border-color: rgba(220, 175, 80, 0.7);
+  box-shadow: 0 0 20px rgba(220, 170, 70, 0.22);
 }
 
 .market-card--epic .market-card__economy {
@@ -277,6 +287,22 @@
 
 .market-card--epic .market-card__name {
   color: #e4d4f8;
+}
+
+.market-card--rare .market-card__economy {
+  color: #8fbce8;
+}
+
+.market-card--rare .market-card__name {
+  color: #d8e9ff;
+}
+
+.market-card--legendary .market-card__economy {
+  color: #f2d48c;
+}
+
+.market-card--legendary .market-card__name {
+  color: #fff0bc;
 }
 
 .market-card__foot {

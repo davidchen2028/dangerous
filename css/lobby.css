@@ -484,15 +484,33 @@ body.action-open .btn-hub--action {
 }
 
 .hub-panel__box--stash {
+  display: flex;
+  flex-direction: column;
   width: min(920px, 96vw);
   max-height: 92vh;
+  overflow: hidden;
+}
+
+.hub-panel__box--stash > .stash-layout {
+  flex: 1 1 auto;
+  min-height: min(52vh, 520px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 1rem;
+  box-sizing: border-box;
+}
+
+.hub-panel__box--stash > .stash-subgrids {
+  flex-shrink: 0;
+  padding: 0 1rem 1rem;
+  box-sizing: border-box;
 }
 
 .stash-layout {
   display: flex;
   gap: 0.75rem;
   align-items: flex-start;
-  min-height: 0;
+  width: 100%;
 }
 
 .lobby-loadout {
@@ -535,6 +553,7 @@ body.loadout-drag-active .loadout-slot {
 .stash-main {
   flex: 1;
   min-width: 0;
+  min-height: 14rem;
 }
 
 .stash-tip {
@@ -776,7 +795,13 @@ body.loadout-drag-active .loadout-slot {
 }
 
 #stashGrid .inv-grid-board {
-  max-height: min(58vh, 560px);
+  max-height: min(50vh, 520px);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+#stashGrid.stash-grid.inv-grid-host {
+  min-height: 12rem;
 }
 
 .inv-grid-bg {
@@ -1245,11 +1270,9 @@ body.loadout-drag-active .loadout-slot {
     max-height: none;
   }
 
-  .stash-grid {
-    gap: 3px;
-    padding: 0.5rem;
-    max-height: 50vh;
-    aspect-ratio: 6 / 10;
+  #stashGrid .inv-grid-board {
+    max-height: min(46vh, 460px);
+    max-width: 100%;
   }
 
   .chat-panel {

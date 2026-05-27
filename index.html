@@ -6,9 +6,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>极危行动 — 行动基地</title>
-  <link rel="stylesheet" href="css/lobby.css?v=13">
-  <link rel="stylesheet" href="css/market-page.css?v=2">
-  <link rel="stylesheet" href="css/action-scene.css?v=14">
+  <link rel="stylesheet" href="css/lobby.css?v=15">
+  <link rel="stylesheet" href="css/market-page.css?v=3">
+  <link rel="stylesheet" href="css/action-scene.css?v=16">
 </head>
 <body class="hub-home">
   <div class="lobby" aria-hidden="true"></div>
@@ -69,7 +69,7 @@
               <li><kbd>B</kbd> / <kbd>Tab</kbd><span>打开 / 关闭战术背包（自动显示鼠标）</span></li>
               <li><span class="tutorial-keys__mouse">鼠标</span><span>转动视角；点击画面锁定指针</span></li>
               <li><kbd>Q</kbd><span>返回大厅</span></li>
-              <li><kbd>Esc</kbd><span>关闭背包 / 搜桶界面</span></li>
+              <li><kbd>Esc</kbd><span>关闭背包 / 开锁界面</span></li>
             </ul>
           </section>
 
@@ -192,11 +192,16 @@
     <canvas class="action-scene__canvas" id="actionCanvas"></canvas>
     <button type="button" class="action-scene__back" id="btnActionBack" aria-label="返回大厅">×</button>
     <p class="action-scene__map-name" id="actionMapName">新手教程</p>
-    <p class="action-scene__hint" id="actionHint">WASD 移动 · E 开门/开锁 · F 搜桶 · B 背包 · Q 返回大厅</p>
+    <p class="action-scene__hint" id="actionHint">WASD 移动 · E 开门/宝箱 · B 背包 · Q 返回大厅</p>
     <div class="action-crosshair action-crosshair--hidden" id="actionCrosshair" aria-hidden="true"></div>
     <p class="action-ammo-hud action-ammo-hud--hidden" id="actionAmmoHud" aria-live="polite"></p>
     <p class="action-durability-banner" id="actionDurabilityBanner" hidden role="status"></p>
     <p class="action-interact-hint" id="actionInteractHint" hidden>靠近安全门 · 按 E 开门</p>
+
+    <div class="action-evac" id="actionEvac" hidden aria-live="polite">
+      <p class="action-evac__title">即将撤离</p>
+      <p class="action-evac__timer" id="actionEvacTimer">10</p>
+    </div>
 
     <div class="lockpick-qte" id="lockpickQte" hidden role="dialog" aria-label="开锁校准">
       <div class="lockpick-qte__panel">
@@ -215,25 +220,16 @@
       </div>
     </div>
 
-    <div class="waste-bin-search" id="wasteBinSearch" hidden>
-      <div class="waste-bin-search__backdrop" id="wasteBinSearchBackdrop"></div>
-      <div class="waste-bin-search__panel" role="dialog" aria-label="搜刮废料桶">
-        <header class="waste-bin-search__head">
-          <h2 class="waste-bin-search__title">工业废料回收桶</h2>
-          <p class="waste-bin-search__sub">锈迹铁皮桶 · 机油渍与废铁渣</p>
+    <div class="pirate-chest-loot" id="pirateChestLoot" hidden role="dialog" aria-label="海盗宝箱">
+      <div class="pirate-chest-loot__backdrop" id="pirateChestLootBackdrop"></div>
+      <div class="pirate-chest-loot__panel">
+        <header class="pirate-chest-loot__head">
+          <h2 class="pirate-chest-loot__title">海盗宝箱</h2>
+          <button type="button" class="pirate-chest-loot__close" id="pirateChestLootClose" aria-label="关闭">×</button>
         </header>
-        <p class="waste-bin-search__status" id="wasteBinSearchStatus"></p>
-        <div class="waste-bin-search__grid-wrap">
-          <div class="inv-grid-host" id="wasteBinSearchGrid"></div>
-        </div>
-        <p class="waste-bin-search__tip">高价值物品出现更慢 · 单击拾取 · 占格污染背包</p>
-        <div class="waste-bin-search__actions">
-          <button type="button" class="waste-bin-search__take" id="wasteBinTakeAll">全部拾取</button>
-          <button type="button" class="waste-bin-search__close" id="wasteBinSearchClose">
-            <span>关闭</span>
-            <kbd class="waste-bin-search__kbd">Esc</kbd>
-          </button>
-        </div>
+        <p class="pirate-chest-loot__status" id="pirateChestLootStatus">物资逐渐显现… 双击：先安全箱，再背包</p>
+        <div class="inv-grid-host" id="pirateChestLootGrid"></div>
+        <p class="pirate-chest-loot__foot"><kbd>Esc</kbd> 关闭 · 双击先安全箱再背包，都放不下则留在箱内</p>
       </div>
     </div>
 
@@ -273,19 +269,20 @@
   }
   </script>
   <script src="js/socket.io.min.js?v=4"></script>
-  <script src="js/lobby-ui.js?v=7"></script>
-  <script src="js/item-catalog.js?v=10"></script>
-  <script src="js/grid-inventory.js?v=3"></script>
-  <script src="js/grid-stash-ui.js?v=14"></script>
-  <script src="js/player-loadout.js?v=12"></script>
-  <script src="js/lobby-market.js?v=14"></script>
-  <script src="js/stash.js?v=12"></script>
+  <script src="js/lobby-ui.js?v=8"></script>
+  <script src="js/item-catalog.js?v=16"></script>
+  <script src="js/grid-inventory.js?v=4"></script>
+  <script src="js/grid-stash-ui.js?v=17"></script>
+  <script src="js/player-loadout.js?v=17"></script>
+  <script src="js/lobby-market.js?v=19"></script>
+  <script src="js/player-state-persist.js?v=2"></script>
+  <script src="js/stash.js?v=13"></script>
   <script src="js/net.js?v=4"></script>
   <script src="js/action-inventory.js?v=7"></script>
-  <script src="js/lockpicking-qte.js?v=1"></script>
-  <script src="js/world-loot-box.js?v=2"></script>
-  <script src="js/action-waste-bin.js?v=6"></script>
+  <script src="js/pirate-loot-roll.js?v=5"></script>
+  <script src="js/lockpicking-qte.js?v=2"></script>
+  <script src="js/world-loot-box.js?v=8"></script>
   <script src="js/action-weapon.js?v=11"></script>
-  <script type="module" src="js/action-scene.js?v=44"></script>
+  <script type="module" src="js/action-scene.js?v=51"></script>
 </body>
 </html>

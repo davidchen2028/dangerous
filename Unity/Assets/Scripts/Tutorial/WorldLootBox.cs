@@ -101,10 +101,8 @@ public class WorldLootBox : MonoBehaviour
         PirateLootManager.PirateChestRollResult roll =
             PirateLootManager.Instance.RollPirateChest();
 
-        // TODO: 对接 PlayerGridInventory / PlayerWallet
+        // TODO: 对接 PlayerGridInventory（仅藏品类 3001–3005）
         // foreach (var item in roll.items)
-        //     PlayerGridInventory.Instance.TryAddByItemId(item.itemID);
-        // if (roll.cashCredits > 0)
-        //     PlayerWallet.Instance.AddCredits(roll.cashCredits);
+        //     PlayerGridInventory.Instance.TryAddByItemId(item.itemID.ToString());
     }
 }
