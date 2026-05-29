@@ -94,12 +94,13 @@ def _friends_payload(user_id: int) -> dict:
 
 
 def _emit_auth_ok(sid: str, user_row: Any, token: str, message: str = "") -> None:
+    uid = int(user_row["id"])
     payload = {
         "token": token,
         "user": _public_user(user_row, online=True),
-        "stash": db.get_stash(int(user_row["id"])),
+        "playerState": db.get_player_state(uid),
         "message": message,
-        **_friends_payload(int(user_row["id"])),
+        **_friends_payload(uid),
     }
     emit("auth_ok", payload, room=sid)
 
@@ -136,6 +137,12 @@ def _admin_key_ok(key: str) -> bool:
     if ADMIN_LOCAL_ONLY and request.remote_addr not in ("127.0.0.1", "::1"):
         return False
     return secrets.compare_digest(key or "", ADMIN_KEY)
+
+
+def _admin_password_ok(password: str) -> bool:
+    if not ADMIN_KEY:
+        return False
+    return secrets.compare_digest(password or "", ADMIN_KEY)
 
 
 def _client_ip() -> str:
@@ -253,19 +260,22 @@ def api_admin_user_online_stats() -> Any:
     key = request.args.get("key", "")
     if not _admin_key_ok(key):
         return jsonify({"error": "forbidden"}), 403
-    online_ids = db.get_online_user_ids_from_db() | set(sid_by_user_id.keys())
-    stats = db.list_users_online_stats(online_ids)
-    return jsonify(
-        {
-            "generatedAt": datetime.now(timezone.utc)
-            .replace(microsecond=0)
-            .isoformat(),
-            "onlineCount": len(sid_by_user_id),
-            "userCount": len(stats),
-            "users": stats,
-            "bannedIps": db.list_active_banned_ips(),
-        }
-    )
+    try:
+        online_ids = db.get_online_user_ids_from_db() | set(sid_by_user_id.keys())
+        stats = db.list_users_online_stats(online_ids)
+        return jsonify(
+            {
+                "generatedAt": datetime.now(timezone.utc)
+                .replace(microsecond=0)
+                .isoformat(),
+                "onlineCount": len(sid_by_user_id),
+                "userCount": len(stats),
+                "users": stats,
+                "bannedIps": db.list_active_banned_ips(),
+            }
+        )
+    except Exception as exc:
+        return jsonify({"error": "stats_failed", "message": str(exc)}), 500
 
 
 @app.route("/api/admin/kick", methods=["POST"])
@@ -392,6 +402,31 @@ def api_admin_unban_ip() -> Any:
     if not db.clear_ip_ban(ip):
         return jsonify({"ok": False, "message": "该 IP 未在封禁列表"}), 400
     return jsonify({"ok": True, "message": f"已解封 IP：{ip}"})
+
+
+@app.route("/api/admin/delete-user", methods=["POST"])
+def api_admin_delete_user() -> Any:
+    key = request.args.get("key", "")
+    if not _admin_key_ok(key):
+        return jsonify({"error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    user_id = int(data.get("userId", 0))
+    admin_password = (data.get("adminPassword") or "").strip()
+    if user_id <= 0:
+        return jsonify({"ok": False, "message": "无效用户"}), 400
+    if not admin_password:
+        return jsonify({"ok": False, "message": "请输入管理员密码"}), 400
+    if not _admin_password_ok(admin_password):
+        return jsonify({"ok": False, "message": "管理员密码错误"}), 403
+    user = db.get_user_by_id(user_id)
+    if not user:
+        return jsonify({"ok": False, "message": "用户不存在"}), 404
+    nickname = user["nickname"]
+    _disconnect_user(user_id, "账号已被管理员注销")
+    ok, msg = db.delete_user(user_id)
+    if not ok:
+        return jsonify({"ok": False, "message": msg}), 500
+    return jsonify({"ok": True, "message": f"已注销账号：{nickname}"})
 
 
 _MIME_OVERRIDES = {
@@ -649,6 +684,30 @@ def on_friend_request_decline(data: dict) -> None:
         return
     emit("friend_notice", {"message": msg})
     _push_friends_update(sess["user_id"])
+
+
+@socketio.on("player_state_save")
+def on_player_state_save(data: dict) -> None:
+    from flask import request
+
+    sess = sessions_by_sid.get(request.sid)
+    if not sess:
+        return
+
+    state = (data or {}).get("state")
+    if not isinstance(state, dict):
+        emit("player_state_error", {"message": "存档格式错误"})
+        return
+
+    ok, result = db.save_player_state(sess["user_id"], state)
+    if not ok:
+        emit("player_state_error", {"message": result})
+        return
+
+    emit(
+        "player_state_saved",
+        {"savedAt": result, "credits": db.get_player_state(sess["user_id"]).get("credits")},
+    )
 
 
 @socketio.on("stash_update")

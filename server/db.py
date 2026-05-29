@@ -11,6 +11,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 DB_PATH = Path(__file__).resolve().parent / "lobby.db"
 STASH_CELL_COUNT = 60
+DEFAULT_CREDITS = 50000
+PLAYER_STATE_VERSION = 1
+MAX_PLAYER_STATE_BYTES = 512_000
 
 
 def _utc_now() -> str:
@@ -111,6 +114,7 @@ def init_db() -> None:
     _migrate_users_kick_requested_at()
     _migrate_users_last_ip()
     _migrate_banned_ips_table()
+    _migrate_users_player_state_json()
 
 
 def _migrate_users_banned_until() -> None:
@@ -145,6 +149,15 @@ def _migrate_banned_ips_table() -> None:
             )
             """
         )
+
+
+def _migrate_users_player_state_json() -> None:
+    with connect() as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "player_state_json" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN player_state_json TEXT")
+        if "player_state_updated_at" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN player_state_updated_at TEXT")
 
 
 def normalize_ip(ip: Optional[str]) -> str:
@@ -268,16 +281,86 @@ def list_active_banned_ips() -> List[Dict[str, Any]]:
     return result
 
 
+def default_player_state() -> Dict[str, Any]:
+    return {
+        "v": PLAYER_STATE_VERSION,
+        "credits": DEFAULT_CREDITS,
+        "grids": None,
+        "loadout": None,
+    }
+
+
+def _clamp_credits(value: Any) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_CREDITS
+    return max(0, min(n, 999_999_999))
+
+
+def normalize_player_state(raw: Any) -> Dict[str, Any]:
+    if not isinstance(raw, dict):
+        return default_player_state()
+    state = default_player_state()
+    if raw.get("v") == PLAYER_STATE_VERSION:
+        state["credits"] = _clamp_credits(raw.get("credits"))
+        grids = raw.get("grids")
+        loadout = raw.get("loadout")
+        if grids is not None:
+            state["grids"] = grids
+        if loadout is not None:
+            state["loadout"] = loadout
+    return state
+
+
+def get_player_state(user_id: int) -> Dict[str, Any]:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT player_state_json FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+    if not row or not row["player_state_json"]:
+        return default_player_state()
+    try:
+        data = json.loads(row["player_state_json"])
+        return normalize_player_state(data)
+    except (json.JSONDecodeError, TypeError):
+        return default_player_state()
+
+
+def save_player_state(user_id: int, state: Dict[str, Any]) -> Tuple[bool, str]:
+    normalized = normalize_player_state(state)
+    payload = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
+    if len(payload.encode("utf-8")) > MAX_PLAYER_STATE_BYTES:
+        return False, "存档过大"
+    now = _utc_now()
+    with connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE users
+            SET player_state_json = ?, player_state_updated_at = ?
+            WHERE id = ?
+            """,
+            (payload, now, user_id),
+        )
+        if cur.rowcount == 0:
+            return False, "用户不存在"
+    return True, now
+
+
 def empty_stash() -> List[Optional[str]]:
     return [None] * STASH_CELL_COUNT
 
 
 def create_user(nickname: str, password_hash: str) -> int:
     stash = json.dumps(empty_stash())
+    player_state = json.dumps(default_player_state(), ensure_ascii=False)
     with connect() as conn:
         cur = conn.execute(
-            "INSERT INTO users (nickname, password_hash, stash_json, created_at) VALUES (?, ?, ?, ?)",
-            (nickname, password_hash, stash, _utc_now()),
+            """
+            INSERT INTO users (nickname, password_hash, stash_json, player_state_json, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (nickname, password_hash, stash, player_state, _utc_now()),
         )
         return int(cur.lastrowid)
 
@@ -313,6 +396,28 @@ def delete_session(token: str) -> None:
 def delete_all_user_sessions(user_id: int) -> None:
     with connect() as conn:
         conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+
+def delete_user(user_id: int) -> Tuple[bool, str]:
+    user = get_user_by_id(user_id)
+    if not user:
+        return False, "用户不存在"
+    nickname = user["nickname"]
+    with connect() as conn:
+        conn.execute("DELETE FROM online_sessions WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        conn.execute(
+            "DELETE FROM friend_requests WHERE from_user_id = ? OR to_user_id = ?",
+            (user_id, user_id),
+        )
+        conn.execute(
+            "DELETE FROM friendships WHERE user_id = ? OR friend_id = ?",
+            (user_id, user_id),
+        )
+        cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        if cur.rowcount == 0:
+            return False, "删除失败"
+    return True, nickname
 
 
 def ban_user_days(user_id: int, days: int = 1) -> Optional[str]:

@@ -79,6 +79,59 @@
       border-color: rgba(180, 120, 220, 0.45);
       color: #c8a8e8;
     }
+    .btn-delete {
+      border-color: rgba(200, 60, 50, 0.55);
+      color: #f0a090;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 1rem;
+    }
+    .modal-backdrop[hidden] { display: none; }
+    .modal {
+      width: min(360px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+    }
+    .modal h2 {
+      margin: 0 0 0.5rem;
+      font-size: 1rem;
+    }
+    .modal p {
+      margin: 0 0 0.75rem;
+      font-size: 0.8125rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .modal label {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+    .modal input {
+      width: 100%;
+      padding: 0.45rem 0.6rem;
+      font-size: 0.875rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: rgba(8, 12, 18, 0.9);
+      color: var(--text);
+      margin-bottom: 0.85rem;
+    }
+    .modal__actions {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+    }
     .ip-list {
       max-width: 1200px;
       margin: 0.75rem auto 0;
@@ -220,7 +273,20 @@
     <strong>已封禁 IP</strong>
     <ul id="bannedIpList"></ul>
   </div>
-  <p class="foot">账号封禁 / IP 封禁互不影响。IP 取用户<strong>最近一次登录</strong>地址；封禁 IP 后该地址无法连接（含注册登录）。勿封 127.0.0.1。请勿分享带密钥的链接。</p>
+  <p class="foot">账号封禁 / IP 封禁互不影响。注销账号不可恢复，需再次输入管理员密码。请勿分享带密钥的链接。</p>
+
+  <div class="modal-backdrop" id="deleteModal" hidden>
+    <div class="modal" role="dialog" aria-labelledby="deleteModalTitle">
+      <h2 id="deleteModalTitle">注销账号</h2>
+      <p id="deleteModalDesc">将永久删除该账号及好友、会话、在线记录，无法恢复。</p>
+      <label for="deleteAdminPassword">管理员密码</label>
+      <input type="password" id="deleteAdminPassword" autocomplete="current-password" placeholder="输入 JIWEI_ADMIN_KEY">
+      <div class="modal__actions">
+        <button type="button" id="deleteModalCancel">取消</button>
+        <button type="button" class="btn-delete" id="deleteModalConfirm">确认注销</button>
+      </div>
+    </div>
+  </div>
   <script>
     (function () {
       var params = new URLSearchParams(location.search);
@@ -232,6 +298,10 @@
       var tableWrap = document.getElementById("tableWrap");
       var timer = null;
       var actionBusy = false;
+      var pendingDelete = null;
+      var deleteModal = document.getElementById("deleteModal");
+      var deleteAdminPassword = document.getElementById("deleteAdminPassword");
+      var deleteModalDesc = document.getElementById("deleteModalDesc");
 
       function formatDuration(seconds) {
         seconds = Math.max(0, Math.floor(seconds || 0));
@@ -310,10 +380,68 @@
           });
       }
 
+      function openDeleteModal(userId, nickname) {
+        pendingDelete = { userId: userId, nickname: nickname };
+        deleteModalDesc.textContent =
+          "确定永久注销「" + nickname + "」？将删除账号、好友、会话与在线记录，无法恢复。";
+        deleteAdminPassword.value = "";
+        deleteModal.hidden = false;
+        deleteAdminPassword.focus();
+      }
+
+      function closeDeleteModal() {
+        pendingDelete = null;
+        deleteModal.hidden = true;
+        deleteAdminPassword.value = "";
+      }
+
+      function confirmDeleteUser() {
+        if (!pendingDelete) return;
+        var adminPassword = deleteAdminPassword.value;
+        if (!adminPassword) {
+          showToast("请输入管理员密码", true);
+          deleteAdminPassword.focus();
+          return;
+        }
+        var userId = pendingDelete.userId;
+        var nickname = pendingDelete.nickname;
+        adminPost("/api/admin/delete-user", {
+          userId: userId,
+          adminPassword: adminPassword,
+        })
+          .then(function (res) {
+            closeDeleteModal();
+            showToast(res.message || "已注销", false);
+            load(true);
+          })
+          .catch(function (err) {
+            showToast(err.message || "注销失败", true);
+          });
+      }
+
       function onActionClick(e) {
         var btn = e.target.closest("button[data-action]");
         if (!btn || btn.disabled) return;
         var action = btn.getAttribute("data-action");
+
+        if (action === "unban-ip") {
+          var ipOnly = btn.getAttribute("data-ip") || "";
+          if (!ipOnly) {
+            showToast("缺少 IP 地址", true);
+            return;
+          }
+          if (!confirm("确定解封 IP「" + ipOnly + "」？")) return;
+          adminPost("/api/admin/unban-ip", { ip: ipOnly })
+            .then(function (res) {
+              showToast(res.message || "已解封 IP", false);
+              load(true);
+            })
+            .catch(function (err) {
+              showToast(err.message || "解封 IP 失败", true);
+            });
+          return;
+        }
+
         var userId = parseInt(btn.getAttribute("data-user-id"), 10);
         var nickname = btn.getAttribute("data-nickname") || "";
         if (!userId) return;
@@ -323,7 +451,7 @@
           adminPost("/api/admin/kick", { userId: userId })
             .then(function (res) {
               showToast(res.message || "已踢下线", false);
-              load();
+              load(true);
             })
             .catch(function (err) {
               showToast(err.message || "踢下线失败", true);
@@ -337,7 +465,7 @@
           adminPost("/api/admin/ban", { userId: userId, days: days })
             .then(function (res) {
               showToast(res.message || "已封禁", false);
-              load();
+              load(true);
             })
             .catch(function (err) {
               showToast(err.message || "封禁失败", true);
@@ -356,7 +484,7 @@
           adminPost("/api/admin/ban-ip", { userId: userId, days: ipDays })
             .then(function (res) {
               showToast(res.message || "已封禁 IP", false);
-              load();
+              load(true);
             })
             .catch(function (err) {
               showToast(err.message || "封禁 IP 失败", true);
@@ -369,7 +497,7 @@
           adminPost("/api/admin/unban", { userId: userId })
             .then(function (res) {
               showToast(res.message || "已解封", false);
-              load();
+              load(true);
             })
             .catch(function (err) {
               showToast(err.message || "解封失败", true);
@@ -377,17 +505,8 @@
           return;
         }
 
-        if (action === "unban-ip") {
-          var ip = btn.getAttribute("data-ip") || "";
-          if (!confirm("确定解封 IP「" + ip + "」？")) return;
-          adminPost("/api/admin/unban-ip", { ip: ip })
-            .then(function (res) {
-              showToast(res.message || "已解封 IP", false);
-              load();
-            })
-            .catch(function (err) {
-              showToast(err.message || "解封 IP 失败", true);
-            });
+        if (action === "delete-user") {
+          openDeleteModal(userId, nickname);
         }
       }
 
@@ -402,9 +521,50 @@
         ul.innerHTML = "";
         list.forEach(function (item) {
           var li = document.createElement("li");
-          li.textContent = item.ip + " — 至 " + formatTime(item.bannedUntil);
+          li.innerHTML =
+            escapeHtml(item.ip) +
+            " — 至 " +
+            escapeHtml(formatTime(item.bannedUntil)) +
+            ' <button type="button" class="btn-unban" data-action="unban-ip" data-ip="' +
+            escapeHtml(item.ip) +
+            '">解封</button>';
           ul.appendChild(li);
         });
+      }
+
+      function load(soft) {
+        if (!key) {
+          statusEl.className = "error";
+          statusEl.textContent = "缺少 URL 参数 key=你的管理密钥";
+          return;
+        }
+        if (!soft) {
+          statusEl.className = "loading";
+          statusEl.hidden = false;
+          statusEl.textContent = "正在拉取数据…";
+        }
+        fetch("/api/admin/user-online-stats?key=" + encodeURIComponent(key))
+          .then(function (r) {
+            return parseJsonResponse(r).then(function (data) {
+              if (!r.ok) {
+                throw new Error(
+                  r.status === 403
+                    ? "密钥错误或管理页未启用（需设置 JIWEI_ADMIN_KEY 并重启 ./run.sh）"
+                    : (data && (data.message || data.error)) || "HTTP " + r.status
+                );
+              }
+              return data;
+            });
+          })
+          .then(render)
+          .catch(function (err) {
+            if (!soft) {
+              tableWrap.hidden = true;
+            }
+            statusEl.hidden = false;
+            statusEl.className = "error";
+            statusEl.textContent = err.message || "加载失败";
+          });
       }
 
       function render(data) {
@@ -486,10 +646,18 @@
           }
           if (u.ipBanned && u.lastIp) {
             actionsHtml +=
-              '<button type="button" class="btn-unban" data-action="unban-ip" data-ip="' +
+              '<button type="button" class="btn-unban" data-action="unban-ip" data-user-id="' +
+              u.userId +
+              '" data-ip="' +
               escapeHtml(u.lastIp) +
               '">解封IP</button>';
           }
+          actionsHtml +=
+            '<button type="button" class="btn-delete" data-action="delete-user" data-user-id="' +
+            u.userId +
+            '" data-nickname="' +
+            escapeHtml(u.nickname) +
+            '">注销</button>';
           actionsHtml += "</div>";
 
           tr.innerHTML =
@@ -505,38 +673,17 @@
         });
       }
 
-      function load() {
-        if (!key) {
-          statusEl.className = "error";
-          statusEl.textContent = "缺少 URL 参数 key=你的管理密钥";
-          return;
-        }
-        statusEl.className = "loading";
-        statusEl.hidden = false;
-        statusEl.textContent = "正在拉取数据…";
-        fetch("/api/admin/user-online-stats?key=" + encodeURIComponent(key))
-          .then(function (r) {
-            return parseJsonResponse(r).then(function (data) {
-              if (!r.ok) {
-                throw new Error(
-                  r.status === 403
-                    ? "密钥错误或管理页未启用（需设置 JIWEI_ADMIN_KEY 并重启 ./run.sh）"
-                    : (data && (data.message || data.error)) || "HTTP " + r.status
-                );
-              }
-              return data;
-            });
-          })
-          .then(render)
-          .catch(function (err) {
-            tableWrap.hidden = true;
-            statusEl.hidden = false;
-            statusEl.className = "error";
-            statusEl.textContent = err.message || "加载失败";
-          });
-      }
-
       tbody.addEventListener("click", onActionClick);
+      document.getElementById("bannedIpBox").addEventListener("click", onActionClick);
+      document.getElementById("deleteModalCancel").addEventListener("click", closeDeleteModal);
+      document.getElementById("deleteModalConfirm").addEventListener("click", confirmDeleteUser);
+      deleteModal.addEventListener("click", function (e) {
+        if (e.target === deleteModal) closeDeleteModal();
+      });
+      deleteAdminPassword.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") confirmDeleteUser();
+        if (e.key === "Escape") closeDeleteModal();
+      });
       document.getElementById("btnRefresh").addEventListener("click", load);
       document.getElementById("autoRefresh").addEventListener("change", function (e) {
         if (timer) clearInterval(timer);

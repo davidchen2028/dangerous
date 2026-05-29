@@ -219,7 +219,9 @@
     if (data.message) {
       showNotice(data.message, false);
     }
-    if (window.LobbyStash) {
+    if (window.PlayerStatePersist && window.PlayerStatePersist.onAuthOk) {
+      window.PlayerStatePersist.onAuthOk(data.playerState);
+    } else if (window.LobbyStash) {
       window.LobbyStash.onPanelOpen();
     }
   }
@@ -302,6 +304,9 @@
   }
 
   function tryLogout() {
+    if (window.PlayerStatePersist && window.PlayerStatePersist.onAuthLogout) {
+      window.PlayerStatePersist.onAuthLogout();
+    }
     if (socket && socketConnected) {
       socket.emit("auth_logout");
     }
@@ -452,6 +457,15 @@
       joinError.textContent = msg;
     });
 
+    socket.on("player_state_saved", function () {
+      /* 云端存档成功，无需提示 */
+    });
+
+    socket.on("player_state_error", function (data) {
+      var msg = (data && data.message) || "云端存档失败";
+      console.warn("[LobbyNet]", msg);
+    });
+
     socket.on("disconnect", function (reason) {
       socketConnected = false;
       const wasReady = ready;
@@ -524,10 +538,13 @@
     isReady: function () {
       return ready;
     },
-    sendStashUpdate: function (index, item) {
-      if (socket && ready) {
-        socket.emit("stash_update", { index: index, item: item });
+    savePlayerState: function (state) {
+      if (socket && ready && state) {
+        socket.emit("player_state_save", { state: state });
       }
+    },
+    sendStashUpdate: function () {
+      /* 旧版逐格同步已弃用，改用 player_state_save */
     },
     shakeJoin: function () {
       if (window.LobbyUI) {
