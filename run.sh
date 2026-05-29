@@ -22,16 +22,31 @@ s.close()
 " 2>/dev/null
 }
 
-# 检查 8080 是否已被占用
+# 检查端口是否已被占用
 if lsof -i :"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "⚠ 端口 ${PORT} 已被占用（可能服务器已在运行，或别的程序占用了）"
-  echo ""
-  echo "你可以："
-  echo "  1. 直接在浏览器打开 http://localhost:${PORT} 试试是否已经能玩"
-  echo "  2. 或关掉占用端口的程序后重新运行 ./run.sh"
-  echo "  3. 或换端口: PORT=8081 ./run.sh"
-  echo ""
-  lsof -i :"$PORT" -sTCP:LISTEN 2>/dev/null | head -5
+  OCC_PID=$(lsof -t -i :"$PORT" -sTCP:LISTEN 2>/dev/null | head -1)
+  OCC_CMD=""
+  if [ -n "$OCC_PID" ]; then
+    OCC_CMD=$(ps -p "$OCC_PID" -o command= 2>/dev/null)
+  fi
+  echo "⚠ 端口 ${PORT} 已被占用"
+  if echo "$OCC_CMD" | grep -q "server/app.py"; then
+    echo ""
+    echo "  极危行动服务器已在运行（PID ${OCC_PID}）"
+    echo "  无需再开一次，浏览器直接打开："
+    echo "    http://127.0.0.1:${PORT}"
+    echo ""
+    echo "  若要重启：先结束旧进程再运行 ./run.sh"
+    echo "    kill ${OCC_PID}"
+    echo "    ./run.sh"
+  else
+    echo ""
+    echo "你可以："
+    echo "  1. 关掉占用端口的程序后重新运行 ./run.sh"
+    echo "  2. 或换端口: PORT=8081 ./run.sh"
+    echo ""
+    lsof -i :"$PORT" -sTCP:LISTEN 2>/dev/null | head -5
+  fi
   exit 1
 fi
 
@@ -58,6 +73,10 @@ echo ""
 echo "  电脑：用浏览器打开上面「本机」地址"
 echo "  手机：同一 WiFi，打开「局域网」地址（不要用 localhost）"
 echo "  不要双击 index.html"
+if [ -n "$JIWEI_ADMIN_KEY" ]; then
+  echo "  在线统计(8082): http://127.0.0.1:8082/admin/online-stats?key=<你的密钥>"
+  echo "               （另开终端运行 ./run-admin.sh）"
+fi
 echo "  按 Ctrl+C 停止服务器"
 echo "======================================"
 echo ""

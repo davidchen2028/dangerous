@@ -60,16 +60,15 @@ public static class ItemDatabase
             Category == ItemCategory.Collectible && Rarity != ItemRarity.None;
     }
 
-    /// <summary>
-    /// 藏品类宝箱：各稀有度单件基础权重（空手 30 时由 57→30 等比 ×19/10）。
-    /// 传奇 6 · 史诗 19 · 稀有 57；同稀有度多件共用该档位权重。
-    /// </summary>
-    public const int ChestWeightLegendary = 6;
-    public const int ChestWeightEpic = 19;
-    public const int ChestWeightRare = 57;
+    /// <summary>单槽权重分母 1000（数值 = 百分比×10）。</summary>
+    public const int ChestWeightTotal = 1000;
 
-    /// <summary>单槽空手权重（原 57，其余档位按 57/30 等比放大）。</summary>
-    public const int ChestWeightEmpty = 30;
+    public const int ChestWeightEmpty = 223;
+    public const int ChestWeight1004 = 20;
+    public const int ChestWeight3001 = 35;
+    public const int ChestWeight3002 = 40;
+    public const int ChestWeightEpic = 142;
+    public const int ChestWeightRare = 398;
 
     static readonly Dictionary<string, ItemRecord> Table;
 
@@ -183,13 +182,32 @@ public static class ItemDatabase
         return list.ToArray();
     }
 
-    /// <summary>藏品类宝箱：按稀有度返回单件基础权重（传奇 3 / 史诗 10 / 稀有 30）。</summary>
+    /// <summary>藏品类宝箱：按物品 ID 返回单槽权重（分母 <see cref="ChestWeightTotal"/>）。</summary>
+    public static int GetChestWeightForItemId(string id, ItemRarity rarity)
+    {
+        switch (id)
+        {
+            case "1004":
+                return ChestWeight1004;
+            case "3001":
+                return ChestWeight3001;
+            case "3002":
+                return ChestWeight3002;
+            case "3003":
+            case "3004":
+                return ChestWeightEpic;
+            case "3005":
+                return ChestWeightRare;
+            default:
+                return GetChestWeightForRarity(rarity);
+        }
+    }
+
+    /// <summary>藏品类宝箱：按稀有度返回单件基础权重（未单独配置的传奇回退 0）。</summary>
     public static int GetChestWeightForRarity(ItemRarity rarity)
     {
         switch (rarity)
         {
-            case ItemRarity.Legendary:
-                return ChestWeightLegendary;
             case ItemRarity.Epic:
                 return ChestWeightEpic;
             case ItemRarity.Rare:
@@ -199,7 +217,7 @@ public static class ItemDatabase
         }
     }
 
-    /// <summary>构建单槽权重池：(空手, 57) + 各藏品按稀有度权重。</summary>
+    /// <summary>构建单槽权重池：空手 + 各藏品按 ID 权重（合计 1000）。</summary>
     public static void BuildChestSlotPool(List<(int itemId, int weight)> pool)
     {
         pool.Clear();
@@ -214,7 +232,27 @@ public static class ItemDatabase
             if (!int.TryParse(id, out int numericId))
                 continue;
 
-            int w = GetChestWeightForRarity(rec.Rarity);
+            int w = GetChestWeightForItemId(id, rec.Rarity);
+            if (w > 0)
+                pool.Add((numericId, w));
+        }
+    }
+
+    /// <summary>仅藏品（无空手），用于件数 roll 后的逐件抽取。</summary>
+    public static void BuildChestItemPool(List<(int itemId, int weight)> pool)
+    {
+        pool.Clear();
+
+        for (int i = 0; i < ChestCollectibleIds.Length; i++)
+        {
+            string id = ChestCollectibleIds[i];
+            if (!TryGetRecord(id, out var rec))
+                continue;
+
+            if (!int.TryParse(id, out int numericId))
+                continue;
+
+            int w = GetChestWeightForItemId(id, rec.Rarity);
             if (w > 0)
                 pool.Add((numericId, w));
         }

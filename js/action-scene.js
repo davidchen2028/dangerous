@@ -946,9 +946,26 @@ if (typeof window !== "undefined") {
     }
   }
 
+  function hasMovementInput() {
+    return !!(keys.KeyW || keys.KeyS || keys.KeyA || keys.KeyD);
+  }
+
+  /** 松开移动键后立刻停止走/跑（含 Shift） */
+  function hardStopLocomotion() {
+    keys.KeyW = false;
+    keys.KeyS = false;
+    keys.KeyA = false;
+    keys.KeyD = false;
+    keys.ShiftLeft = false;
+    keys.ShiftRight = false;
+  }
+
   function releaseKeyFromEvent(e) {
     keys[e.code] = false;
     if (e.key) keys[e.key] = false;
+    if (!hasMovementInput()) {
+      hardStopLocomotion();
+    }
   }
 
   function orientDoorUpright(model) {
@@ -2047,9 +2064,9 @@ if (typeof window !== "undefined") {
     var forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
     var strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
     var moving = !!(forward || strafe);
-    var speed = getMoveSpeed();
+    var speed = moving ? getMoveSpeed() : 0;
 
-    if (moving) {
+    if (moving && speed > 0) {
       var sinY = Math.sin(yaw);
       var cosY = Math.cos(yaw);
       pos.x += (cosY * strafe - sinY * forward) * speed * dt;

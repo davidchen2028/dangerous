@@ -26,8 +26,8 @@ http://localhost:8080
 # 然后再 ./run.sh
 
 # 换端口启动（现在 run.sh 会认 PORT 变量）：
-# PORT=8081 ./run.sh
-# 浏览器打开 http://localhost:8081
+# PORT=8082 ./run.sh
+# 浏览器打开 http://localhost:8082
 
 # ── 若提示 permission denied ──
 chmod +x run.sh get-ip.sh
@@ -39,7 +39,7 @@ chmod +x run.sh get-ip.sh
 # ── 手机怎么用（与电脑通用，同一 WiFi）──
 # 1. 电脑先 ./run.sh 不要关
 # 2. 电脑执行 ./get-ip.sh 看 IP
-# 3. 手机 Safari/Chrome 打开 http://电脑IP:8081（端口与终端一致）
+# 3. 手机 Safari/Chrome 打开 http://电脑IP:8080（端口与终端一致）
 # 4. 房间号与电脑填相同，如 main
 # 不要用手机「文件」打开 index.html
 #

@@ -285,7 +285,7 @@
       minMarketPrice: 1000,
       maxMarketPrice: 3200,
       price: 2100,
-      image: "img/market/sealed-motor-oil.png",
+      image: "img/market/sealed-motor-oil.png?v=3",
     },
     {
       id: "heavy_industrial_drill",

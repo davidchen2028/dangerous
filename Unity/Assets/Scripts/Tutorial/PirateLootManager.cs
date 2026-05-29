@@ -15,8 +15,7 @@ public class PirateLootManager : MonoBehaviour
     const int EmptyItemId = 0;
     const string EmptyItemName = "空手而归";
 
-    /// <summary>每槽独立 roll 藏品类（共 3 槽，无极危币）。</summary>
-    const int CollectibleSlotCount = 3;
+    const int MaxLootItems = 4;
 
     /// <summary>开箱结果：有效物品列表（仅藏品类 3001–3005 或空手）。</summary>
     [Serializable]
@@ -27,6 +26,7 @@ public class PirateLootManager : MonoBehaviour
 
     readonly Dictionary<int, PirateLootItemData> _catalog = new Dictionary<int, PirateLootItemData>();
     readonly List<(int itemId, int weight)> _chestPool = new List<(int, int)>();
+    readonly List<(int itemId, int weight)> _itemOnlyPool = new List<(int, int)>();
 
     void Awake()
     {
@@ -64,6 +64,7 @@ public class PirateLootManager : MonoBehaviour
         }
 
         ItemDatabase.BuildChestSlotPool(_chestPool);
+        ItemDatabase.BuildChestItemPool(_itemOnlyPool);
     }
 
     void RegisterEmpty()
@@ -91,26 +92,44 @@ public class PirateLootManager : MonoBehaviour
     }
 
     /// <summary>
-    /// 三槽独立权重：仅藏品类 3001–3005；
-    /// 空手 30 · 传奇各 6 · 史诗各 19 · 稀有 57（相对原 57/3/10/30 等比 ×19/10）。
+    /// 件数：1 件 20% · 2 件 40% · 3 件 30% · 4 件 10%；再按 ID 权重抽具体藏品（无空手）。
     /// </summary>
     public PirateChestRollResult RollPirateChest()
     {
-        if (_chestPool.Count == 0)
+        if (_itemOnlyPool.Count == 0)
+        {
             ItemDatabase.BuildChestSlotPool(_chestPool);
+            ItemDatabase.BuildChestItemPool(_itemOnlyPool);
+        }
 
         var result = new PirateChestRollResult();
+        int count = RollLootItemCount();
 
-        for (int slot = 0; slot < CollectibleSlotCount; slot++)
+        for (int i = 0; i < count; i++)
         {
             var rolled = RollWeightedSlot(
-                $"槽位{slot + 1}·藏品类",
-                _chestPool);
+                $"藏品{i + 1}",
+                _itemOnlyPool);
             TryAddItem(result, rolled);
+        }
+
+        if (result.items.Count == 0)
+        {
+            var fallback = RollWeightedSlot("保底", _itemOnlyPool);
+            TryAddItem(result, fallback);
         }
 
         LogRollResult(result);
         return result;
+    }
+
+    static int RollLootItemCount()
+    {
+        int r = UnityEngine.Random.Range(0, 100);
+        if (r < 20) return 1;
+        if (r < 60) return 2;
+        if (r < 90) return 3;
+        return 4;
     }
 
     PirateLootItemData RollWeightedSlot(string slotLabel, List<(int itemId, int weight)> pool)
@@ -212,12 +231,16 @@ public class PirateLootManager : MonoBehaviour
             BuildItemCatalog();
 
         var counts = new Dictionary<int, int>();
-        int emptySlots = 0;
+        var countHist = new Dictionary<int, int>();
 
         for (int n = 0; n < 100; n++)
         {
             var r = RollPirateChest();
-            emptySlots += CollectibleSlotCount - r.items.Count;
+            int nItems = r.items.Count;
+            if (!countHist.ContainsKey(nItems))
+                countHist[nItems] = 0;
+            countHist[nItems]++;
+
             foreach (var it in r.items)
             {
                 if (!counts.ContainsKey(it.itemID))
@@ -227,7 +250,7 @@ public class PirateLootManager : MonoBehaviour
         }
 
         Debug.Log(
-            $"[PirateLoot] 100次×3槽：空手槽次={emptySlots} 出物统计见 Console 字典 itemID→次数");
+            $"[PirateLoot] 100次开箱：件数分布见 countHist，物品 ID 见 counts 字典");
     }
 #endif
 }

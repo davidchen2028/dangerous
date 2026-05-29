@@ -8,7 +8,10 @@
   var CHEST_GLB_URL = "models/pirate-chest.glb";
   var CHEST_X = 0;
   var CHEST_Z = 77.5;
-  var CHEST_SIZE = { x: 1.15, y: 0.9, z: 0.95 };
+  /** 直立摆放碰撞盒（宽 × 高 × 深） */
+  var CHEST_SIZE = { x: 1.05, y: 1.05, z: 0.85 };
+  /** GLB 贴地后的 yaw：正面朝走廊入口（-Z） */
+  var CHEST_YAW = Math.PI;
   var CHEST_COLS = 4;
   var CHEST_ROWS = 4;
   var INTERACT_DIST = 4.2;
@@ -106,6 +109,7 @@
   /** 正放贴地，锁扣朝向走廊入口（-Z） */
   function orientChestModel(model) {
     if (!window.THREE) return;
+    var THREE = window.THREE;
     var presets = [
       { x: 0, y: 0, z: 0 },
       { x: 0, y: Math.PI / 2, z: 0 },
@@ -143,6 +147,18 @@
     }
 
     model.rotation.set(best.x, best.y, best.z);
+    model.updateMatrixWorld(true);
+
+    var upright = new THREE.Box3().setFromObject(model);
+    var upSize = new THREE.Vector3();
+    upright.getSize(upSize);
+    if (upSize.y < upSize.x * 0.9) {
+      model.rotation.x -= Math.PI / 2;
+      model.updateMatrixWorld(true);
+    }
+
+    model.rotation.z = 0;
+    model.rotation.y = CHEST_YAW;
     model.updateMatrixWorld(true);
   }
 
