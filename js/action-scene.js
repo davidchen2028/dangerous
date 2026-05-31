@@ -50,6 +50,7 @@ if (typeof window !== "undefined") {
   var STAMINA_DRAIN_SEC = 2;
   var staminaDrainAcc = 0;
   var LOOK_SENS = 0.0022;
+  var MOBILE_LOOK_SENS_MULT = 3;
   var GRAVITY = 32;
   var JUMP_SPEED = 9;
   var BOUNDS_X = 5.5;
@@ -976,10 +977,15 @@ if (typeof window !== "undefined") {
     return isTouchPrimaryDevice();
   }
 
+  function getLookSens() {
+    return shouldUseDragLook() ? LOOK_SENS * MOBILE_LOOK_SENS_MULT : LOOK_SENS;
+  }
+
   function applyLookDelta(dx, dy) {
     if (!dx && !dy) return;
-    yaw -= dx * LOOK_SENS;
-    pitch -= dy * LOOK_SENS;
+    var sens = getLookSens();
+    yaw -= dx * sens;
+    pitch -= dy * sens;
     var maxPitch = Math.PI / 2 - 0.05;
     pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
   }
