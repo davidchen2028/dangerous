@@ -161,6 +161,13 @@
     setPointerVisual();
   }
 
+  function isMobileUnlockUi() {
+    if (window.LobbyNet && window.LobbyNet.isMobileDevice) {
+      return window.LobbyNet.isMobileDevice();
+    }
+    return !window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  }
+
   function bindDom() {
     rootEl = document.getElementById("lockpickQte");
     if (!rootEl) return;
@@ -173,7 +180,7 @@
     for (i = 0; i < pips.length; i++) counterEls.push(pips[i]);
     applyGreenZoneVisual();
 
-    if (unlockBtn && !unlockBound) {
+    if (unlockBtn && !unlockBound && isMobileUnlockUi()) {
       unlockBound = true;
       unlockBtn.addEventListener(
         "pointerdown",

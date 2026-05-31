@@ -139,7 +139,17 @@ body:not(.hub-home) .hub-title {
 
 .btn-hub--tutorial {
   right: max(1.25rem, env(safe-area-inset-right, 0px));
+  bottom: calc(10.25rem + env(safe-area-inset-bottom, 0px));
+}
+
+.btn-hub--map {
+  right: max(1.25rem, env(safe-area-inset-right, 0px));
   bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+.btn-hub--map.btn-hub--locked {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 .btn-hub--action {
@@ -161,26 +171,37 @@ body.room-open .btn-hub--room,
 body.room-open .btn-hub--stash,
 body.room-open .btn-hub--market,
 body.room-open .btn-hub--tutorial,
+body.room-open .btn-hub--map,
 body.room-open .btn-hub--action,
 body.stash-open .btn-hub--room,
 body.stash-open .btn-hub--stash,
 body.stash-open .btn-hub--market,
 body.stash-open .btn-hub--tutorial,
+body.stash-open .btn-hub--map,
 body.stash-open .btn-hub--action,
 body.market-open .btn-hub--room,
 body.market-open .btn-hub--stash,
 body.market-open .btn-hub--market,
 body.market-open .btn-hub--tutorial,
+body.market-open .btn-hub--map,
 body.market-open .btn-hub--action,
 body.tutorial-open .btn-hub--room,
 body.tutorial-open .btn-hub--stash,
 body.tutorial-open .btn-hub--market,
 body.tutorial-open .btn-hub--tutorial,
+body.tutorial-open .btn-hub--map,
 body.tutorial-open .btn-hub--action,
+body.map-open .btn-hub--room,
+body.map-open .btn-hub--stash,
+body.map-open .btn-hub--market,
+body.map-open .btn-hub--tutorial,
+body.map-open .btn-hub--map,
+body.map-open .btn-hub--action,
 body.action-open .btn-hub--room,
 body.action-open .btn-hub--stash,
 body.action-open .btn-hub--market,
 body.action-open .btn-hub--tutorial,
+body.action-open .btn-hub--map,
 body.action-open .btn-hub--action {
   visibility: hidden;
   pointer-events: none;
@@ -304,6 +325,71 @@ body.action-open .btn-hub--action {
 
 .hub-panel__box--tutorial {
   width: min(480px, 94vw);
+}
+
+.hub-panel__box--map {
+  width: min(420px, 94vw);
+}
+
+.map-panel__body {
+  padding: 0.75rem 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.map-panel__tip {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(160, 180, 200, 0.72);
+  line-height: 1.45;
+}
+
+.map-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(120, 150, 180, 0.35);
+  border-radius: 0.75rem;
+  background: rgba(20, 30, 42, 0.72);
+  color: #dce8f4;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.12s ease;
+}
+
+.map-card:hover {
+  border-color: rgba(160, 200, 240, 0.55);
+  background: rgba(28, 42, 58, 0.85);
+}
+
+.map-card:active {
+  transform: scale(0.98);
+}
+
+.map-card--selected {
+  border-color: rgba(120, 220, 160, 0.75);
+  background: rgba(28, 52, 42, 0.92);
+  box-shadow:
+    0 0 0 2px rgba(100, 200, 140, 0.35),
+    0 8px 24px rgba(20, 60, 40, 0.25);
+}
+
+.map-card__name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.map-card__desc {
+  font-size: 0.8125rem;
+  color: rgba(160, 180, 200, 0.78);
 }
 
 .hub-panel__box--market {
@@ -1397,6 +1483,11 @@ body.loadout-drag-active .loadout-slot {
   }
 
   .btn-hub--tutorial {
+    right: max(0.65rem, env(safe-area-inset-right, 0px));
+    bottom: calc(9.15rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .btn-hub--map {
     right: max(0.65rem, env(safe-area-inset-right, 0px));
     bottom: calc(4.85rem + env(safe-area-inset-bottom, 0px));
   }

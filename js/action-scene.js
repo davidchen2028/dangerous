@@ -106,6 +106,7 @@ if (typeof window !== "undefined") {
       BARRIER_GLB_URL,
       CRATE_GLB_URL,
       DOOR_GLB_URL,
+      MISSILE_GLB_URL,
       ARMS_GLB_URL,
     ];
     if (window.ActionWeapon && window.ActionWeapon.UZI_GLB_URL) {
@@ -259,6 +260,7 @@ if (typeof window !== "undefined") {
   var SECTOR_WALL_H = 3.5;
   var DOOR_SIZE = { x: 1.5, y: 2.2, z: 0.28 };
   var DOOR_GLB_URL = "models/security-door.glb";
+  var MISSILE_GLB_URL = "models/missile.glb";
   var ARMS_GLB_URL = "models/soldier-arms.glb";
   /** 第一人称视野内双臂占位（宽 × 高 × 纵深） */
   var ARMS_VIEW_SIZE = { x: 0.95, y: 0.36, z: 0.48 };
@@ -285,6 +287,27 @@ if (typeof window !== "undefined") {
   var lookLayerEl = null;
   var evacOverlayEl = document.getElementById("actionEvac");
   var evacCountdownEl = document.getElementById("actionEvacTimer");
+  var explosionOverlayEl = document.getElementById("actionExplosion");
+  var explosionTimerEl = document.getElementById("actionExplosionTimer");
+  var explosionCounting = false;
+  var explosionTimeLeft = 10;
+  var explosionDone = false;
+  var binRoomBackWallMeshes = [];
+  var binRoomBackWallColliders = [];
+  var tacticalTruckRoot = null;
+  /** @type {{ mesh: THREE.Mesh, vx: number, vy: number, vz: number, rvx: number, rvy: number, rvz: number, halfH: number, settled: boolean }[]} */
+  var explosionDebris = [];
+  var truckFlight = null;
+  var missileStrike = null;
+  var wallExploded = false;
+  var wallStrikeFallbackLeft = 0;
+  var _missileVecA = new THREE.Vector3();
+  var _missileVecB = new THREE.Vector3();
+  var _truckVisMatrix = new THREE.Matrix4();
+  var _truckVisFrustum = new THREE.Frustum();
+  var _truckVisBox = new THREE.Box3();
+  var SECTOR_OUTER_X = 6.25;
+  var WALL_STRIKE_Z = EVAC_CORRIDOR_START_Z + 0.25;
   var evacCounting = false;
   var evacTimeLeft = 0;
   var crosshairEl = document.getElementById("actionCrosshair");
@@ -296,6 +319,12 @@ if (typeof window !== "undefined") {
   var sharedGltfLoader = null;
   var assetsPreloaded = false;
   var enterInProgress = false;
+  var currentMapId = "tutorial";
+  var loadedMapId = null;
+  var worldRoot = null;
+  var mapNameEl = document.getElementById("actionMapName");
+  var TUTORIAL_BOUNDS_X = 5.5;
+  var TUTORIAL_BOUNDS_Z_MIN = 1.2;
 
   function buildTruck(parent) {
     registerCollider(
@@ -320,7 +349,7 @@ if (typeof window !== "undefined") {
   }
 
   function addTruckFallback(parent) {
-    addBox(
+    var mesh = addBox(
       parent,
       TRUCK_SIZE.x,
       TRUCK_SIZE.y,
@@ -331,6 +360,8 @@ if (typeof window !== "undefined") {
       0x2a7ab8,
       false
     );
+    mesh.name = "TacticalTruck_Fallback";
+    tacticalTruckRoot = mesh;
   }
 
   function fitModelToBox(object3D, targetSize) {
@@ -793,6 +824,7 @@ if (typeof window !== "undefined") {
     enableShadows(model);
 
     parent.add(truckRoot);
+    tacticalTruckRoot = truckRoot;
   }
 
   function removeDoorColliders() {
@@ -856,6 +888,528 @@ if (typeof window !== "undefined") {
     document.body.classList.remove("evac-counting");
     if (evacOverlayEl) evacOverlayEl.hidden = true;
     if (evacCountdownEl) evacCountdownEl.textContent = "10";
+  }
+
+  function resetExplosionState() {
+    explosionCounting = false;
+    explosionTimeLeft = 10;
+    explosionDone = false;
+    wallExploded = false;
+    wallStrikeFallbackLeft = 0;
+    document.body.classList.remove("explosion-counting");
+    if (explosionOverlayEl) explosionOverlayEl.hidden = true;
+    if (explosionTimerEl) explosionTimerEl.textContent = "10";
+    clearExplosionEffects();
+  }
+
+  function findNamedRoot(parent, name) {
+    if (!parent) return null;
+    var found = null;
+    parent.traverse(function (obj) {
+      if (!found && obj.name === name) found = obj;
+    });
+    return found;
+  }
+
+  function removeTruckCollider() {
+    colliders = colliders.filter(function (box) {
+      var cx = (box.minX + box.maxX) * 0.5;
+      var cz = (box.minZ + box.maxZ) * 0.5;
+      return !(
+        Math.abs(cx - TRUCK_CENTER.x) < 0.2 &&
+        Math.abs(cz - TRUCK_CENTER.z) < 0.2
+      );
+    });
+  }
+
+  function clearExplosionEffects() {
+    var i;
+    for (i = 0; i < explosionDebris.length; i++) {
+      if (worldRoot && explosionDebris[i].mesh) {
+        worldRoot.remove(explosionDebris[i].mesh);
+      }
+      disposeObject3D(explosionDebris[i].mesh);
+    }
+    explosionDebris = [];
+    if (missileStrike && missileStrike.root) {
+      if (worldRoot) worldRoot.remove(missileStrike.root);
+      disposeObject3D(missileStrike.root);
+    }
+    missileStrike = null;
+    disposeTruckFlight();
+  }
+
+  function disposeMissileRoot(root) {
+    if (!root) return;
+    if (worldRoot) worldRoot.remove(root);
+    disposeObject3D(root);
+  }
+
+  function buildMissileVisual(done) {
+    function attachModel(root) {
+      if (done) done(root);
+    }
+
+    function buildFallback() {
+      var root = new THREE.Group();
+      root.name = "StrikeMissile_Fallback";
+      var body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.16, 1.6, 10),
+        new THREE.MeshLambertMaterial({ color: 0x6a7078 })
+      );
+      body.rotation.x = Math.PI / 2;
+      body.position.z = 0.8;
+      var nose = new THREE.Mesh(
+        new THREE.ConeGeometry(0.14, 0.35, 10),
+        new THREE.MeshLambertMaterial({ color: 0xc04030 })
+      );
+      nose.rotation.x = Math.PI / 2;
+      nose.position.z = 1.75;
+      root.add(body);
+      root.add(nose);
+      attachModel(root);
+    }
+
+    function buildFromGltf(gltf) {
+      var pivot = new THREE.Group();
+      pivot.name = "StrikeMissile_GLB";
+      var model = gltf.scene.clone(true);
+      model.rotation.order = "YXZ";
+      model.rotation.set(0, Math.PI, 0);
+      pivot.add(model);
+      fitModelToBox(pivot, { x: 0.45, y: 0.45, z: 2.2 });
+      pivot.rotateX(-Math.PI / 2);
+      enableShadows(pivot);
+      attachModel(pivot);
+    }
+
+    if (gltfCache[MISSILE_GLB_URL]) {
+      buildFromGltf(gltfCache[MISSILE_GLB_URL]);
+      return;
+    }
+
+    buildFallback();
+    preloadGltfUrl(MISSILE_GLB_URL);
+  }
+
+  function getWallStrikeTarget(out) {
+    out.set(0, SECTOR_WALL_H * 0.55, WALL_STRIKE_Z);
+    return out;
+  }
+
+  function getTruckStrikeTarget(out) {
+    out.set(TRUCK_CENTER.x, TRUCK_CENTER.y + 0.35, TRUCK_CENTER.z);
+    return out;
+  }
+
+  function orientMissileToward(root, target) {
+    root.lookAt(target);
+    root.rotateY(Math.PI);
+  }
+
+  function launchMissileStrike(kind) {
+    if (kind === "wall" && wallExploded) return;
+
+    buildMissileVisual(function (root) {
+      if (!worldRoot || !running) {
+        disposeObject3D(root);
+        return;
+      }
+      if (kind === "wall" && wallExploded) {
+        disposeObject3D(root);
+        return;
+      }
+
+      var target = getWallStrikeTarget(_missileVecA.clone());
+      var start = _missileVecB;
+      if (kind === "wall") {
+        start.set(
+          (Math.random() - 0.5) * 4,
+          11 + Math.random() * 3,
+          WALL_STRIKE_Z + 38
+        );
+      } else {
+        target = getTruckStrikeTarget(_missileVecA.clone());
+        start.set(
+          (Math.random() - 0.5) * 3,
+          14 + Math.random() * 3,
+          WALL_STRIKE_Z + 26
+        );
+      }
+
+      root.position.copy(start);
+      orientMissileToward(root, target);
+      worldRoot.add(root);
+
+      missileStrike = {
+        kind: kind,
+        root: root,
+        target: target,
+        speed: kind === "wall" ? 44 : 40,
+        hitRadius: kind === "wall" ? 2.8 : 1.8,
+      };
+    });
+  }
+
+  function forceDestroyBinRoomBackWall() {
+    if (wallExploded) return;
+    wallExploded = true;
+    wallStrikeFallbackLeft = 0;
+
+    removeBinRoomBackWallColliders();
+
+    var i;
+    for (i = 0; i < binRoomBackWallMeshes.length; i++) {
+      if (worldRoot && binRoomBackWallMeshes[i]) {
+        worldRoot.remove(binRoomBackWallMeshes[i]);
+      }
+      disposeObject3D(binRoomBackWallMeshes[i]);
+    }
+    binRoomBackWallMeshes = [];
+
+    if (worldRoot) {
+      var extras = [];
+      worldRoot.traverse(function (obj) {
+        if (obj.name === "BinRoomBackWall" || (obj.userData && obj.userData.isBinRoomBackWall)) {
+          extras.push(obj);
+        }
+      });
+      for (i = 0; i < extras.length; i++) {
+        if (extras[i].parent) extras[i].parent.remove(extras[i]);
+        disposeObject3D(extras[i]);
+      }
+    }
+  }
+
+  function onWallMissileImpact() {
+    if (!wallExploded) {
+      explodeWallIntoFragments();
+    }
+    if (missileStrike && missileStrike.root) {
+      disposeMissileRoot(missileStrike.root);
+    }
+    missileStrike = { phase: "pause", pauseLeft: 0.85 };
+  }
+
+  function onTruckMissileImpact() {
+    startTruckExplosion();
+    if (missileStrike && missileStrike.root) {
+      disposeMissileRoot(missileStrike.root);
+    }
+    missileStrike = null;
+    showDurabilityBanner("第二枚导弹命中 · 卡车被炸飞出围区");
+  }
+
+  function updateMissileStrike(dt) {
+    if (!missileStrike) return;
+
+    if (missileStrike.phase === "pause") {
+      missileStrike.pauseLeft -= dt;
+      if (missileStrike.pauseLeft <= 0) {
+        launchMissileStrike("truck");
+      }
+      return;
+    }
+
+    var m = missileStrike.root;
+    if (!m) return;
+
+    var tx = missileStrike.target.x;
+    var ty = missileStrike.target.y;
+    var tz = missileStrike.target.z;
+    var dx = tx - m.position.x;
+    var dy = ty - m.position.y;
+    var dz = tz - m.position.z;
+    var dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    if (dist <= missileStrike.hitRadius) {
+      if (missileStrike.kind === "wall") onWallMissileImpact();
+      else onTruckMissileImpact();
+      return;
+    }
+
+    if (
+      missileStrike.kind === "wall" &&
+      !wallExploded &&
+      m.position.z <= WALL_STRIKE_Z + 1.5
+    ) {
+      onWallMissileImpact();
+      return;
+    }
+
+    var step = missileStrike.speed * dt;
+    var inv = step / dist;
+    m.position.x += dx * inv;
+    m.position.y += dy * inv;
+    m.position.z += dz * inv;
+    orientMissileToward(m, missileStrike.target);
+  }
+
+  function startMissileStrikeSequence() {
+    if (!worldRoot) return;
+    launchMissileStrike("wall");
+  }
+
+  function removeBinRoomBackWallColliders() {
+    if (binRoomBackWallColliders.length) {
+      colliders = colliders.filter(function (box) {
+        return binRoomBackWallColliders.indexOf(box) < 0;
+      });
+    }
+    binRoomBackWallColliders = [];
+  }
+
+  function spawnWallFragments() {
+    if (!worldRoot) return;
+
+    var backZ = EVAC_CORRIDOR_START_Z + 0.25;
+    var cols = 5;
+    var rows = 4;
+    var pieceW = BIN_ROOM_SIZE / cols;
+    var pieceH = SECTOR_WALL_H / rows;
+    var pieceD = 0.42;
+    var colors = [0x2e3338, 0x383e45, 0x252a30, 0x434950];
+    var cx;
+    var cy;
+    var px;
+    var py;
+    var pz;
+    var mesh;
+    var mat;
+    var towardTruckZ = TRUCK_CENTER.z - backZ;
+
+    for (cx = 0; cx < cols; cx++) {
+      for (cy = 0; cy < rows; cy++) {
+        px = -BIN_ROOM_SIZE * 0.5 + pieceW * (cx + 0.5);
+        py = pieceH * (cy + 0.5);
+        pz = backZ + (Math.random() - 0.5) * 0.08;
+        mat = new THREE.MeshLambertMaterial({
+          color: colors[(cx + cy) % colors.length],
+        });
+        mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(pieceW * 0.92, pieceH * 0.9, pieceD),
+          mat
+        );
+        mesh.position.set(px, py, pz);
+        mesh.rotation.set(
+          (Math.random() - 0.5) * 0.35,
+          (Math.random() - 0.5) * 0.35,
+          (Math.random() - 0.5) * 0.35
+        );
+        worldRoot.add(mesh);
+
+        explosionDebris.push({
+          mesh: mesh,
+          vx: (Math.random() - 0.5) * 5.5,
+          vy: 5.5 + Math.random() * 7,
+          vz: towardTruckZ * (0.55 + Math.random() * 0.35) + (Math.random() - 0.5) * 2,
+          rvx: (Math.random() - 0.5) * 9,
+          rvy: (Math.random() - 0.5) * 9,
+          rvz: (Math.random() - 0.5) * 9,
+          halfH: pieceH * 0.45,
+          settled: false,
+        });
+      }
+    }
+  }
+
+  function updateWallStrikeFallback(dt) {
+    if (wallExploded || wallStrikeFallbackLeft <= 0) return;
+    wallStrikeFallbackLeft -= dt;
+    if (wallStrikeFallbackLeft <= 0) {
+      onWallMissileImpact();
+    }
+  }
+
+  function explodeWallIntoFragments() {
+    forceDestroyBinRoomBackWall();
+    spawnWallFragments();
+  }
+
+  function resolveTruckRoot() {
+    if (tacticalTruckRoot && tacticalTruckRoot.parent) return tacticalTruckRoot;
+    tacticalTruckRoot = findNamedRoot(worldRoot, "TacticalTruck_GLB");
+    if (!tacticalTruckRoot) {
+      tacticalTruckRoot = findNamedRoot(worldRoot, "TacticalTruck_Fallback");
+    }
+    return tacticalTruckRoot;
+  }
+
+  function startTruckExplosion() {
+    var root = resolveTruckRoot();
+    if (!root) return;
+    removeTruckCollider();
+    truckFlight = {
+      root: root,
+      vx: (Math.random() - 0.5) * 3.5,
+      vy: 16 + Math.random() * 5,
+      vz: -18 - Math.random() * 6,
+      rvx: (Math.random() - 0.5) * 2.5,
+      rvy: (Math.random() - 0.5) * 4,
+      rvz: (Math.random() - 0.5) * 2.5,
+    };
+  }
+
+  function updateExplosionDebris(dt) {
+    var g = 22;
+    var i;
+    var fx;
+    for (i = 0; i < explosionDebris.length; i++) {
+      fx = explosionDebris[i];
+      if (fx.settled) continue;
+      fx.vy -= g * dt;
+      fx.mesh.position.x += fx.vx * dt;
+      fx.mesh.position.y += fx.vy * dt;
+      fx.mesh.position.z += fx.vz * dt;
+      fx.mesh.rotation.x += fx.rvx * dt;
+      fx.mesh.rotation.y += fx.rvy * dt;
+      fx.mesh.rotation.z += fx.rvz * dt;
+
+      if (fx.mesh.position.y <= fx.halfH) {
+        fx.mesh.position.y = fx.halfH;
+        if (fx.vy < 0) fx.vy = 0;
+        fx.vx *= 0.42;
+        fx.vz *= 0.42;
+        fx.rvx *= 0.55;
+        fx.rvy *= 0.55;
+        fx.rvz *= 0.55;
+        if (
+          Math.abs(fx.vx) < 0.08 &&
+          Math.abs(fx.vz) < 0.08 &&
+          fx.mesh.position.y <= fx.halfH + 0.02
+        ) {
+          fx.settled = true;
+        }
+      }
+    }
+  }
+
+  function disposeTruckFlight() {
+    if (!truckFlight || !truckFlight.root) {
+      truckFlight = null;
+      return;
+    }
+    if (worldRoot) worldRoot.remove(truckFlight.root);
+    disposeObject3D(truckFlight.root);
+    truckFlight = null;
+    tacticalTruckRoot = null;
+  }
+
+  function isTruckOutsideSectorWalls(root) {
+    var p = root.position;
+    return (
+      p.z < 0.35 ||
+      p.x < -SECTOR_OUTER_X - 0.35 ||
+      p.x > SECTOR_OUTER_X + 0.35 ||
+      p.y > SECTOR_WALL_H + 6
+    );
+  }
+
+  function isTruckOffScreen(root) {
+    if (!camera || !root) return true;
+    root.updateMatrixWorld(true);
+    _truckVisBox.setFromObject(root);
+    _truckVisMatrix.multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse
+    );
+    _truckVisFrustum.setFromProjectionMatrix(_truckVisMatrix);
+    return !_truckVisFrustum.intersectsBox(_truckVisBox);
+  }
+
+  function shouldRemoveFlyingTruck(root) {
+    if (!isTruckOutsideSectorWalls(root)) return false;
+    return isTruckOffScreen(root);
+  }
+
+  function updateTruckFlight(dt) {
+    if (!truckFlight || !truckFlight.root) return;
+    var tf = truckFlight;
+    tf.vy -= 14 * dt;
+    tf.root.position.x += tf.vx * dt;
+    tf.root.position.y += tf.vy * dt;
+    tf.root.position.z += tf.vz * dt;
+    tf.root.rotation.x += tf.rvx * dt;
+    tf.root.rotation.y += tf.rvy * dt;
+    tf.root.rotation.z += tf.rvz * dt;
+
+    if (shouldRemoveFlyingTruck(tf.root) || tf.root.position.y < -8) {
+      disposeTruckFlight();
+    }
+  }
+
+  function updateExplosionEffects(dt) {
+    updateWallStrikeFallback(dt);
+    if (missileStrike) updateMissileStrike(dt);
+    if (explosionDebris.length) updateExplosionDebris(dt);
+    if (truckFlight) updateTruckFlight(dt);
+  }
+
+  function hasExplosionEffects() {
+    return (
+      wallStrikeFallbackLeft > 0 ||
+      !!missileStrike ||
+      explosionDebris.length > 0 ||
+      !!truckFlight
+    );
+  }
+
+  function isInBinRoom() {
+    var half = BIN_ROOM_SIZE * 0.5;
+    var midZ = BIN_ROOM_CENTER_Z + 0.25;
+    return (
+      pos.x >= -half &&
+      pos.x <= half &&
+      pos.z >= midZ - half &&
+      pos.z <= midZ + half
+    );
+  }
+
+  function updateExplosionTimerDisplay() {
+    if (!explosionTimerEl) return;
+    explosionTimerEl.textContent = String(Math.max(0, Math.ceil(explosionTimeLeft)));
+  }
+
+  function startExplosionCountdown() {
+    if (currentMapId !== "tutorial" || explosionDone || explosionCounting) return;
+    explosionCounting = true;
+    explosionTimeLeft = 10;
+    document.body.classList.add("explosion-counting");
+    if (explosionOverlayEl) explosionOverlayEl.hidden = false;
+    updateExplosionTimerDisplay();
+  }
+
+  function updateExplosionCountdown(dt) {
+    if (!explosionCounting) return;
+    explosionTimeLeft -= dt;
+    updateExplosionTimerDisplay();
+    if (explosionTimeLeft <= 0) {
+      explosionCounting = false;
+      explosionDone = true;
+      triggerExplosion();
+    }
+  }
+
+  function removeBinRoomBackWall() {
+    explodeWallIntoFragments();
+  }
+
+  function triggerExplosion() {
+    document.body.classList.remove("explosion-counting");
+    if (explosionOverlayEl) explosionOverlayEl.hidden = true;
+    wallExploded = false;
+    wallStrikeFallbackLeft = 3.5;
+    if (isInBinRoom() && window.ActionHealth && window.ActionHealth.damage) {
+      window.ActionHealth.damage(30);
+      showDurabilityBanner("爆炸！未能及时离开搜刮间 · -30 血量");
+    } else {
+      showDurabilityBanner("导弹来袭 · 第一枚摧毁隔墙");
+    }
+    startMissileStrikeSequence();
+  }
+
+  function onChestOpened() {
+    startExplosionCountdown();
   }
 
   function isInEvacZone() {
@@ -931,6 +1485,14 @@ if (typeof window !== "undefined") {
   }
 
   function completeEvacToLobby() {
+    if (currentMapId === "tutorial") {
+      if (window.TutorialProgress && window.TutorialProgress.markComplete) {
+        window.TutorialProgress.markComplete();
+      }
+      if (window.LobbyUI && window.LobbyUI.syncActionHubButton) {
+        window.LobbyUI.syncActionHubButton();
+      }
+    }
     if (evacOverlayEl) evacOverlayEl.hidden = true;
     if (window.WorldLootBox && window.WorldLootBox.closeChestPanel) {
       window.WorldLootBox.closeChestPanel();
@@ -944,6 +1506,10 @@ if (typeof window !== "undefined") {
   function resetSecurityDoorState() {
     resetEvacState();
     doorUnlocked = false;
+    if (currentMapId !== "tutorial") {
+      setInteractHintVisible(false);
+      return;
+    }
     removeDoorColliders();
     ensureDoorColliders();
     if (securityDoorRoot && doorHomePosition) {
@@ -1321,36 +1887,30 @@ if (typeof window !== "undefined") {
       midZ,
       0x2e3338
     );
-    buildBinRoomBackOpening(parent);
+    buildBinRoomBackWall(parent);
     buildBinRoomSideSeals(parent);
     buildBinRoomEntryWings(parent);
   }
 
-  /** 搜刮间后侧通往撤离走廊的开口（两侧挡墙） */
-  function buildBinRoomBackOpening(parent) {
+  /** 搜刮间与撤离走廊之间的完整隔墙（爆炸后拆除） */
+  function buildBinRoomBackWall(parent) {
     var backZ = EVAC_CORRIDOR_START_Z + 0.25;
-    var wingW = (BIN_ROOM_SIZE - CORRIDOR_W) * 0.5;
-    var wingCx = CORRIDOR_W * 0.5 + wingW * 0.5;
-    addBox(
+    var mesh = addBox(
       parent,
-      wingW,
+      BIN_ROOM_SIZE,
       SECTOR_WALL_H,
       0.5,
-      -wingCx,
+      0,
       SECTOR_WALL_H * 0.5,
       backZ,
       0x2e3338
     );
-    addBox(
-      parent,
-      wingW,
-      SECTOR_WALL_H,
-      0.5,
-      wingCx,
-      SECTOR_WALL_H * 0.5,
-      backZ,
-      0x2e3338
-    );
+    mesh.name = "BinRoomBackWall";
+    mesh.userData.isBinRoomBackWall = true;
+    binRoomBackWallMeshes.push(mesh);
+    if (colliders.length) {
+      binRoomBackWallColliders.push(colliders[colliders.length - 1]);
+    }
   }
 
   /** 宝箱后 10 m 撤离走廊 */
@@ -1554,8 +2114,12 @@ if (typeof window !== "undefined") {
 
   function showDurabilityBanner(remaining, max) {
     if (!durabilityBannerEl) return;
-    durabilityBannerEl.textContent =
-      "房卡耐久 " + remaining + " / " + max;
+    if (max == null && typeof remaining === "string") {
+      durabilityBannerEl.textContent = remaining;
+    } else {
+      durabilityBannerEl.textContent =
+        "房卡耐久 " + remaining + " / " + max;
+    }
     durabilityBannerEl.hidden = false;
     if (durabilityBannerEl._hideTimer) {
       clearTimeout(durabilityBannerEl._hideTimer);
@@ -1638,6 +2202,11 @@ if (typeof window !== "undefined") {
   function updateInteractHints() {
     updateCrosshair();
 
+    if (currentMapId !== "tutorial") {
+      setInteractHintVisible(false);
+      return;
+    }
+
     if (doorUnlocked && camera && canvas && window.WorldLootBox) {
       window.WorldLootBox.updateAim(pos.x, pos.z, camera);
       if (
@@ -1662,6 +2231,16 @@ if (typeof window !== "undefined") {
           interactHintEl.textContent = formatInteractHint(
             "按 E 查看海盗宝箱"
           );
+        }
+        return;
+      }
+      if (explosionCounting) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent =
+            "爆炸倒计时 " +
+            Math.max(0, Math.ceil(explosionTimeLeft)) +
+            " 秒 · 请离开 5×5 搜刮间";
         }
         return;
       }
@@ -1698,6 +2277,111 @@ if (typeof window !== "undefined") {
     setInteractHintVisible(isNearSecurityDoor());
   }
 
+  function disposeObject3D(root) {
+    if (!root) return;
+    root.traverse(function (child) {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(function (mat) {
+            mat.dispose();
+          });
+        } else {
+          child.material.dispose();
+        }
+      }
+    });
+  }
+
+  function teardownWorld() {
+    if (worldRoot && scene) {
+      scene.remove(worldRoot);
+      disposeObject3D(worldRoot);
+      worldRoot = null;
+    }
+    colliders = [];
+    binRoomBackWallMeshes = [];
+    binRoomBackWallColliders = [];
+    wallExploded = false;
+    wallStrikeFallbackLeft = 0;
+    tacticalTruckRoot = null;
+    clearExplosionEffects();
+    securityDoorRoot = null;
+    doorHomePosition = null;
+    doorUnlocked = false;
+    loadedMapId = null;
+  }
+
+  function applyMapBounds(mapId) {
+    if (mapId === "test") {
+      BOUNDS_X = 55;
+      BOUNDS_Z_MIN = -55;
+      BOUNDS_Z_MAX = 55;
+      if (scene) {
+        scene.fog = new THREE.Fog(0x8ecfff, 50, 160);
+      }
+      return;
+    }
+    BOUNDS_X = TUTORIAL_BOUNDS_X;
+    BOUNDS_Z_MIN = TUTORIAL_BOUNDS_Z_MIN;
+    BOUNDS_Z_MAX = EVAC_ROOM_START_Z + EVAC_ROOM_SIZE + 0.35;
+    if (scene) {
+      scene.fog = new THREE.Fog(0x8ecfff, 35, 95);
+    }
+  }
+
+  function updateMapNameDisplay() {
+    if (!mapNameEl) return;
+    mapNameEl.textContent = currentMapId === "test" ? "测试" : "新手教程";
+  }
+
+  function loadWorldMap(mapId) {
+    if (!scene) return;
+    if (loadedMapId === mapId && worldRoot) return;
+
+    teardownWorld();
+    applyMapBounds(mapId);
+
+    worldRoot = new THREE.Group();
+    worldRoot.name = "World_" + mapId;
+    scene.add(worldRoot);
+
+    if (mapId === "test") {
+      buildTestMap(worldRoot);
+    } else {
+      buildSectorZero(worldRoot);
+    }
+
+    loadedMapId = mapId;
+    currentMapId = mapId;
+    updateMapNameDisplay();
+  }
+
+  /** 测试地图 — 空旷草地 */
+  function buildTestMap(parent) {
+    colliders = [];
+    var root = new THREE.Group();
+    root.name = "TestMap_测试";
+    parent.add(root);
+
+    var grass = new THREE.Mesh(
+      new THREE.PlaneGeometry(120, 120, 1, 1),
+      new THREE.MeshLambertMaterial({ color: 0x4a7c3f })
+    );
+    grass.rotation.x = -Math.PI / 2;
+    grass.position.set(0, 0, 0);
+    grass.receiveShadow = true;
+    root.add(grass);
+
+    var edge = new THREE.Mesh(
+      new THREE.PlaneGeometry(140, 140, 1, 1),
+      new THREE.MeshLambertMaterial({ color: 0x3d6634 })
+    );
+    edge.rotation.x = -Math.PI / 2;
+    edge.position.set(0, -0.01, 0);
+    root.add(edge);
+  }
+
   /** 【新手教程】0 号模拟围区 — 与 Unity 生成器同规格 */
   function buildSectorZero(parent) {
     colliders = [];
@@ -1709,13 +2393,6 @@ if (typeof window !== "undefined") {
     addBox(root, 0.5, 3.5, 60, -6.25, 1.75, 30, 0x2e3338);
     addBox(root, 0.5, 3.5, 60, 6.25, 1.75, 30, 0x2e3338);
     buildTruck(root);
-
-    if (window.ActionNpcSoldier && window.ActionNpcSoldier.build) {
-      window.ActionNpcSoldier.build(root, {
-        loadGltfCached: loadGltfCached,
-        fitModelToBox: fitModelToBox,
-      });
-    }
 
     buildConcreteBarriers(root);
 
@@ -1940,17 +2617,21 @@ if (typeof window !== "undefined") {
   }
 
   function initScene() {
-    if (scene) return true;
-
     if (typeof THREE === "undefined") {
       showLoadError("Three.js 未加载。");
       return false;
     }
 
+    if (scene && ready) {
+      loadWorldMap(currentMapId);
+      return true;
+    }
+
+    if (scene) return true;
+
     try {
       scene = new THREE.Scene();
       buildSkyAndClouds(scene);
-      buildSectorZero(scene);
 
       player = new THREE.Group();
       scene.add(player);
@@ -1986,6 +2667,8 @@ if (typeof window !== "undefined") {
       scene.add(sun);
       var hemi = new THREE.HemisphereLight(0x87ceeb, 0x5a5e64, 0.45);
       scene.add(hemi);
+
+      loadWorldMap(currentMapId);
 
       hideLoadError();
       ready = true;
@@ -2258,6 +2941,14 @@ if (typeof window !== "undefined") {
       updateEvacZone(dt);
     }
 
+    if (explosionCounting) {
+      updateExplosionCountdown(dt);
+    }
+
+    if (hasExplosionEffects()) {
+      updateExplosionEffects(dt);
+    }
+
     if (isUiBlocking()) {
       if (window.ActionJoystick) window.ActionJoystick.setBlocked(true);
       if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
@@ -2290,14 +2981,10 @@ if (typeof window !== "undefined") {
     updateCrouch(dt);
     updatePlayerTransform();
     updateHands(dt, moving);
-    if (pos.z < EVAC_ROOM_START_Z + EVAC_ROOM_SIZE + 2) {
+    if (pos.z < EVAC_ROOM_START_Z + EVAC_ROOM_SIZE + 2 || currentMapId === "test") {
       updateClouds(dt, animTime);
     }
     updateInteractHints();
-
-    if (window.ActionNpcSoldier && window.ActionNpcSoldier.update) {
-      window.ActionNpcSoldier.update(dt);
-    }
 
     if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
       window.LockpickingQTE.update(dt);
@@ -2329,13 +3016,22 @@ if (typeof window !== "undefined") {
   function resetPlayer() {
     yaw = 0;
     pitch = -0.08;
-    pos.x = 0;
-    pos.y = 0;
-    pos.z = 2;
+    if (currentMapId === "test") {
+      pos.x = 0;
+      pos.y = 0;
+      pos.z = 0;
+    } else {
+      pos.x = 0;
+      pos.y = 0;
+      pos.z = 2;
+    }
     velY = 0;
     grounded = true;
     animTime = 0;
     staminaDrainAcc = 0;
+    if (window.ActionHealth && window.ActionHealth.reset) {
+      window.ActionHealth.reset();
+    }
     if (window.ActionJoystick && window.ActionJoystick.resetStamina) {
       window.ActionJoystick.resetStamina();
     }
@@ -2379,7 +3075,7 @@ if (typeof window !== "undefined") {
     hideLoadError();
 
     actionRoot.hidden = false;
-    document.body.classList.remove("room-open", "stash-open", "tutorial-open");
+    document.body.classList.remove("room-open", "stash-open", "tutorial-open", "map-open");
     document.body.classList.add("action-open");
     document.body.classList.remove("hub-home");
 
@@ -2399,6 +3095,7 @@ if (typeof window !== "undefined") {
     }
     setWeaponHint();
     setHintVisible(true);
+    if (window.ActionHealth) window.ActionHealth.show();
     if (window.ActionJoystick) window.ActionJoystick.show();
     mountLookLayer();
     syncLookLayer();
@@ -2417,7 +3114,34 @@ if (typeof window !== "undefined") {
     }
   }
 
-  function enter() {
+  function resolveDefaultMapId() {
+    if (window.TutorialProgress && window.TutorialProgress.isComplete()) {
+      if (window.LobbyUI && window.LobbyUI.getSelectedMapId) {
+        return window.LobbyUI.getSelectedMapId();
+      }
+      return "test";
+    }
+    return "tutorial";
+  }
+
+  function normalizeMapId(mapId) {
+    if (!window.TutorialProgress || !window.TutorialProgress.isComplete()) {
+      return "tutorial";
+    }
+    if (mapId === "tutorial") {
+      if (window.LobbyUI && window.LobbyUI.getSelectedMapId) {
+        return window.LobbyUI.getSelectedMapId();
+      }
+      return "test";
+    }
+    if (mapId === "test") return "test";
+    if (window.LobbyUI && window.LobbyUI.getSelectedMapId) {
+      return window.LobbyUI.getSelectedMapId();
+    }
+    return "test";
+  }
+
+  function withPlayCheck(callback) {
     if (window.LobbyNet && window.LobbyNet.assertCanPlay) {
       window.LobbyNet.assertCanPlay(function (ok, msg) {
         if (!ok) {
@@ -2433,7 +3157,7 @@ if (typeof window !== "undefined") {
           }
           return;
         }
-        enterConfirmed();
+        callback();
       });
       return;
     }
@@ -2446,10 +3170,10 @@ if (typeof window !== "undefined") {
       return;
     }
 
-    enterConfirmed();
+    callback();
   }
 
-  function enterConfirmed() {
+  function startEnter(mapId) {
     if (window.LobbyNet && window.LobbyNet.canPlay && !window.LobbyNet.canPlay()) {
       if (window.LobbyNet.handlePlayBlocked) {
         window.LobbyNet.handlePlayBlocked(
@@ -2459,6 +3183,23 @@ if (typeof window !== "undefined") {
       return;
     }
 
+    currentMapId = normalizeMapId(mapId || resolveDefaultMapId());
+    enterConfirmed();
+  }
+
+  function enter() {
+    withPlayCheck(function () {
+      startEnter(resolveDefaultMapId());
+    });
+  }
+
+  function enterMap(mapId) {
+    withPlayCheck(function () {
+      startEnter(mapId);
+    });
+  }
+
+  function enterConfirmed() {
     if (typeof THREE === "undefined") {
       actionRoot.hidden = false;
       document.body.classList.add("action-open");
@@ -2478,12 +3219,17 @@ if (typeof window !== "undefined") {
     }
 
     actionRoot.hidden = true;
-    document.body.classList.remove("room-open", "stash-open", "tutorial-open");
+    document.body.classList.remove("room-open", "stash-open", "tutorial-open", "map-open");
     document.body.classList.remove("hub-home");
 
     clearInputKeys();
     resetSecurityDoorState();
-    if (window.WorldLootBox && window.WorldLootBox.resetForNewRun) {
+    resetExplosionState();
+    if (
+      currentMapId === "tutorial" &&
+      window.WorldLootBox &&
+      window.WorldLootBox.resetForNewRun
+    ) {
       window.WorldLootBox.resetForNewRun({ firstChestGuarantee: true });
     }
     if (window.LockpickingQTE && window.LockpickingQTE.close) {
@@ -2523,7 +3269,7 @@ if (typeof window !== "undefined") {
   function setWeaponHint() {
     if (!hintEl) return;
     if (shouldUseDragLook()) {
-      var mobileCtrl = " · 摇杆上推过线疾跑 · 右下跳跃";
+      var mobileCtrl = " · 左下背包 · 摇杆上推过线疾跑 · 右下跳跃";
       if (window.ActionWeapon && window.ActionWeapon.hasUziEquipped()) {
         hintEl.textContent =
           "拖动转视角 · 摇杆移动" +
@@ -2554,13 +3300,12 @@ if (typeof window !== "undefined") {
       window.PlayerStatePersist.save();
     }
     resetEvacState();
+    resetExplosionState();
     enterInProgress = false;
     hideEnterLoading();
     if (window.ActionWeapon) window.ActionWeapon.dispose();
+    if (window.ActionHealth) window.ActionHealth.hide();
     if (window.ActionJoystick) window.ActionJoystick.hide();
-    if (window.ActionNpcSoldier && window.ActionNpcSoldier.dispose) {
-      window.ActionNpcSoldier.dispose();
-    }
     syncLookLayer();
     clearInputKeys();
     if (window.ActionInventory) window.ActionInventory.close();
@@ -2705,7 +3450,10 @@ if (typeof window !== "undefined") {
 
     window.ActionScene = {
       enter: enter,
+      enterMap: enterMap,
       exit: exit,
+      onChestOpened: onChestOpened,
+      resetExplosionState: resetExplosionState,
       isActive: function () {
         return running && actionRoot && !actionRoot.hidden;
       },
@@ -2717,6 +3465,7 @@ if (typeof window !== "undefined") {
       showDurabilityBanner: showDurabilityBanner,
       releaseUiPointer: releasePointerForUi,
       tryJump: tryJump,
+      toggleInventory: toggleInventory,
     };
 
     if (typeof THREE === "undefined") {

@@ -314,6 +314,7 @@ def default_player_state() -> Dict[str, Any]:
         "credits": DEFAULT_CREDITS,
         "grids": None,
         "loadout": None,
+        "tutorialComplete": False,
     }
 
 
@@ -337,6 +338,11 @@ def normalize_player_state(raw: Any) -> Dict[str, Any]:
             state["grids"] = grids
         if loadout is not None:
             state["loadout"] = loadout
+        tc = raw.get("tutorialComplete")
+        if isinstance(tc, bool):
+            state["tutorialComplete"] = tc
+        elif tc in (1, "1", "true", "True"):
+            state["tutorialComplete"] = True
     return state
 
 

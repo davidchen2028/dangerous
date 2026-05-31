@@ -1,0 +1,14 @@
+# 本地管理说明（含后台入口，勿提交）
+admin-local.txt
+
+# 本地数据库与缓存
+server/lobby.db
+server/__pycache__/
+*.pyc
+
+# 大体积/试验模型（按需本地保留）
+models/military-soldier.glb
+models/missile.glb
+
+# 重复/过时副本
+img/js/

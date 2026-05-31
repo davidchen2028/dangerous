@@ -6,9 +6,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>极危行动 — 行动基地</title>
-  <link rel="stylesheet" href="css/lobby.css?v=18">
+  <link rel="stylesheet" href="css/lobby.css?v=20">
   <link rel="stylesheet" href="css/market-page.css?v=8">
-  <link rel="stylesheet" href="css/action-scene.css?v=24">
+  <link rel="stylesheet" href="css/action-scene.css?v=28">
 </head>
 <body class="hub-home">
   <div class="lobby" aria-hidden="true"></div>
@@ -19,6 +19,7 @@
     <button type="button" class="btn-hub btn-hub--stash" id="btnStash">仓库</button>
     <button type="button" class="btn-hub btn-hub--market" id="btnMarket">市场</button>
     <button type="button" class="btn-hub btn-hub--tutorial" id="btnTutorial">教程</button>
+    <button type="button" class="btn-hub btn-hub--map" id="btnMap">地图</button>
     <button type="button" class="btn-hub btn-hub--action" id="btnAction">新手<br>教程</button>
 
     <div class="hub-panel" id="roomPanel" hidden>
@@ -140,6 +141,24 @@
       </div>
     </div>
 
+    <div class="hub-panel" id="mapPanel" hidden>
+      <div class="hub-panel__backdrop" id="mapBackdrop"></div>
+      <button type="button" class="btn-close-ring" id="btnMapClose" aria-label="返回大厅">×</button>
+      <div class="hub-panel__box hub-panel__box--map">
+        <header class="hub-panel__head">
+          <h2 class="hub-panel__title">选择地图</h2>
+          <span class="hub-panel__meta">测试服可用区域</span>
+        </header>
+        <div class="map-panel__body">
+          <p class="map-panel__tip">点选地图后关闭面板，再点「开始行动」进入</p>
+          <button type="button" class="map-card" id="mapCardTest" aria-pressed="false">
+            <span class="map-card__name">测试</span>
+            <span class="map-card__desc">一片空旷的草地</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="hub-panel" id="stashPanel" hidden>
       <div class="hub-panel__backdrop" id="stashBackdrop"></div>
       <button type="button" class="btn-close-ring" id="btnStashClose" aria-label="返回大厅">×</button>
@@ -220,6 +239,11 @@
     <p class="action-durability-banner" id="actionDurabilityBanner" hidden role="status"></p>
     <p class="action-interact-hint" id="actionInteractHint" hidden>靠近安全门 · 按 E 开门</p>
 
+    <div class="action-evac action-explosion" id="actionExplosion" hidden aria-live="polite">
+      <p class="action-explosion__title">爆炸倒计时</p>
+      <p class="action-explosion__timer" id="actionExplosionTimer">10</p>
+    </div>
+
     <div class="action-evac" id="actionEvac" hidden aria-live="polite">
       <p class="action-evac__title">即将撤离</p>
       <p class="action-evac__timer" id="actionEvacTimer">10</p>
@@ -228,7 +252,7 @@
     <div class="lockpick-qte" id="lockpickQte" hidden role="dialog" aria-label="开锁校准">
       <div class="lockpick-qte__panel">
         <h2 class="lockpick-qte__title">锁芯校准</h2>
-        <p class="lockpick-qte__hint">指针在绿色区域时按空格或点「开锁」· 连续成功 3 次开启宝箱</p>
+        <p class="lockpick-qte__hint">指针在绿色区域时按空格<span class="lockpick-qte__hint-mobile">或点「开锁」</span> · 连续成功 3 次开启宝箱</p>
         <div class="lockpick-qte__track" aria-hidden="true">
           <div class="lockpick-qte__zone lockpick-qte__zone--green"></div>
           <div class="lockpick-qte__pointer"></div>
@@ -302,22 +326,23 @@
   }
   </script>
   <script src="js/socket.io.min.js?v=4"></script>
-  <script src="js/lobby-ui.js?v=10"></script>
+  <script src="js/tutorial-progress.js?v=2"></script>
+  <script src="js/lobby-ui.js?v=12"></script>
   <script src="js/item-catalog.js?v=30"></script>
   <script src="js/grid-inventory.js?v=4"></script>
   <script src="js/grid-stash-ui.js?v=17"></script>
   <script src="js/player-loadout.js?v=17"></script>
   <script src="js/lobby-market.js?v=34"></script>
-  <script src="js/player-state-persist.js?v=5"></script>
+  <script src="js/player-state-persist.js?v=6"></script>
   <script src="js/stash.js?v=13"></script>
   <script src="js/net.js?v=15"></script>
   <script src="js/action-inventory.js?v=7"></script>
   <script src="js/pirate-loot-roll.js?v=12"></script>
-  <script src="js/lockpicking-qte.js?v=4"></script>
-  <script src="js/world-loot-box.js?v=13"></script>
-  <script src="js/action-joystick.js?v=7"></script>
+  <script src="js/lockpicking-qte.js?v=5"></script>
+  <script src="js/world-loot-box.js?v=14"></script>
+  <script src="js/action-health.js?v=2"></script>
+  <script src="js/action-joystick.js?v=10"></script>
   <script src="js/action-weapon.js?v=11"></script>
-  <script src="js/action-npc-soldier.js?v=6"></script>
-  <script type="module" src="js/action-scene.js?v=72"></script>
+  <script type="module" src="js/action-scene.js?v=81"></script>
 </body>
 </html>

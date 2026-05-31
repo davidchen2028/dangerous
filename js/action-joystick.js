@@ -16,6 +16,9 @@
   var wrapEl = null;
   var jumpWrapEl = null;
   var jumpBtnEl = null;
+  var bagWrapEl = null;
+  var bagBtnEl = null;
+  var staminaWrapEl = null;
   var root = null;
   var baseEl = null;
   var stickEl = null;
@@ -60,6 +63,56 @@
     return FORCE_VISIBLE || isTouchDevice();
   }
 
+  function syncBagVisibility() {
+    var show = sceneActive && shouldShowJoystick();
+    if (bagWrapEl) bagWrapEl.hidden = !show;
+    if (wrapEl) {
+      wrapEl.classList.toggle("action-joystick-wrap--with-bag", show);
+    }
+    if (window.ActionHealth && window.ActionHealth.isActive && window.ActionHealth.isActive()) {
+      var statsEl = document.getElementById("actionLeftStats");
+      if (statsEl) {
+        statsEl.classList.toggle("action-left-stats--with-bag", show);
+      }
+    }
+  }
+
+  function onBagPointerDown(e) {
+    if (!sceneActive) return;
+    var invOpen =
+      window.ActionInventory &&
+      window.ActionInventory.isOpen &&
+      window.ActionInventory.isOpen();
+    if (blocked && !invOpen) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (window.ActionScene && window.ActionScene.toggleInventory) {
+      window.ActionScene.toggleInventory();
+      return;
+    }
+    if (window.ActionInventory && window.ActionInventory.toggle) {
+      window.ActionInventory.toggle();
+    }
+  }
+
+  function mountBagButton() {
+    if (bagWrapEl) return;
+    var host = document.getElementById("actionScene");
+    if (!host) return;
+
+    bagWrapEl = document.createElement("div");
+    bagWrapEl.className = "action-bag-wrap";
+    bagWrapEl.id = "actionBagWrap";
+    bagWrapEl.hidden = true;
+    bagWrapEl.innerHTML =
+      '<button type="button" class="action-bag-btn" id="actionBagBtn" aria-label="打开背包">包</button>';
+    host.appendChild(bagWrapEl);
+    bagBtnEl = bagWrapEl.querySelector(".action-bag-btn");
+    if (bagBtnEl) {
+      bagBtnEl.addEventListener("pointerdown", onBagPointerDown);
+    }
+  }
+
   function syncJumpVisibility() {
     var show = sceneActive && shouldShowJoystick();
     if (jumpWrapEl) jumpWrapEl.hidden = !show;
@@ -91,6 +144,7 @@
       jumpBtnEl.addEventListener("pointerdown", onJumpPointerDown);
     }
   }
+
   function syncJoystickVisibility() {
     joystickVisible = sceneActive && shouldShowJoystick();
     if (wrapEl) {
@@ -104,6 +158,7 @@
       root.setAttribute("aria-hidden", joystickVisible ? "false" : "true");
     }
     syncJumpVisibility();
+    syncBagVisibility();
   }
 
   function buildStaminaSegments() {
@@ -115,20 +170,37 @@
     return html;
   }
 
+  function mountStaminaBar() {
+    if (staminaTrackEl) return;
+    var host = document.getElementById("actionScene");
+    if (!host) return;
+
+    staminaWrapEl = document.createElement("div");
+    staminaWrapEl.className = "action-stamina-hud";
+    staminaWrapEl.id = "actionStaminaHud";
+    staminaWrapEl.hidden = true;
+    staminaWrapEl.innerHTML =
+      '<div class="action-stamina" id="actionStamina" aria-label="体力">' +
+      '<div class="action-stamina__track">' +
+      buildStaminaSegments() +
+      "</div></div>";
+    host.appendChild(staminaWrapEl);
+    staminaTrackEl = staminaWrapEl.querySelector(".action-stamina__track");
+    renderStamina();
+  }
+
   function mount() {
     if (mounted) return;
     var host = document.getElementById("actionScene");
     if (!host) return;
+
+    mountStaminaBar();
 
     wrapEl = document.createElement("div");
     wrapEl.className = "action-joystick-wrap";
     wrapEl.id = "actionJoystickWrap";
     wrapEl.hidden = true;
     wrapEl.innerHTML =
-      '<div class="action-stamina" id="actionStamina" aria-label="体力">' +
-      '<div class="action-stamina__track">' +
-      buildStaminaSegments() +
-      "</div></div>" +
       '<div class="action-joystick" id="actionJoystick">' +
       '<div class="action-joystick__base">' +
       '<div class="action-joystick__sprint-line" aria-hidden="true"></div>' +
@@ -137,10 +209,10 @@
 
     host.appendChild(wrapEl);
     mountJumpButton();
+    mountBagButton();
     root = wrapEl.querySelector(".action-joystick");
     baseEl = wrapEl.querySelector(".action-joystick__base");
     stickEl = wrapEl.querySelector(".action-joystick__stick");
-    staminaTrackEl = wrapEl.querySelector(".action-stamina__track");
 
     baseEl.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointermove", onPointerMove);
@@ -148,7 +220,6 @@
     window.addEventListener("pointercancel", onPointerUp);
     window.addEventListener("resize", measureRadius);
 
-    renderStamina();
     mounted = true;
   }
 
@@ -241,17 +312,22 @@
     for (i = 0; i < segs.length; i++) {
       segs[i].classList.toggle("action-stamina__seg--on", i < staminaSegments);
     }
-    if (wrapEl) {
-      wrapEl.classList.toggle("action-joystick-wrap--empty", staminaSegments <= 0);
+    if (staminaWrapEl) {
+      staminaWrapEl.classList.toggle(
+        "action-stamina-hud--empty",
+        staminaSegments <= 0
+      );
     }
   }
 
   function show() {
     mount();
+    mountStaminaBar();
     if (!wrapEl) return;
     measureRadius();
     sceneActive = true;
     wrapEl.hidden = false;
+    if (staminaWrapEl) staminaWrapEl.hidden = false;
     syncJoystickVisibility();
     renderStamina();
   }
@@ -259,11 +335,13 @@
   function hide() {
     if (!wrapEl) return;
     wrapEl.hidden = true;
+    if (staminaWrapEl) staminaWrapEl.hidden = true;
     sceneActive = false;
     joystickVisible = false;
     blocked = false;
     clear();
     syncJumpVisibility();
+    syncBagVisibility();
   }
 
   function setBlocked(next) {
@@ -273,6 +351,13 @@
     }
     if (jumpBtnEl) {
       jumpBtnEl.classList.toggle("action-jump-btn--blocked", blocked);
+    }
+    if (bagBtnEl) {
+      var invOpen =
+        window.ActionInventory &&
+        window.ActionInventory.isOpen &&
+        window.ActionInventory.isOpen();
+      bagBtnEl.classList.toggle("action-bag-btn--blocked", blocked && !invOpen);
     }
     if (blocked) clear();
   }

@@ -638,6 +638,9 @@
     markOpened();
     populateChestFromRoll();
     openChestPanel();
+    if (window.ActionScene && window.ActionScene.onChestOpened) {
+      window.ActionScene.onChestOpened();
+    }
   }
 
   function tryStartLockpick() {

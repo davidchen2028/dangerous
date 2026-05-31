@@ -28,6 +28,9 @@
       grids: window.GridStashUI.exportPersistState(),
       loadout: window.PlayerLoadout.exportPersistState(),
       credits: window.LobbyMarket.getCredits(),
+      tutorialComplete: !!(
+        window.TutorialProgress && window.TutorialProgress.isComplete()
+      ),
     };
   }
 
@@ -39,6 +42,7 @@
       credits: state.credits,
       grids: state.grids,
       loadout: state.loadout,
+      tutorialComplete: state.tutorialComplete,
     };
   }
 
@@ -52,6 +56,12 @@
     }
     if (state.credits != null && window.LobbyMarket.setCredits) {
       window.LobbyMarket.setCredits(state.credits);
+    }
+    if (window.TutorialProgress && window.TutorialProgress.setComplete) {
+      window.TutorialProgress.setComplete(!!state.tutorialComplete);
+    }
+    if (window.LobbyUI && window.LobbyUI.syncActionHubButton) {
+      window.LobbyUI.syncActionHubButton();
     }
     return true;
   }
@@ -178,6 +188,7 @@
     return {
       v: 1,
       credits: credits,
+      tutorialComplete: false,
       grids: { stash: [], secure: [] },
       loadout: {
         primary: null,
@@ -219,17 +230,29 @@
   function onAuthOk(serverState, options) {
     options = options || {};
     serverSyncEnabled = true;
+    var state = serverState || makeEmptyState(DEFAULT_CREDITS);
+    var migratedLegacy = false;
+
+    if (
+      !state.tutorialComplete &&
+      window.TutorialProgress &&
+      window.TutorialProgress.consumeLegacyIfNeeded &&
+      window.TutorialProgress.consumeLegacyIfNeeded()
+    ) {
+      state = Object.assign({}, state, { tutorialComplete: true });
+      migratedLegacy = true;
+    }
 
     if (options.isRegister) {
       applyGuestState(DEFAULT_CREDITS);
       flushSaveToServer();
-    } else if (serverHasProgress(serverState)) {
-      importState(serverState);
+    } else if (serverHasProgress(state)) {
+      importState(state);
       if (window.GridStashUI.markSeeded) {
         window.GridStashUI.markSeeded();
       }
     } else {
-      importState(serverState || makeEmptyState(DEFAULT_CREDITS));
+      importState(state);
       if (window.GridStashUI.markSeeded) {
         window.GridStashUI.markSeeded();
       }
@@ -240,6 +263,9 @@
       window.GridStashUI.enablePersist();
     }
     saveLocal();
+    if (migratedLegacy) {
+      flushSaveToServer();
+    }
   }
 
   function onAuthLogout() {
@@ -253,6 +279,12 @@
       window.GridStashUI.disablePersist();
     }
     applyGuestState(0);
+    if (window.TutorialProgress && window.TutorialProgress.reset) {
+      window.TutorialProgress.reset();
+    }
+    if (window.LobbyUI && window.LobbyUI.syncActionHubButton) {
+      window.LobbyUI.syncActionHubButton();
+    }
     clearLocalStorage();
     refreshUi();
   }
