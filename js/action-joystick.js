@@ -31,9 +31,28 @@
   var staminaSegments = STAMINA_MAX;
 
   function isTouchDevice() {
+    if (window.LobbyNet && window.LobbyNet.isMobileDevice) {
+      return window.LobbyNet.isMobileDevice();
+    }
+    var ua = navigator.userAgent || "";
+    if (
+      /iPad/i.test(ua) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+    ) {
+      return true;
+    }
+    if (/iPhone|iPod|Android|HarmonyOS|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
+      return true;
+    }
+    if (
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(hover: none) and (pointer: coarse)").matches
+    ) {
+      return true;
+    }
     return (
       (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ||
-      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "")
+      "ontouchstart" in window
     );
   }
 

@@ -533,7 +533,26 @@
     ) {
       return "tablet";
     }
-    if (/iPhone|iPod|Android/i.test(ua)) return "mobile";
+    if (/iPhone|iPod/i.test(ua)) return "mobile";
+    if (/Android|HarmonyOS|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
+      return "mobile";
+    }
+    if (
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(hover: none) and (pointer: coarse)").matches
+    ) {
+      var minSide = Math.min(window.screen.width || 0, window.screen.height || 0);
+      return minSide >= 768 ? "tablet" : "mobile";
+    }
+    if (
+      (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ||
+      "ontouchstart" in window
+    ) {
+      var side = Math.min(window.screen.width || 0, window.screen.height || 0);
+      if (side > 0 && side <= 1024) {
+        return side >= 768 ? "tablet" : "mobile";
+      }
+    }
     return "desktop";
   }
 
@@ -956,6 +975,8 @@
     },
     startSessionProbe: startSessionProbe,
     stopSessionProbe: stopSessionProbe,
+    getClientDevice: getClientDevice,
+    isMobileDevice: isMobileDevice,
   };
 
   if (sessionRevokedBtn) {
