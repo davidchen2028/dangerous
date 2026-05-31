@@ -645,6 +645,9 @@ body.inventory-open .action-inventory * {
 
 body.inventory-open .action-crosshair,
 body.lockpick-qte-open .action-crosshair,
+body.hidden-chest-puzzle-open .action-crosshair,
+body.hidden-chest-loot-open .action-crosshair,
+body.waste-bin-open .action-crosshair,
 body.show-cursor .action-crosshair {
   display: none;
 }
@@ -935,6 +938,266 @@ body.pirate-chest-loot-open .action-scene__hint {
 
 body.pirate-chest-loot-open .pirate-chest-loot,
 body.pirate-chest-loot-open .pirate-chest-loot * {
+  cursor: default;
+}
+
+body.hidden-chest-puzzle-open .action-crosshair,
+body.hidden-chest-loot-open .action-crosshair,
+body.hidden-chest-puzzle-open .action-scene__hint,
+body.hidden-chest-loot-open .action-scene__hint {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* —— 隐秘藏品箱 · 算术密码 —— */
+.hidden-chest-puzzle {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.hidden-chest-puzzle[hidden] {
+  display: none !important;
+}
+
+.hidden-chest-puzzle__panel {
+  width: min(92vw, 400px);
+  padding: 1.25rem 1.35rem 1.1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 120, 130, 0.4);
+  background: linear-gradient(180deg, rgba(16, 16, 18, 0.97), rgba(6, 6, 8, 0.99));
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+}
+
+.hidden-chest-puzzle__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #d8d8dc;
+  letter-spacing: 0.06em;
+}
+
+.hidden-chest-puzzle__hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  color: rgba(200, 200, 210, 0.72);
+}
+
+.hidden-chest-puzzle__question {
+  margin: 0 0 0.65rem;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #f0f0f4;
+  text-align: center;
+}
+
+.hidden-chest-puzzle__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.45);
+  color: #f4f4f8;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.hidden-chest-puzzle__input:focus {
+  outline: none;
+  border-color: rgba(160, 160, 180, 0.55);
+  box-shadow: 0 0 0 2px rgba(120, 120, 140, 0.25);
+}
+
+.hidden-chest-puzzle__error {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  color: #f08080;
+  text-align: center;
+}
+
+.hidden-chest-puzzle__error[hidden] {
+  display: none !important;
+}
+
+.hidden-chest-puzzle__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+}
+
+.hidden-chest-puzzle__cancel,
+.hidden-chest-puzzle__submit {
+  padding: 0.45rem 0.85rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.hidden-chest-puzzle__cancel {
+  background: rgba(40, 40, 45, 0.9);
+  color: rgba(220, 220, 225, 0.85);
+}
+
+.hidden-chest-puzzle__submit {
+  background: linear-gradient(180deg, rgba(70, 70, 78, 0.95), rgba(35, 35, 40, 0.98));
+  color: #ececf0;
+  border-color: rgba(180, 180, 190, 0.35);
+}
+
+.hidden-chest-puzzle__foot {
+  margin: 0.75rem 0 0;
+  font-size: 0.72rem;
+  color: rgba(180, 180, 190, 0.6);
+  text-align: center;
+}
+
+.hidden-chest-puzzle__foot kbd {
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.68rem;
+}
+
+.hidden-chest-loot__panel {
+  border-color: rgba(100, 100, 110, 0.45);
+}
+
+body.hidden-chest-loot-open .hidden-chest-loot,
+body.hidden-chest-loot-open .hidden-chest-loot * {
+  cursor: default;
+}
+
+/* 工业废料桶搜刮 */
+.waste-bin-search[hidden] {
+  display: none !important;
+}
+
+.waste-bin-search:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.waste-bin-search__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 8, 14, 0.72);
+}
+
+.waste-bin-search__panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 520px);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 1rem;
+  background: linear-gradient(165deg, #1a2430 0%, #0e141c 100%);
+  border: 1px solid rgba(80, 120, 150, 0.45);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+.waste-bin-search__title {
+  margin: 0;
+  font-size: 1rem;
+  color: #dce8f4;
+}
+
+.waste-bin-search__sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.72rem;
+  color: #7a8a98;
+}
+
+.waste-bin-search__status {
+  margin: 0.65rem 0 0.4rem;
+  font-size: 0.78rem;
+  color: #9ec4b0;
+  min-height: 1.2em;
+}
+
+.waste-bin-search__grid-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 0.35rem 0;
+}
+
+.waste-bin-search__grid {
+  --inv-cell: 2.35rem;
+}
+
+.waste-bin-loot__item {
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background-color: rgba(28, 40, 52, 0.95);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.waste-bin-search__tip {
+  margin: 0.35rem 0 0.5rem;
+  font-size: 0.68rem;
+  color: #6a7a88;
+  text-align: center;
+}
+
+.waste-bin-search__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.waste-bin-search__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #b8c8d8;
+  background: rgba(30, 40, 52, 0.9);
+  border: 1px solid rgba(90, 110, 130, 0.5);
+}
+
+.waste-bin-search__kbd {
+  display: inline-block;
+  padding: 0.08rem 0.35rem;
+  font-family: inherit;
+  font-size: 0.62rem;
+  line-height: 1.35;
+  color: #9eb0c4;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(120, 140, 160, 0.45);
+  border-radius: 3px;
+}
+
+body.waste-bin-open .action-scene__hint,
+body.waste-bin-open .action-crosshair {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+body.waste-bin-open .action-scene__canvas {
   cursor: default;
 }
 

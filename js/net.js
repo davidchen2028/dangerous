@@ -663,6 +663,37 @@
     });
   }
 
+  function consumeMarketStock(productId, cb) {
+    if (!ready) {
+      if (cb) cb(false, "请先登录", null);
+      return;
+    }
+    var token = getToken();
+    if (!token) {
+      if (cb) cb(false, "请先登录", null);
+      return;
+    }
+    fetch("/api/market/buy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: token, productId: productId }),
+    })
+      .then(function (r) {
+        return r.json().then(function (data) {
+          return { ok: r.ok, data: data };
+        });
+      })
+      .then(function (res) {
+        var data = res.data || {};
+        if (cb) {
+          cb(!!(res.ok && data.ok !== false), data.message || "", data.stock || null);
+        }
+      })
+      .catch(function () {
+        if (cb) cb(false, "无法连接服务器", null);
+      });
+  }
+
   function tryLogout() {
     stopSessionProbe();
     if (window.PlayerStatePersist && window.PlayerStatePersist.onAuthLogout) {
@@ -883,6 +914,17 @@
       console.warn("[LobbyNet]", msg);
     });
 
+    socket.on("market_stock_updated", function (data) {
+      if (
+        window.LobbyMarket &&
+        window.LobbyMarket.applyStock &&
+        data &&
+        data.stock
+      ) {
+        window.LobbyMarket.applyStock(data.stock);
+      }
+    });
+
     socket.on("disconnect", function (reason) {
       socketConnected = false;
       const wasReady = ready;
@@ -977,6 +1019,7 @@
     stopSessionProbe: stopSessionProbe,
     getClientDevice: getClientDevice,
     isMobileDevice: isMobileDevice,
+    consumeMarketStock: consumeMarketStock,
   };
 
   if (sessionRevokedBtn) {

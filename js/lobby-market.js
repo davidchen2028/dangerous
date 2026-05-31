@@ -12,6 +12,85 @@
 
   var perilCredits = 50000;
 
+  var DEFAULT_STOCK = 5;
+  var STOCK_KEY = "dangerous_market_stock_v1";
+  var productStock = {};
+  var marketPanelOpen = false;
+  var stockSyncPending = false;
+
+  function initDefaultStock() {
+    PRODUCTS.forEach(function (p) {
+      if (productStock[p.id] == null) {
+        productStock[p.id] = DEFAULT_STOCK;
+      }
+    });
+  }
+
+  function loadLocalStock() {
+    try {
+      var raw = localStorage.getItem(STOCK_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          productStock = parsed;
+        }
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    initDefaultStock();
+  }
+
+  function saveLocalStock() {
+    try {
+      localStorage.setItem(STOCK_KEY, JSON.stringify(productStock));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function getStock(productId) {
+    var n = productStock[productId];
+    if (typeof n !== "number" || !isFinite(n)) {
+      return DEFAULT_STOCK;
+    }
+    return Math.max(0, Math.floor(n));
+  }
+
+  function applyStockMap(map) {
+    if (!map || typeof map !== "object") return;
+    productStock = map;
+    initDefaultStock();
+    saveLocalStock();
+    if (marketPanelOpen) {
+      renderProducts();
+    }
+  }
+
+  function syncStockFromServer(done) {
+    if (stockSyncPending) {
+      if (done) done(null);
+      return;
+    }
+    stockSyncPending = true;
+    fetch("/api/market/stock")
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (data) {
+        if (data && data.stock) {
+          applyStockMap(data.stock);
+        }
+        if (done) done(data && data.stock ? data.stock : null);
+      })
+      .catch(function () {
+        if (done) done(null);
+      })
+      .finally(function () {
+        stockSyncPending = false;
+      });
+  }
+
   var activeCat = "rig";
   var activeSub = "electronic";
 
@@ -392,6 +471,8 @@
     },
   ];
 
+  loadLocalStock();
+
   function findCategory(id) {
     var i;
     for (i = 0; i < CATEGORIES.length; i++) {
@@ -501,6 +582,8 @@
     items.forEach(function (product) {
       var meta = productMeta(product);
       var economy = productEconomyLine(product);
+      var stock = getStock(product.id);
+      var soldOut = stock <= 0;
       var card = document.createElement("article");
       card.className = "market-card";
       if (product.rarity) {
@@ -525,15 +608,29 @@
           : "") +
         "</div>" +
         '<div class="market-card__foot">' +
+        '<div class="market-card__foot-left">' +
         '<span class="market-card__price">' +
         product.price.toLocaleString() +
         " ₱</span>" +
-        '<button type="button" class="market-card__buy">购买</button>' +
+        '<span class="market-card__stock' +
+        (soldOut ? " market-card__stock--sold" : "") +
+        '">' +
+        (soldOut ? "已售罄" : "现货 " + stock) +
+        "</span>" +
+        "</div>" +
+        '<button type="button" class="market-card__buy"' +
+        (soldOut ? " disabled" : "") +
+        ">" +
+        (soldOut ? "已售罄" : "购买") +
+        "</button>" +
         "</div>";
 
-      card.querySelector(".market-card__buy").addEventListener("click", function () {
-        buyProduct(product);
-      });
+      var buyBtn = card.querySelector(".market-card__buy");
+      if (!soldOut) {
+        buyBtn.addEventListener("click", function () {
+          buyProduct(product);
+        });
+      }
       listEl.appendChild(card);
     });
   }
@@ -611,29 +708,76 @@
   }
 
   function buyProduct(product) {
+    if (getStock(product.id) <= 0) {
+      alert("该商品已售罄，请等待管理员补货。");
+      return;
+    }
+
     if (perilCredits < product.price) {
       alert("极危币不足，需要 " + product.price.toLocaleString() + " ₱");
       return;
     }
 
     var stashId = product.stashId || product.id;
-    if (!deliverToStash(stashId)) {
+    var canStash =
+      window.GridStashUI && window.GridStashUI.canAddMarketItem
+        ? window.GridStashUI.canAddMarketItem(stashId)
+        : deliverToStash(stashId);
+    if (!canStash) {
       alert("仓库已满，请先整理左下角「仓库」再购买。");
       return;
     }
 
-    perilCredits -= product.price;
-    if (window.PlayerStatePersist && window.PlayerStatePersist.scheduleSave) {
-      window.PlayerStatePersist.scheduleSave();
+    function finishPurchase() {
+      if (!deliverToStash(stashId)) {
+        alert("仓库已满，请先整理左下角「仓库」再购买。");
+        return;
+      }
+      perilCredits -= product.price;
+      if (window.PlayerStatePersist && window.PlayerStatePersist.scheduleSave) {
+        window.PlayerStatePersist.scheduleSave();
+      }
+      updateCreditsDisplay();
+      renderProducts();
+      alert("已购买「" + product.name + "」，已放入仓库。");
     }
-    updateCreditsDisplay();
-    alert("已购买「" + product.name + "」，已放入仓库。");
+
+    if (
+      window.LobbyNet &&
+      window.LobbyNet.isReady &&
+      window.LobbyNet.isReady() &&
+      window.LobbyNet.consumeMarketStock
+    ) {
+      window.LobbyNet.consumeMarketStock(product.id, function (ok, msg, stockMap) {
+        if (stockMap) {
+          applyStockMap(stockMap);
+        }
+        if (!ok) {
+          alert(msg || "购买失败");
+          renderProducts();
+          return;
+        }
+        finishPurchase();
+      });
+      return;
+    }
+
+    productStock[product.id] = getStock(product.id) - 1;
+    saveLocalStock();
+    finishPurchase();
   }
 
   function onPanelOpen() {
-    renderCategories();
-    renderSubcats();
-    renderProducts();
+    marketPanelOpen = true;
+    syncStockFromServer(function () {
+      renderCategories();
+      renderSubcats();
+      renderProducts();
+    });
+  }
+
+  function onPanelClose() {
+    marketPanelOpen = false;
   }
 
   /**
@@ -723,6 +867,10 @@
 
   window.LobbyMarket = {
     onPanelOpen: onPanelOpen,
+    onPanelClose: onPanelClose,
+    applyStock: applyStockMap,
+    getStock: getStock,
+    syncStockFromServer: syncStockFromServer,
     getCredits: function () {
       return perilCredits;
     },

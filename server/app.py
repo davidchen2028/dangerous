@@ -319,6 +319,7 @@ def api_admin_user_online_stats() -> Any:
                 "userCount": len(stats),
                 "users": stats,
                 "bannedIps": db.list_active_banned_ips(),
+                "marketStock": db.get_market_stock_summary(),
             }
         )
     except Exception as exc:
@@ -474,6 +475,81 @@ def api_admin_delete_user() -> Any:
     if not ok:
         return jsonify({"ok": False, "message": msg}), 500
     return jsonify({"ok": True, "message": f"已注销账号：{nickname}"})
+
+
+def _broadcast_market_stock() -> None:
+    stock = db.get_market_stock()
+    socketio.emit("market_stock_updated", {"stock": stock}, room=LOBBY_ROOM)
+
+
+@app.route("/api/market/stock")
+def api_market_stock() -> Any:
+    from market_catalog import MARKET_DEFAULT_STOCK
+
+    return jsonify(
+        {
+            "stock": db.get_market_stock(),
+            "defaultStock": MARKET_DEFAULT_STOCK,
+        }
+    )
+
+
+@app.route("/api/market/buy", methods=["POST"])
+def api_market_buy() -> Any:
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip()
+    product_id = (data.get("productId") or "").strip()
+    user = db.get_user_by_token(token)
+    stock = db.get_market_stock()
+    if not user:
+        return jsonify({"ok": False, "message": "请先登录", "stock": stock}), 401
+    ok, msg = db.try_consume_market_stock(product_id)
+    stock = db.get_market_stock()
+    if not ok:
+        return jsonify({"ok": False, "message": msg, "stock": stock}), 400
+    _broadcast_market_stock()
+    return jsonify({"ok": True, "productId": product_id, "stock": stock})
+
+
+@app.route("/api/admin/market-restock", methods=["POST"])
+def api_admin_market_restock() -> Any:
+    key = request.args.get("key", "")
+    if not _admin_key_ok(key):
+        return jsonify({"error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    amount = int(data.get("amount", 0))
+    if amount not in (5, 10, 20):
+        return jsonify({"ok": False, "message": "补货数量须为 5、10 或 20"}), 400
+    stock = db.restock_market(amount)
+    _broadcast_market_stock()
+    return jsonify(
+        {
+            "ok": True,
+            "message": f"已为全品类补货 +{amount}",
+            "amount": amount,
+            "stock": stock,
+            "marketStock": db.get_market_stock_summary(),
+        }
+    )
+
+
+@app.route("/api/admin/market-reset-stock", methods=["POST"])
+def api_admin_market_reset_stock() -> Any:
+    key = request.args.get("key", "")
+    if not _admin_key_ok(key):
+        return jsonify({"error": "forbidden"}), 403
+    from market_catalog import MARKET_DEFAULT_STOCK
+
+    stock = db.reset_market_stock()
+    _broadcast_market_stock()
+    return jsonify(
+        {
+            "ok": True,
+            "message": f"已将全品类货源重置为 {MARKET_DEFAULT_STOCK}",
+            "stock": stock,
+            "marketStock": db.get_market_stock_summary(),
+        }
+    )
 
 
 _MIME_OVERRIDES = {

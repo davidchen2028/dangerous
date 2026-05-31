@@ -1099,6 +1099,29 @@
     return true;
   }
 
+  function canAddMarketItem(stashId) {
+    if (!window.ItemCatalog || !stashManager) return false;
+    var cat = window.ItemCatalog.fromStashId(stashId);
+    if (!cat) return false;
+    var data = catalogToItem(cat);
+    if (!data) return false;
+    if (cat.stackSize != null && data.stackSize == null) {
+      data.stackSize = cat.stackSize;
+    }
+    var w = data.width;
+    var h = data.height;
+    var row;
+    for (row = 0; row <= stashManager.rows - h; row++) {
+      var col;
+      for (col = 0; col <= stashManager.columns - w; col++) {
+        if (stashManager.isSpaceAvailable(col, row, w, h, null)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   function tryAddCatalogItem(catItem, opts) {
     if (!tryAddToManager(stashManager, catItem, opts)) return false;
     renderAll();
@@ -1187,6 +1210,7 @@
     refreshStashPanel: refreshStashPanel,
     bindLoadoutSlots: bindLoadoutSlots,
     tryAddMarketItem: tryAddMarketItem,
+    canAddMarketItem: canAddMarketItem,
     tryAddCatalogItem: tryAddCatalogItem,
     getManager: function () {
       return stashManager;

@@ -31,6 +31,10 @@
       tutorialComplete: !!(
         window.TutorialProgress && window.TutorialProgress.isComplete()
       ),
+      selectedMapId:
+        window.LobbyUI && window.LobbyUI.getSelectedMapId
+          ? window.LobbyUI.getSelectedMapId()
+          : "test",
     };
   }
 
@@ -43,6 +47,7 @@
       grids: state.grids,
       loadout: state.loadout,
       tutorialComplete: state.tutorialComplete,
+      selectedMapId: state.selectedMapId,
     };
   }
 
@@ -59,6 +64,14 @@
     }
     if (window.TutorialProgress && window.TutorialProgress.setComplete) {
       window.TutorialProgress.setComplete(!!state.tutorialComplete);
+    }
+    if (
+      state.selectedMapId &&
+      window.LobbyUI &&
+      window.LobbyUI.selectMap &&
+      state.tutorialComplete
+    ) {
+      window.LobbyUI.selectMap(state.selectedMapId);
     }
     if (window.LobbyUI && window.LobbyUI.syncActionHubButton) {
       window.LobbyUI.syncActionHubButton();
@@ -173,6 +186,7 @@
 
   function serverHasProgress(state) {
     if (!state || state.v !== 1) return false;
+    if (state.tutorialComplete) return true;
     if (state.credits != null && Number(state.credits) !== DEFAULT_CREDITS) {
       return true;
     }
@@ -189,6 +203,7 @@
       v: 1,
       credits: credits,
       tutorialComplete: false,
+      selectedMapId: "test",
       grids: { stash: [], secure: [] },
       loadout: {
         primary: null,
@@ -227,6 +242,39 @@
     saveToServer();
   }
 
+  function saveNow() {
+    clearTimeout(saveTimer);
+    clearTimeout(serverSaveTimer);
+    saveLocal();
+    saveToServer();
+  }
+
+  function readLocalStateRaw() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (!parsed || parsed.v !== 1) return null;
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** 登录恢复时，避免服务器旧档覆盖本地已撤离解锁的地图进度 */
+  function mergeLocalMapProgress(serverState) {
+    var local = readLocalStateRaw();
+    if (!local) return serverState;
+    var merged = Object.assign({}, serverState);
+    if (local.tutorialComplete) {
+      merged.tutorialComplete = true;
+    }
+    if (merged.tutorialComplete && local.selectedMapId === "test") {
+      merged.selectedMapId = "test";
+    }
+    return merged;
+  }
+
   function onAuthOk(serverState, options) {
     options = options || {};
     serverSyncEnabled = true;
@@ -242,6 +290,8 @@
       state = Object.assign({}, state, { tutorialComplete: true });
       migratedLegacy = true;
     }
+
+    state = mergeLocalMapProgress(state);
 
     if (options.isRegister) {
       applyGuestState(DEFAULT_CREDITS);
@@ -263,7 +313,7 @@
       window.GridStashUI.enablePersist();
     }
     saveLocal();
-    if (migratedLegacy) {
+    if (migratedLegacy || state.tutorialComplete) {
       flushSaveToServer();
     }
   }
@@ -289,20 +339,46 @@
     refreshUi();
   }
 
-  function boot() {
-    if (!hasDeps()) return;
-    applyGuestState(0);
-    refreshUi();
+  function enableLocalPersist() {
+    if (window.GridStashUI && window.GridStashUI.enablePersist) {
+      window.GridStashUI.enablePersist();
+    }
   }
 
-  window.addEventListener("beforeunload", function () {
-    if (!serverSyncEnabled) return;
+  function flushBeforeLeave() {
+    if (!hasDeps()) return;
+    clearTimeout(saveTimer);
+    clearTimeout(serverSaveTimer);
     saveLocal();
-    saveToServer();
-  });
+    if (serverSyncEnabled) {
+      saveToServer();
+    }
+  }
+
+  function boot() {
+    if (!hasDeps()) return;
+
+    if (hasSavedState() && loadLocal()) {
+      if (window.GridStashUI.markSeeded) {
+        window.GridStashUI.markSeeded();
+      }
+    } else {
+      applyGuestState(0);
+      if (window.GridStashUI.ensureSeeded) {
+        window.GridStashUI.ensureSeeded();
+      }
+    }
+
+    refreshUi();
+    enableLocalPersist();
+  }
+
+  window.addEventListener("beforeunload", flushBeforeLeave);
+  window.addEventListener("pagehide", flushBeforeLeave);
 
   window.PlayerStatePersist = {
     save: save,
+    saveNow: saveNow,
     scheduleSave: scheduleSave,
     load: loadLocal,
     hasSavedState: hasSavedState,

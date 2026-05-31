@@ -5,15 +5,13 @@ using UnityEngine;
 /// <summary>
 /// 黑市交易所管理器（单机测试版）。
 /// 结算货币：极危币（perilCredits）。
+/// 官方货源由管理端手动补货，无自动刷新。
 /// </summary>
 public class MarketManager : MonoBehaviour
 {
     public static MarketManager Instance { get; private set; }
 
-    [Header("官方准点补货")]
-    [Tooltip("每隔多少秒刷新一次官方货源")]
-    [SerializeField] float officialRefreshInterval = 60f;
-
+    [Header("官方初始货源")]
     [Tooltip("野战医疗缝合包 ×4，单价 1200")]
     [SerializeField] LootItemData officialMedKit;
 
@@ -32,8 +30,6 @@ public class MarketManager : MonoBehaviour
     [SerializeField] PlayerGridInventory playerInventory;
 
     [SerializeField] PlayerWallet playerWallet;
-
-    float _refreshTimer;
 
     /// <summary>当前市场上所有订单（UI 直接绑定此列表）</summary>
     public List<MarketListing> activeListings = new List<MarketListing>();
@@ -66,17 +62,6 @@ public class MarketManager : MonoBehaviour
     void Start()
     {
         RefreshOfficialShops();
-        _refreshTimer = officialRefreshInterval;
-    }
-
-    void Update()
-    {
-        _refreshTimer -= Time.deltaTime;
-        if (_refreshTimer <= 0f)
-        {
-            _refreshTimer = officialRefreshInterval;
-            RefreshOfficialShops();
-        }
     }
 
     /// <summary>
@@ -168,7 +153,7 @@ public class MarketManager : MonoBehaviour
         return true;
     }
 
-    /// <summary>清空旧官方单并上架基础物资（准点补货）</summary>
+    /// <summary>清空旧官方单并上架基础物资（启动时初始化，后续由管理端补货）</summary>
     public void RefreshOfficialShops()
     {
         activeListings.RemoveAll(l => l.isOfficial);

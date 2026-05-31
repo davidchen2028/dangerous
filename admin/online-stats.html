@@ -83,6 +83,16 @@
       border-color: rgba(200, 60, 50, 0.55);
       color: #f0a090;
     }
+    .btn-restock {
+      border-color: rgba(95, 214, 138, 0.35);
+      color: var(--accent);
+    }
+    .market-toolbar {
+      align-items: center;
+    }
+    .market-toolbar .meta {
+      margin-right: 0.25rem;
+    }
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -265,6 +275,13 @@
     <label class="meta" style="display:flex;align-items:center;gap:0.35rem;">
       <input type="checkbox" id="autoRefresh" checked> 每 10 秒自动刷新
     </label>
+  </div>
+  <div class="toolbar market-toolbar">
+    <span class="meta" id="marketStockSummary">黑市库存：加载中…</span>
+    <button type="button" class="btn-restock" data-restock="5">全品类补货 +5</button>
+    <button type="button" class="btn-restock" data-restock="10">全品类补货 +10</button>
+    <button type="button" class="btn-restock" data-restock="20">全品类补货 +20</button>
+    <button type="button" class="btn-restock" data-reset-stock="1">重置货源为 5</button>
   </div>
   <p class="toast" id="toast" hidden></p>
   <p class="loading" id="status">正在拉取数据…</p>
@@ -595,9 +612,61 @@
         return html;
       }
 
+      function renderMarketStockSummary(marketStock) {
+        var el = document.getElementById("marketStockSummary");
+        if (!el) return;
+        if (!marketStock) {
+          el.textContent = "黑市库存：—";
+          return;
+        }
+        el.textContent =
+          "黑市库存：共 " +
+          (marketStock.productCount || 0) +
+          " 种 · 总现货 " +
+          (marketStock.totalUnits || 0) +
+          " · 已售罄 " +
+          (marketStock.soldOutCount || 0) +
+          " 种";
+      }
+
+      function onRestockClick(e) {
+        var btn = e.target.closest("button[data-restock], button[data-reset-stock]");
+        if (!btn || btn.disabled) return;
+        if (btn.hasAttribute("data-reset-stock")) {
+          if (!confirm("确定将全品类黑市货源重置为 5？")) return;
+          adminPost("/api/admin/market-reset-stock", {})
+            .then(function (res) {
+              showToast(res.message || "已重置货源", false);
+              if (res.marketStock) {
+                renderMarketStockSummary(res.marketStock);
+              }
+              load(true);
+            })
+            .catch(function (err) {
+              showToast(err.message || "重置失败", true);
+            });
+          return;
+        }
+        var amount = parseInt(btn.getAttribute("data-restock"), 10);
+        if (!amount) return;
+        if (!confirm("确定为全品类黑市补货 +" + amount + "？")) return;
+        adminPost("/api/admin/market-restock", { amount: amount })
+          .then(function (res) {
+            showToast(res.message || "补货成功", false);
+            if (res.marketStock) {
+              renderMarketStockSummary(res.marketStock);
+            }
+            load(true);
+          })
+          .catch(function (err) {
+            showToast(err.message || "补货失败", true);
+          });
+      }
+
       function render(data) {
         statusEl.hidden = true;
         tableWrap.hidden = false;
+        renderMarketStockSummary(data.marketStock);
         summaryEl.innerHTML =
           "共 <strong>" + data.userCount + "</strong> 个用户 · " +
           "当前在线 <strong>" + data.onlineCount + "</strong> · " +
@@ -703,6 +772,7 @@
 
       tbody.addEventListener("click", onActionClick);
       document.getElementById("bannedIpBox").addEventListener("click", onActionClick);
+      document.querySelector(".market-toolbar").addEventListener("click", onRestockClick);
       document.getElementById("deleteModalCancel").addEventListener("click", closeDeleteModal);
       document.getElementById("deleteModalConfirm").addEventListener("click", confirmDeleteUser);
       deleteModal.addEventListener("click", function (e) {

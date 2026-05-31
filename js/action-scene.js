@@ -115,6 +115,9 @@ if (typeof window !== "undefined") {
     if (window.WorldLootBox && window.WorldLootBox.CHEST_GLB_URL) {
       urls.push(window.WorldLootBox.CHEST_GLB_URL);
     }
+    if (window.ActionWasteBin && window.ActionWasteBin.BIN_GLB_URL) {
+      urls.push(window.ActionWasteBin.BIN_GLB_URL);
+    }
     return urls;
   }
 
@@ -297,7 +300,9 @@ if (typeof window !== "undefined") {
   var tacticalTruckRoot = null;
   /** @type {{ mesh: THREE.Mesh, vx: number, vy: number, vz: number, rvx: number, rvy: number, rvz: number, halfH: number, settled: boolean }[]} */
   var explosionDebris = [];
-  var truckFlight = null;
+  var TRUCK_FRAGMENT_COUNT = 5;
+  var explosionAudioCtx = null;
+  var EXPLOSION_VOLUME = 0.62;
   var missileStrike = null;
   var wallExploded = false;
   var wallStrikeFallbackLeft = 0;
@@ -310,6 +315,8 @@ if (typeof window !== "undefined") {
   var WALL_STRIKE_Z = EVAC_CORRIDOR_START_Z + 0.25;
   var evacCounting = false;
   var evacTimeLeft = 0;
+  var playerDead = false;
+  var playerDeathTimer = null;
   var crosshairEl = document.getElementById("actionCrosshair");
   var loadScreenEl = document.getElementById("actionLoadScreen");
   var loadProgressEl = document.getElementById("actionLoadProgress");
@@ -325,6 +332,881 @@ if (typeof window !== "undefined") {
   var mapNameEl = document.getElementById("actionMapName");
   var TUTORIAL_BOUNDS_X = 5.5;
   var TUTORIAL_BOUNDS_Z_MIN = 1.2;
+  var TEST_ROAD_START = { x: 0, z: -46 };
+  var TEST_ROAD_WIDTH = 6.5;
+  var TEST_ROAD_MOUNTAIN_MARGIN = 1.8;
+  var TEST_GRASS_W = 120;
+  var TEST_GRASS_Z = 180;
+  var TEST_GRASS_Z_CENTER = 30;
+  var TEST_EDGE_W = 140;
+  var TEST_EDGE_Z = 200;
+  var TEST_EDGE_Z_CENTER = 35;
+  var TEST_GRASS_Y = 0.002;
+  var TEST_EDGE_Y = -0.04;
+  var TEST_ROAD_SURFACE_Y = 0.08;
+  var TEST_ROAD_LINE_Y = 0.095;
+  var TEST_MOUNTAIN_LIFT = 0.05;
+  var TEST_BRANCH_ROAD_LEN = 30;
+  var TEST_BRANCH_ROAD = { from: { x: 0, z: 48 }, to: { x: -30, z: 48 } };
+  var testRoadSampleSets = [];
+  var TEST_ROAD_CURVE_POINTS = [
+    { x: 0, z: -48 },
+    { x: 9, z: -36 },
+    { x: 14, z: -22 },
+    { x: 8, z: -8 },
+    { x: -5, z: 4 },
+    { x: -16, z: 18 },
+    { x: -7, z: 32 },
+    { x: 5, z: 42 },
+    { x: 0, z: 48 },
+  ];
+
+  function makeGroundLambertMaterial(color) {
+    var mat = new THREE.MeshLambertMaterial({ color: color });
+    mat.polygonOffset = true;
+    mat.polygonOffsetFactor = 1;
+    mat.polygonOffsetUnits = 1;
+    return mat;
+  }
+
+  function createTestRoadCurve() {
+    return new THREE.CatmullRomCurve3(
+      TEST_ROAD_CURVE_POINTS.map(function (p) {
+        return new THREE.Vector3(p.x, 0, p.z);
+      })
+    );
+  }
+
+  function resetTestRoadSampleSets() {
+    testRoadSampleSets = [];
+  }
+
+  function registerTestRoadSamples(samples) {
+    testRoadSampleSets.push(samples);
+  }
+
+  function sampleStraightRoad(x1, z1, x2, z2, segments) {
+    var out = [];
+    var i;
+    for (i = 0; i <= segments; i++) {
+      var t = i / segments;
+      out.push({
+        x: x1 + (x2 - x1) * t,
+        z: z1 + (z2 - z1) * t,
+      });
+    }
+    return out;
+  }
+
+  function createStraightRoadCurve(from, to) {
+    return new THREE.LineCurve3(
+      new THREE.Vector3(from.x, 0, from.z),
+      new THREE.Vector3(to.x, 0, to.z)
+    );
+  }
+
+  function sampleTestRoadCurve(segments) {
+    var curve = createTestRoadCurve();
+    var out = [];
+    var i;
+    for (i = 0; i <= segments; i++) {
+      var pt = curve.getPoint(i / segments);
+      out.push({ x: pt.x, z: pt.z });
+    }
+    return out;
+  }
+
+  function distPointToSegment2D(px, pz, ax, az, bx, bz) {
+    var abx = bx - ax;
+    var abz = bz - az;
+    var apx = px - ax;
+    var apz = pz - az;
+    var abLenSq = abx * abx + abz * abz;
+    var t =
+      abLenSq < 1e-8
+        ? 0
+        : Math.max(0, Math.min(1, (apx * abx + apz * abz) / abLenSq));
+    var cx = ax + abx * t;
+    var cz = az + abz * t;
+    var dx = px - cx;
+    var dz = pz - cz;
+    return Math.sqrt(dx * dx + dz * dz);
+  }
+
+  function minDistToTestRoad(px, pz, samples) {
+    var minD = Infinity;
+    var sets = samples != null ? [samples] : testRoadSampleSets;
+    var s;
+    var i;
+    var pts;
+    var d;
+    for (s = 0; s < sets.length; s++) {
+      pts = sets[s];
+      for (i = 0; i < pts.length - 1; i++) {
+        d = distPointToSegment2D(
+          px,
+          pz,
+          pts[i].x,
+          pts[i].z,
+          pts[i + 1].x,
+          pts[i + 1].z
+        );
+        if (d < minD) minD = d;
+      }
+    }
+    return minD;
+  }
+
+  function isMountainBoxClearOfRoad(px, pz, halfW, halfD) {
+    var roadHalf = TEST_ROAD_WIDTH * 0.5;
+    var minClear = roadHalf + TEST_ROAD_MOUNTAIN_MARGIN;
+    var points = [
+      [px, pz],
+      [px - halfW, pz - halfD],
+      [px - halfW, pz + halfD],
+      [px + halfW, pz + halfD],
+      [px + halfW, pz - halfD],
+      [px - halfW, pz],
+      [px + halfW, pz],
+      [px, pz - halfD],
+      [px, pz + halfD],
+    ];
+    var i;
+    for (i = 0; i < points.length; i++) {
+      if (minDistToTestRoad(points[i][0], points[i][1]) < minClear) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function pushMountainOffRoad(px, pz, nx, nz, halfW, halfD) {
+    var outX = px;
+    var outZ = pz;
+    var step;
+    for (step = 0; step < 20; step++) {
+      if (isMountainBoxClearOfRoad(outX, outZ, halfW, halfD)) {
+        return { x: outX, z: outZ };
+      }
+      outX += nx * 1.2;
+      outZ += nz * 1.2;
+    }
+    return null;
+  }
+
+  function testRoadFrameAt(samples, idx) {
+    idx = Math.min(Math.max(0, idx), samples.length - 2);
+    var a = samples[idx];
+    var b = samples[idx + 1];
+    var mx = (a.x + b.x) * 0.5;
+    var mz = (a.z + b.z) * 0.5;
+    var dx = b.x - a.x;
+    var dz = b.z - a.z;
+    var segLen = Math.sqrt(dx * dx + dz * dz) || 1;
+    var nx = -dz / segLen;
+    var nz = dx / segLen;
+    return {
+      mx: mx,
+      mz: mz,
+      nx: nx,
+      nz: nz,
+      dx: dx,
+      dz: dz,
+      segLen: segLen,
+      rotY: Math.atan2(dx, dz),
+      tx: dx / segLen,
+      tz: dz / segLen,
+    };
+  }
+
+  function testRoadFlankPoint(samples, idx, side, offset) {
+    var frame = testRoadFrameAt(samples, idx);
+    return {
+      x: frame.mx + frame.nx * side * offset,
+      z: frame.mz + frame.nz * side * offset,
+      rotY: frame.rotY,
+    };
+  }
+
+  function placeMountainBlockWithRoadRules(
+    parent,
+    px,
+    pz,
+    bw,
+    bh,
+    bd,
+    color,
+    solid,
+    samples,
+    opts
+  ) {
+    opts = opts || {};
+    var hw = bw * 0.5;
+    var hd = bd * 0.5;
+    var pushNx = opts.pushNx;
+    var pushNz = opts.pushNz;
+
+    if (!opts.ignoreRoadLimit) {
+      if (!isMountainBoxClearOfRoad(px, pz, hw, hd)) {
+        if (pushNx != null && pushNz != null) {
+          var pushed = pushMountainOffRoad(px, pz, pushNx, pushNz, hw, hd);
+          if (pushed) {
+            px = pushed.x;
+            pz = pushed.z;
+          }
+        }
+        if (!isMountainBoxClearOfRoad(px, pz, hw, hd)) {
+          if (opts.connectMode) {
+            bw = 3.6;
+            bd = 4.2;
+            hw = bw * 0.5;
+            hd = bd * 0.5;
+            bh = Math.max(6, bh - 1.5);
+            if (pushNx != null && pushNz != null) {
+              pushed = pushMountainOffRoad(px, pz, pushNx, pushNz, hw, hd);
+              if (pushed) {
+                px = pushed.x;
+                pz = pushed.z;
+              }
+            }
+          }
+          if (!opts.connectMode || !isMountainBoxClearOfRoad(px, pz, hw, hd)) {
+            return false;
+          }
+        }
+      }
+    }
+
+    addMountainBlock(parent, px, pz, bw, bh, bd, color, solid);
+    return true;
+  }
+
+  function addMountainBridgeStrip(parent, x1, z1, x2, z2, samples, opts) {
+    opts = opts || {};
+    var dx = x2 - x1;
+    var dz = z2 - z1;
+    var len = Math.sqrt(dx * dx + dz * dz) || 1;
+    var steps = Math.max(4, Math.ceil(len / 2.6));
+    var rockColors = [0x4a5058, 0x555c64, 0x3e444b, 0x626970];
+    var i;
+    var t;
+    var px;
+    var pz;
+    var awayNx = opts.pushNx;
+    var awayNz = opts.pushNz;
+
+    if (awayNx == null) {
+      awayNx = dx / len;
+      awayNz = dz / len;
+    }
+
+    for (i = 0; i <= steps; i++) {
+      t = i / steps;
+      px = x1 + dx * t;
+      pz = z1 + dz * t;
+      placeMountainBlockWithRoadRules(
+        parent,
+        px,
+        pz,
+        4.8 + (i % 2) * 1.1,
+        (opts.h || 8) + (i % 3),
+        5.2 + (i % 2) * 0.7,
+        rockColors[i % rockColors.length],
+        true,
+        samples,
+        {
+          pushNx: awayNx,
+          pushNz: awayNz,
+          connectMode: true,
+        }
+      );
+    }
+  }
+
+  function buildRoadRibbonGeometry(curve, segmentCount, halfWidth, y) {
+    var pts = curve.getSpacedPoints(segmentCount);
+    var n = pts.length;
+    var positions = [];
+    var uvs = [];
+    var indices = [];
+    var cumLen = 0;
+    var i;
+    var p;
+    var t;
+    var nx;
+    var nz;
+    var len;
+    var lx;
+    var lz;
+    var rx;
+    var rz;
+    var hy = y != null ? y : 0.06;
+    var a;
+    var b;
+    var c;
+    var d;
+
+    for (i = 0; i < n; i++) {
+      p = pts[i];
+      if (i === 0) {
+        t = pts[1].clone().sub(pts[0]).normalize();
+      } else if (i === n - 1) {
+        t = pts[n - 1].clone().sub(pts[n - 2]).normalize();
+      } else {
+        t = pts[i + 1].clone().sub(pts[i - 1]).normalize();
+      }
+      nx = -t.z;
+      nz = t.x;
+      len = Math.sqrt(nx * nx + nz * nz) || 1;
+      nx /= len;
+      nz /= len;
+
+      if (i > 0) {
+        cumLen += pts[i].distanceTo(pts[i - 1]);
+      }
+
+      lx = p.x + nx * halfWidth;
+      lz = p.z + nz * halfWidth;
+      rx = p.x - nx * halfWidth;
+      rz = p.z - nz * halfWidth;
+
+      positions.push(lx, hy, lz, rx, hy, rz);
+      uvs.push(cumLen * 0.08, 0, cumLen * 0.08, 1);
+    }
+
+    for (i = 0; i < n - 1; i++) {
+      a = i * 2;
+      b = i * 2 + 1;
+      c = (i + 1) * 2;
+      d = (i + 1) * 2 + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return { geometry: geo, length: cumLen };
+  }
+
+  function createRoadDashTexture() {
+    var canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 8;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#6a6e62";
+    ctx.fillRect(0, 0, 64, canvas.height);
+    var tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    return tex;
+  }
+
+  function buildRoadFromCurve(parent, curve) {
+    var segCount = 160;
+    var halfW = TEST_ROAD_WIDTH * 0.5;
+    var road = buildRoadRibbonGeometry(curve, segCount, halfW, TEST_ROAD_SURFACE_Y);
+    var roadMesh = new THREE.Mesh(
+      road.geometry,
+      new THREE.MeshLambertMaterial({ color: 0x3a3f44 })
+    );
+    roadMesh.receiveShadow = true;
+    parent.add(roadMesh);
+
+    var line = buildRoadRibbonGeometry(curve, segCount, 0.09, TEST_ROAD_LINE_Y);
+    var dashTex = createRoadDashTexture();
+    dashTex.repeat.set(Math.max(1, road.length / 3.2), 1);
+    var lineMesh = new THREE.Mesh(
+      line.geometry,
+      new THREE.MeshLambertMaterial({
+        map: dashTex,
+        transparent: true,
+        alphaTest: 0.35,
+        depthWrite: false,
+      })
+    );
+    lineMesh.receiveShadow = false;
+    parent.add(lineMesh);
+  }
+
+  function buildTestMapRoad(parent) {
+    buildRoadFromCurve(parent, createTestRoadCurve());
+  }
+
+  function buildStraightRoadEndCaps(parent, samples) {
+    var lastIdx = samples.length - 2;
+    var frame = testRoadFrameAt(samples, lastIdx);
+    var pt = samples[samples.length - 1];
+    var roadHalf = TEST_ROAD_WIDTH * 0.5;
+    var nearOffset = roadHalf + 8;
+    var farOffset = roadHalf + 16;
+    var gapHalf = roadHalf + 1.5;
+    var wingLen = 18;
+    var wingCenter = gapHalf + wingLen * 0.5 + 2.5;
+    var cx = pt.x + frame.tx * 2.5;
+    var cz = pt.z + frame.tz * 2.5;
+    var rotY = frame.rotY + Math.PI / 2;
+    var stripOpts = {
+      h: 10,
+      thick: 5.5,
+      d: 7,
+      solid: true,
+      roadSamples: samples,
+      connectMode: true,
+    };
+    var side;
+    var wingIdx = Math.max(0, lastIdx - 2);
+
+    addMountainStrip(
+      parent,
+      wingLen,
+      cx + frame.nx * -wingCenter,
+      cz + frame.nz * -wingCenter,
+      rotY,
+      stripOpts
+    );
+    addMountainStrip(
+      parent,
+      wingLen,
+      cx + frame.nx * wingCenter,
+      cz + frame.nz * wingCenter,
+      rotY,
+      stripOpts
+    );
+
+    for (side = -1; side <= 1; side += 2) {
+      var wingX = cx + frame.nx * side * wingCenter;
+      var wingZ = cz + frame.nz * side * wingCenter;
+      var nearFlank = testRoadFlankPoint(samples, wingIdx, side, nearOffset);
+      var farFlank = testRoadFlankPoint(samples, wingIdx, side, farOffset);
+      addMountainBridgeStrip(
+        parent,
+        wingX,
+        wingZ,
+        nearFlank.x,
+        nearFlank.z,
+        samples,
+        { h: 8, pushNx: frame.nx * side, pushNz: frame.nz * side }
+      );
+      addMountainBridgeStrip(
+        parent,
+        nearFlank.x,
+        nearFlank.z,
+        farFlank.x,
+        farFlank.z,
+        samples,
+        { h: 9, pushNx: frame.nx * side, pushNz: frame.nz * side }
+      );
+    }
+  }
+
+  function buildTestMapStraightRoadBranch(parent, samples) {
+    buildRoadFromCurve(
+      parent,
+      createStraightRoadCurve(samples[0], samples[samples.length - 1])
+    );
+    buildTestMapRoadFlankMountains(parent, samples);
+    buildStraightRoadEndCaps(parent, samples);
+  }
+
+  function addMountainBlock(parent, cx, cz, w, h, d, color, solid, allowOnRoad) {
+    if (
+      !allowOnRoad &&
+      !isMountainBoxClearOfRoad(cx, cz, w * 0.5, d * 0.5)
+    ) {
+      return;
+    }
+    addBox(
+      parent,
+      w,
+      h,
+      d,
+      cx,
+      h * 0.5 + TEST_MOUNTAIN_LIFT,
+      cz,
+      color,
+      solid === true
+    );
+    if (h > 4) {
+      addBox(
+        parent,
+        w * 0.72,
+        h * 0.42,
+        d * 0.75,
+        cx + w * 0.08,
+        h + h * 0.18,
+        cz - d * 0.06,
+        0x353a40,
+        false
+      );
+    }
+  }
+
+  function addMountainStrip(parent, stripLen, cx, cz, rotY, opts) {
+    opts = opts || {};
+    var h = opts.h || 7;
+    var d = opts.d || 5.5;
+    var thick = opts.thick || 3.8;
+    var solid = opts.solid !== false;
+    var roadSamples = opts.roadSamples;
+    var pushNx = opts.pushNx;
+    var pushNz = opts.pushNz;
+    var connectMode = opts.connectMode === true;
+    var ignoreRoadLimit = opts.ignoreRoadLimit === true;
+    var rockColors = [0x4a5058, 0x555c64, 0x3e444b, 0x626970];
+    var steps = Math.max(2, Math.ceil(stripLen / 3.2));
+    var si = Math.sin(rotY);
+    var co = Math.cos(rotY);
+    var i;
+    for (i = 0; i < steps; i++) {
+      var t = ((i + 0.5) / steps - 0.5) * stripLen;
+      var px = cx + si * t;
+      var pz = cz + co * t;
+      var bw = thick + (i % 2) * 1.2;
+      var bd = d + (i % 2) * 0.8;
+      placeMountainBlockWithRoadRules(
+        parent,
+        px,
+        pz,
+        bw,
+        h + (i % 3) * 1.4,
+        bd,
+        rockColors[i % rockColors.length],
+        solid,
+        ignoreRoadLimit ? null : roadSamples,
+        {
+          pushNx: pushNx,
+          pushNz: pushNz,
+          connectMode: connectMode,
+          ignoreRoadLimit: ignoreRoadLimit,
+        }
+      );
+    }
+  }
+
+  function buildTestMapRoadSouthCap(parent, samples) {
+    var a = samples[0];
+    var b = samples[1];
+    var dx = b.x - a.x;
+    var dz = b.z - a.z;
+    var segLen = Math.sqrt(dx * dx + dz * dz) || 1;
+    var nx = -dz / segLen;
+    var nz = dx / segLen;
+    var rotY = Math.atan2(dx, dz) + Math.PI / 2;
+    var roadHalf = TEST_ROAD_WIDTH * 0.5;
+    var nearOffset = roadHalf + 8;
+    var farOffset = roadHalf + 16;
+    var capLen = farOffset * 2 + 16;
+    var cx = a.x - (dx / segLen) * 3.5;
+    var cz = a.z - (dz / segLen) * 3.5;
+    var stripOpts = {
+      h: 11,
+      thick: 6,
+      d: 8,
+      solid: true,
+      connectMode: true,
+      ignoreRoadLimit: true,
+    };
+    var side;
+
+    addMountainStrip(parent, capLen, cx, cz, rotY, stripOpts);
+    addMountainBlock(parent, cx, cz, capLen * 0.92, 12, 8, 0x3e444b, true, true);
+
+    for (side = -1; side <= 1; side += 2) {
+      var capEdgeX = cx + nx * side * (capLen * 0.32);
+      var capEdgeZ = cz + nz * side * (capLen * 0.32);
+      var nearFlank = testRoadFlankPoint(samples, 1, side, nearOffset);
+      var farFlank = testRoadFlankPoint(samples, 2, side, farOffset);
+      addMountainBridgeStrip(
+        parent,
+        capEdgeX,
+        capEdgeZ,
+        nearFlank.x,
+        nearFlank.z,
+        samples,
+        { h: 8, pushNx: nx * side, pushNz: nz * side }
+      );
+      addMountainBridgeStrip(
+        parent,
+        capEdgeX + nx * side * 2,
+        capEdgeZ + nz * side * 2,
+        farFlank.x,
+        farFlank.z,
+        samples,
+        { h: 9, pushNx: nx * side, pushNz: nz * side }
+      );
+    }
+  }
+
+  function buildTestMapRoadFlankMountains(parent, samples) {
+    var roadHalf = TEST_ROAD_WIDTH * 0.5;
+    var nearOffset = roadHalf + 8;
+    var farOffset = roadHalf + 16;
+    var i;
+    var a;
+    var b;
+    var mx;
+    var mz;
+    var dx;
+    var dz;
+    var segLen;
+    var nx;
+    var nz;
+    var rotY;
+    var stripLen;
+    var side;
+
+    for (i = 0; i < samples.length - 1; i++) {
+      a = samples[i];
+      b = samples[i + 1];
+      mx = (a.x + b.x) * 0.5;
+      mz = (a.z + b.z) * 0.5;
+      dx = b.x - a.x;
+      dz = b.z - a.z;
+      segLen = Math.sqrt(dx * dx + dz * dz) || 1;
+      nx = -dz / segLen;
+      nz = dx / segLen;
+      rotY = Math.atan2(dx, dz);
+      stripLen = segLen + 1.5;
+
+      for (side = -1; side <= 1; side += 2) {
+        var pushNx = nx * side;
+        var pushNz = nz * side;
+        var stripOpts = {
+          roadSamples: samples,
+          pushNx: pushNx,
+          pushNz: pushNz,
+          solid: true,
+          connectMode: true,
+        };
+        addMountainStrip(
+          parent,
+          stripLen,
+          mx + pushNx * nearOffset,
+          mz + pushNz * nearOffset,
+          rotY,
+          Object.assign({ h: 7 + (i % 3), thick: 4.5, d: 5.5 }, stripOpts)
+        );
+        addMountainStrip(
+          parent,
+          stripLen,
+          mx + pushNx * farOffset,
+          mz + pushNz * farOffset,
+          rotY,
+          Object.assign({ h: 9 + (i % 4), thick: 5.5, d: 6.5 }, stripOpts)
+        );
+      }
+    }
+  }
+
+  function buildTestMapMountains(parent, samples) {
+    buildTestMapRoadFlankMountains(parent, samples);
+    buildTestMapRoadSouthCap(parent, samples);
+  }
+
+  var TEST_HIDDEN_ROOM_SIZE = 5;
+  var TEST_HIDDEN_ROOM_CENTER_X = -30;
+  var TEST_HIDDEN_ROOM_CENTER_Z = 48;
+
+  /** 支路西端 (-30,48) · 5×5 隐秘间（东侧敞开接支路，西/南/北封闭 + 屋顶） */
+  function buildTestMapHiddenRoom(parent) {
+    var cx = TEST_HIDDEN_ROOM_CENTER_X;
+    var cz = TEST_HIDDEN_ROOM_CENTER_Z + 0.25;
+    var half = TEST_HIDDEN_ROOM_SIZE * 0.5;
+    var wallX = half + 0.25;
+    var wallY = SECTOR_WALL_H * 0.5;
+    var floorColor = 0x5a5e64;
+    var wallColor = 0x2e3338;
+    var roofColor = 0x343840;
+
+    addBox(
+      parent,
+      TEST_HIDDEN_ROOM_SIZE,
+      0.1,
+      TEST_HIDDEN_ROOM_SIZE,
+      cx,
+      0.05,
+      cz,
+      floorColor,
+      false
+    );
+    addBox(
+      parent,
+      0.5,
+      SECTOR_WALL_H,
+      TEST_HIDDEN_ROOM_SIZE,
+      cx - wallX,
+      wallY,
+      cz,
+      wallColor
+    );
+
+    addBox(
+      parent,
+      TEST_HIDDEN_ROOM_SIZE,
+      SECTOR_WALL_H,
+      0.5,
+      cx,
+      wallY,
+      cz - half - 0.25,
+      wallColor
+    );
+    addBox(
+      parent,
+      TEST_HIDDEN_ROOM_SIZE,
+      SECTOR_WALL_H,
+      0.5,
+      cx,
+      wallY,
+      cz + half + 0.25,
+      wallColor
+    );
+    addBox(
+      parent,
+      TEST_HIDDEN_ROOM_SIZE,
+      0.15,
+      TEST_HIDDEN_ROOM_SIZE,
+      cx,
+      SECTOR_WALL_H + 0.075,
+      cz,
+      roofColor,
+      true
+    );
+
+    var backSpan = TEST_ROAD_WIDTH + 8;
+    var backX = cx - wallX - 1.0;
+    addBox(
+      parent,
+      0.5,
+      SECTOR_WALL_H,
+      backSpan,
+      backX,
+      wallY,
+      cz,
+      wallColor
+    );
+  }
+
+  /** S 形主路第一个拐弯 (0,-48)→(9,-36) 外侧路边 */
+  function getTestMapFirstBendBinFlank() {
+    var a = TEST_ROAD_CURVE_POINTS[0];
+    var b = TEST_ROAD_CURVE_POINTS[1];
+    var dx = b.x - a.x;
+    var dz = b.z - a.z;
+    var len = Math.sqrt(dx * dx + dz * dz) || 1;
+    var nx = -dz / len;
+    var nz = dx / len;
+    var offset = TEST_ROAD_WIDTH * 0.5 + 1.6;
+    return {
+      x: b.x + nx * offset,
+      z: b.z + nz * offset,
+    };
+  }
+
+  function placeWasteBinModel(model, parent, centerX, centerZ, binIndex) {
+    var root = new THREE.Group();
+    root.name = "IndustrialWasteBin_GLB";
+    root.add(model);
+
+    model.scale.set(1, 1, 1);
+    model.updateMatrixWorld(true);
+
+    var binSize =
+      window.ActionWasteBin && window.ActionWasteBin.BIN_SIZE
+        ? window.ActionWasteBin.BIN_SIZE
+        : { x: 0.95, y: 1.15, z: 0.95 };
+    fitModelToBox(root, binSize);
+    fitModelToBox(root, binSize);
+
+    var box = new THREE.Box3().setFromObject(root);
+    var center = new THREE.Vector3();
+    box.getCenter(center);
+    root.position.set(centerX - center.x, -box.min.y, centerZ - center.z);
+    parent.add(root);
+    root.updateMatrixWorld(true);
+
+    if (window.ActionWasteBin && binIndex != null) {
+      var pickMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(binSize.x, binSize.y, binSize.z),
+        new THREE.MeshBasicMaterial({
+          visible: false,
+          depthWrite: false,
+        })
+      );
+      pickMesh.name = "BinPickVolume";
+      pickMesh.position.set(0, binSize.y * 0.5, 0);
+      root.add(pickMesh);
+      if (window.ActionWasteBin.registerBinPickMesh) {
+        window.ActionWasteBin.registerBinPickMesh(binIndex, pickMesh);
+      }
+      var worldPos = new THREE.Vector3();
+      root.getWorldPosition(worldPos);
+      window.ActionWasteBin.syncBinWorldCenter(
+        binIndex,
+        worldPos.x,
+        worldPos.y + binSize.y * 0.55,
+        worldPos.z
+      );
+    }
+
+    registerCollider(
+      binSize.x,
+      binSize.y,
+      binSize.z,
+      centerX,
+      binSize.y * 0.5,
+      centerZ
+    );
+  }
+
+  function buildIndustrialWasteBins(parent) {
+    if (!window.ActionWasteBin) return;
+    var positions = window.ActionWasteBin.getBinPositions();
+    if (!positions.length) return;
+    var url = window.ActionWasteBin.BIN_GLB_URL;
+    var i;
+
+    loadGltfCached(
+      url,
+      function (gltf) {
+        for (i = 0; i < positions.length; i++) {
+          placeWasteBinModel(
+            gltf.scene.clone(true),
+            parent,
+            positions[i].x,
+            positions[i].z,
+            i
+          );
+        }
+      },
+      function (err) {
+        console.error("[ActionScene] 废料桶模型加载失败", err);
+        for (i = 0; i < positions.length; i++) {
+          addBox(
+            parent,
+            0.95,
+            1.15,
+            0.95,
+            positions[i].x,
+            0.575,
+            positions[i].z,
+            0x2a4a6a,
+            false
+          );
+          if (window.ActionWasteBin.syncBinWorldCenter) {
+            window.ActionWasteBin.syncBinWorldCenter(
+              i,
+              positions[i].x,
+              0.95,
+              positions[i].z
+            );
+          }
+        }
+      }
+    );
+  }
 
   function buildTruck(parent) {
     registerCollider(
@@ -936,7 +1818,14 @@ if (typeof window !== "undefined") {
       disposeObject3D(missileStrike.root);
     }
     missileStrike = null;
-    disposeTruckFlight();
+  }
+
+  function shouldRemoveTruckFragment(mesh) {
+    if (!mesh) return true;
+    if (isTruckOutsideSectorWalls(mesh)) {
+      return isTruckOffScreen(mesh);
+    }
+    return mesh.position.y < -10;
   }
 
   function disposeMissileRoot(root) {
@@ -1060,9 +1949,7 @@ if (typeof window !== "undefined") {
 
     var i;
     for (i = 0; i < binRoomBackWallMeshes.length; i++) {
-      if (worldRoot && binRoomBackWallMeshes[i]) {
-        worldRoot.remove(binRoomBackWallMeshes[i]);
-      }
+      detachObject3D(binRoomBackWallMeshes[i]);
       disposeObject3D(binRoomBackWallMeshes[i]);
     }
     binRoomBackWallMeshes = [];
@@ -1075,16 +1962,80 @@ if (typeof window !== "undefined") {
         }
       });
       for (i = 0; i < extras.length; i++) {
-        if (extras[i].parent) extras[i].parent.remove(extras[i]);
+        detachObject3D(extras[i]);
         disposeObject3D(extras[i]);
       }
     }
+  }
+
+  function ensureExplosionAudio() {
+    if (!window.AudioContext && !window.webkitAudioContext) return null;
+    if (!explosionAudioCtx) {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      explosionAudioCtx = new Ctx();
+    }
+    if (explosionAudioCtx.state === "suspended") {
+      explosionAudioCtx.resume().catch(function () {});
+    }
+    return explosionAudioCtx;
+  }
+
+  /** 程序化爆炸声：短促爆破 + 衰减尾音（避免低频正弦「打鼓感」） */
+  function playMissileExplosionSound(kind) {
+    var ctx = ensureExplosionAudio();
+    if (!ctx) return;
+
+    var isTruck = kind === "truck";
+    var t = ctx.currentTime;
+    var vol = EXPLOSION_VOLUME * (isTruck ? 1.08 : 0.9);
+
+    function burstNoise(durSec, hpHz, lpStartHz, gainMul, delaySec) {
+      var len = Math.floor(ctx.sampleRate * durSec);
+      var buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+      var data = buffer.getChannelData(0);
+      var i;
+      for (i = 0; i < len; i++) {
+        var env = Math.pow(1 - i / (len || 1), isTruck ? 2.4 : 3);
+        data[i] = (Math.random() * 2 - 1) * env;
+      }
+
+      var src = ctx.createBufferSource();
+      src.buffer = buffer;
+
+      var hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = hpHz;
+
+      var lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.setValueAtTime(lpStartHz, t + delaySec);
+      lp.frequency.exponentialRampToValueAtTime(
+        Math.max(hpHz + 60, lpStartHz * 0.28),
+        t + delaySec + durSec * 0.82
+      );
+
+      var g = ctx.createGain();
+      g.gain.setValueAtTime(Math.max(0.001, vol * gainMul), t + delaySec);
+      g.gain.exponentialRampToValueAtTime(0.001, t + delaySec + durSec);
+
+      src.connect(hp);
+      hp.connect(lp);
+      lp.connect(g);
+      g.connect(ctx.destination);
+      src.start(t + delaySec);
+      src.stop(t + delaySec + durSec + 0.03);
+    }
+
+    burstNoise(isTruck ? 0.1 : 0.075, 1100, 5200, isTruck ? 0.58 : 0.52, 0);
+    burstNoise(isTruck ? 0.34 : 0.24, 180, isTruck ? 980 : 1200, isTruck ? 0.64 : 0.54, 0.008);
+    burstNoise(isTruck ? 0.48 : 0.34, 55, isTruck ? 240 : 280, isTruck ? 0.34 : 0.26, 0.018);
   }
 
   function onWallMissileImpact() {
     if (!wallExploded) {
       explodeWallIntoFragments();
     }
+    playMissileExplosionSound("wall");
     if (missileStrike && missileStrike.root) {
       disposeMissileRoot(missileStrike.root);
     }
@@ -1093,11 +2044,12 @@ if (typeof window !== "undefined") {
 
   function onTruckMissileImpact() {
     startTruckExplosion();
+    playMissileExplosionSound("truck");
     if (missileStrike && missileStrike.root) {
       disposeMissileRoot(missileStrike.root);
     }
     missileStrike = null;
-    showDurabilityBanner("第二枚导弹命中 · 卡车被炸飞出围区");
+    showDurabilityBanner("第二枚导弹命中 · 卡车四分五裂");
   }
 
   function updateMissileStrike(dt) {
@@ -1226,36 +2178,140 @@ if (typeof window !== "undefined") {
     spawnWallFragments();
   }
 
-  function resolveTruckRoot() {
-    if (tacticalTruckRoot && tacticalTruckRoot.parent) return tacticalTruckRoot;
-    tacticalTruckRoot = findNamedRoot(worldRoot, "TacticalTruck_GLB");
-    if (!tacticalTruckRoot) {
-      tacticalTruckRoot = findNamedRoot(worldRoot, "TacticalTruck_Fallback");
+  function collectTruckRoots() {
+    var list = [];
+    if (!worldRoot) return list;
+    worldRoot.traverse(function (obj) {
+      if (
+        obj.name === "TacticalTruck_GLB" ||
+        obj.name === "TacticalTruck_Fallback"
+      ) {
+        list.push(obj);
+      }
+    });
+    return list;
+  }
+
+  function destroyTruckVisual() {
+    if (!worldRoot) return null;
+    removeTruckCollider();
+
+    var roots = collectTruckRoots();
+    var center = new THREE.Vector3(
+      TRUCK_CENTER.x,
+      TRUCK_CENTER.y,
+      TRUCK_CENTER.z
+    );
+    var size = new THREE.Vector3(TRUCK_SIZE.x, TRUCK_SIZE.y, TRUCK_SIZE.z);
+    var box = new THREE.Box3();
+    var i;
+
+    for (i = 0; i < roots.length; i++) {
+      roots[i].updateMatrixWorld(true);
+      box.expandByObject(roots[i]);
     }
-    return tacticalTruckRoot;
+    if (roots.length) {
+      box.getCenter(center);
+      box.getSize(size);
+    }
+
+    for (i = 0; i < roots.length; i++) {
+      detachObject3D(roots[i]);
+      disposeObject3D(roots[i]);
+    }
+    tacticalTruckRoot = null;
+    return { center: center, size: size };
   }
 
   function startTruckExplosion() {
-    var root = resolveTruckRoot();
-    if (!root) return;
-    removeTruckCollider();
-    truckFlight = {
-      root: root,
-      vx: (Math.random() - 0.5) * 3.5,
-      vy: 16 + Math.random() * 5,
-      vz: -18 - Math.random() * 6,
-      rvx: (Math.random() - 0.5) * 2.5,
-      rvy: (Math.random() - 0.5) * 4,
-      rvz: (Math.random() - 0.5) * 2.5,
-    };
+    spawnTruckFragments();
+  }
+
+  function spawnTruckFragments() {
+    if (!worldRoot) return;
+    var info = destroyTruckVisual();
+    if (!info) return;
+
+    var center = info.center;
+    var size = info.size;
+
+    var colors = [0x3d5240, 0x4a5e48, 0x556b4a, 0x354535, 0x2e3338];
+    var bursts = [
+      { vx: -6.5, vy: 13, vz: -19 },
+      { vx: 6.5, vy: 15, vz: -18 },
+      { vx: -8, vy: 10, vz: -15 },
+      { vx: 8, vy: 11, vz: -16 },
+      { vx: 0.5, vy: 18, vz: -22 },
+    ];
+    var i;
+    var mesh;
+    var mat;
+    var pieceW;
+    var pieceH;
+    var pieceD;
+    var ox;
+    var oy;
+    var oz;
+    var burst;
+
+    for (i = 0; i < TRUCK_FRAGMENT_COUNT; i++) {
+      burst = bursts[i];
+      pieceW = Math.max(0.55, size.x * (0.28 + Math.random() * 0.12));
+      pieceH = Math.max(0.45, size.y * (0.22 + Math.random() * 0.12));
+      pieceD = Math.max(0.7, size.z * (0.18 + Math.random() * 0.1));
+      ox = (Math.random() - 0.5) * size.x * 0.35;
+      oy = (Math.random() - 0.5) * size.y * 0.25;
+      oz = (Math.random() - 0.5) * size.z * 0.25;
+      mat = new THREE.MeshLambertMaterial({ color: colors[i % colors.length] });
+      mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(pieceW, pieceH, pieceD),
+        mat
+      );
+      mesh.position.set(center.x + ox, center.y + oy, center.z + oz);
+      mesh.rotation.set(
+        (Math.random() - 0.5) * 0.6,
+        (Math.random() - 0.5) * 0.6,
+        (Math.random() - 0.5) * 0.6
+      );
+      worldRoot.add(mesh);
+
+      explosionDebris.push({
+        mesh: mesh,
+        vx: burst.vx + (Math.random() - 0.5) * 2,
+        vy: burst.vy + Math.random() * 2,
+        vz: burst.vz + (Math.random() - 0.5) * 2,
+        rvx: (Math.random() - 0.5) * 8,
+        rvy: (Math.random() - 0.5) * 8,
+        rvz: (Math.random() - 0.5) * 8,
+        halfH: pieceH * 0.5,
+        settled: false,
+        flyOut: true,
+      });
+    }
   }
 
   function updateExplosionDebris(dt) {
     var g = 22;
     var i;
     var fx;
-    for (i = 0; i < explosionDebris.length; i++) {
+    for (i = explosionDebris.length - 1; i >= 0; i--) {
       fx = explosionDebris[i];
+      if (fx.flyOut) {
+        fx.vy -= g * dt * 0.75;
+        fx.mesh.position.x += fx.vx * dt;
+        fx.mesh.position.y += fx.vy * dt;
+        fx.mesh.position.z += fx.vz * dt;
+        fx.mesh.rotation.x += fx.rvx * dt;
+        fx.mesh.rotation.y += fx.rvy * dt;
+        fx.mesh.rotation.z += fx.rvz * dt;
+        if (shouldRemoveTruckFragment(fx.mesh)) {
+          if (worldRoot) worldRoot.remove(fx.mesh);
+          disposeObject3D(fx.mesh);
+          explosionDebris.splice(i, 1);
+        }
+        continue;
+      }
+
       if (fx.settled) continue;
       fx.vy -= g * dt;
       fx.mesh.position.x += fx.vx * dt;
@@ -1284,17 +2340,6 @@ if (typeof window !== "undefined") {
     }
   }
 
-  function disposeTruckFlight() {
-    if (!truckFlight || !truckFlight.root) {
-      truckFlight = null;
-      return;
-    }
-    if (worldRoot) worldRoot.remove(truckFlight.root);
-    disposeObject3D(truckFlight.root);
-    truckFlight = null;
-    tacticalTruckRoot = null;
-  }
-
   function isTruckOutsideSectorWalls(root) {
     var p = root.position;
     return (
@@ -1317,40 +2362,17 @@ if (typeof window !== "undefined") {
     return !_truckVisFrustum.intersectsBox(_truckVisBox);
   }
 
-  function shouldRemoveFlyingTruck(root) {
-    if (!isTruckOutsideSectorWalls(root)) return false;
-    return isTruckOffScreen(root);
-  }
-
-  function updateTruckFlight(dt) {
-    if (!truckFlight || !truckFlight.root) return;
-    var tf = truckFlight;
-    tf.vy -= 14 * dt;
-    tf.root.position.x += tf.vx * dt;
-    tf.root.position.y += tf.vy * dt;
-    tf.root.position.z += tf.vz * dt;
-    tf.root.rotation.x += tf.rvx * dt;
-    tf.root.rotation.y += tf.rvy * dt;
-    tf.root.rotation.z += tf.rvz * dt;
-
-    if (shouldRemoveFlyingTruck(tf.root) || tf.root.position.y < -8) {
-      disposeTruckFlight();
-    }
-  }
-
   function updateExplosionEffects(dt) {
     updateWallStrikeFallback(dt);
     if (missileStrike) updateMissileStrike(dt);
     if (explosionDebris.length) updateExplosionDebris(dt);
-    if (truckFlight) updateTruckFlight(dt);
   }
 
   function hasExplosionEffects() {
     return (
       wallStrikeFallbackLeft > 0 ||
       !!missileStrike ||
-      explosionDebris.length > 0 ||
-      !!truckFlight
+      explosionDebris.length > 0
     );
   }
 
@@ -1388,6 +2410,50 @@ if (typeof window !== "undefined") {
       explosionDone = true;
       triggerExplosion();
     }
+  }
+
+  function resetPlayerDeathState() {
+    playerDead = false;
+    if (playerDeathTimer) {
+      clearTimeout(playerDeathTimer);
+      playerDeathTimer = null;
+    }
+  }
+
+  function onPlayerDeath() {
+    if (playerDead || !running) return;
+    playerDead = true;
+
+    if (window.ActionInventory && window.ActionInventory.close) {
+      window.ActionInventory.close();
+    }
+    if (window.WorldLootBox && window.WorldLootBox.closeChestPanel) {
+      window.WorldLootBox.closeChestPanel();
+    }
+    if (window.LockpickingQTE && window.LockpickingQTE.close) {
+      window.LockpickingQTE.close();
+    }
+    if (document.pointerLockElement && document.exitPointerLock) {
+      document.exitPointerLock();
+    }
+
+    if (window.PlayerLoadout && window.PlayerLoadout.applyDeathDrop) {
+      window.PlayerLoadout.applyDeathDrop();
+    }
+    if (window.PlayerStatePersist && window.PlayerStatePersist.save) {
+      window.PlayerStatePersist.save();
+    }
+    if (window.ActionWeapon) window.ActionWeapon.dispose();
+
+    showDurabilityBanner("你已死亡 · 除安全箱外物品已掉落");
+
+    playerDeathTimer = setTimeout(function () {
+      playerDeathTimer = null;
+      exit();
+      if (window.LobbyUI && window.LobbyUI.goHome) {
+        window.LobbyUI.goHome();
+      }
+    }, 2200);
   }
 
   function removeBinRoomBackWall() {
@@ -1489,13 +2555,19 @@ if (typeof window !== "undefined") {
       if (window.TutorialProgress && window.TutorialProgress.markComplete) {
         window.TutorialProgress.markComplete();
       }
-      if (window.LobbyUI && window.LobbyUI.syncActionHubButton) {
-        window.LobbyUI.syncActionHubButton();
+      if (window.LobbyUI && window.LobbyUI.selectMap) {
+        window.LobbyUI.selectMap("test");
       }
+    }
+    if (window.LobbyUI && window.LobbyUI.syncActionHubButton) {
+      window.LobbyUI.syncActionHubButton();
     }
     if (evacOverlayEl) evacOverlayEl.hidden = true;
     if (window.WorldLootBox && window.WorldLootBox.closeChestPanel) {
       window.WorldLootBox.closeChestPanel();
+    }
+    if (window.PlayerStatePersist && window.PlayerStatePersist.saveNow) {
+      window.PlayerStatePersist.saveNow();
     }
     exit();
     if (window.LobbyUI && window.LobbyUI.goHome) {
@@ -1601,6 +2673,7 @@ if (typeof window !== "undefined") {
     if (!running || isUiBlocking() || !shouldUseDragLook()) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
 
+    ensureExplosionAudio();
     lookDragId = e.pointerId;
     lookLastX = e.clientX;
     lookLastY = e.clientY;
@@ -2152,6 +3225,27 @@ if (typeof window !== "undefined") {
 
   function tryInteract() {
     if (!running || isUiBlocking()) return false;
+    if (currentMapId === "test") {
+      if (window.ActionWasteBin) {
+        if (camera && window.ActionWasteBin.updateAim) {
+          window.ActionWasteBin.updateAim(pos.x, pos.z, camera);
+        }
+        if (window.ActionWasteBin.tryOpenAimed(pos.x, pos.z)) {
+          releasePointerForUi();
+          return true;
+        }
+      }
+      if (window.HiddenLootBox) {
+        if (camera && window.HiddenLootBox.updateAim) {
+          window.HiddenLootBox.updateAim(pos.x, pos.z, camera);
+        }
+        if (window.HiddenLootBox.tryInteract()) {
+          releasePointerForUi();
+          return true;
+        }
+      }
+      return false;
+    }
     if (doorUnlocked && window.WorldLootBox) {
       if (camera && window.WorldLootBox.updateAim) {
         window.WorldLootBox.updateAim(pos.x, pos.z, camera);
@@ -2201,6 +3295,51 @@ if (typeof window !== "undefined") {
 
   function updateInteractHints() {
     updateCrosshair();
+
+    if (currentMapId === "test") {
+      if (camera && window.ActionWasteBin) {
+        window.ActionWasteBin.updateAim(pos.x, pos.z, camera);
+        if (window.ActionWasteBin.isAimedAtBin()) {
+          setInteractHintVisible(true);
+          if (interactHintEl) {
+            interactHintEl.textContent = formatInteractHint(
+              "准星对准工业废料桶 · 按 E 翻找"
+            );
+          }
+          return;
+        }
+      }
+      if (camera && window.HiddenLootBox) {
+        window.HiddenLootBox.updateAim(pos.x, pos.z, camera);
+        if (
+          !window.HiddenLootBox.isOpened() &&
+          window.HiddenLootBox.isAimed()
+        ) {
+          setInteractHintVisible(true);
+          if (interactHintEl) {
+            interactHintEl.textContent = formatInteractHint(
+              "准星对准隐秘藏品箱1 · 按 E 输入密码"
+            );
+          }
+          return;
+        }
+        if (
+          window.HiddenLootBox.isOpened() &&
+          window.HiddenLootBox.isAimed() &&
+          window.HiddenLootBox.playerNear(pos.x, pos.z)
+        ) {
+          setInteractHintVisible(true);
+          if (interactHintEl) {
+            interactHintEl.textContent = formatInteractHint(
+              "按 E 查看隐秘藏品箱1"
+            );
+          }
+          return;
+        }
+      }
+      setInteractHintVisible(false);
+      return;
+    }
 
     if (currentMapId !== "tutorial") {
       setInteractHintVisible(false);
@@ -2277,6 +3416,10 @@ if (typeof window !== "undefined") {
     setInteractHintVisible(isNearSecurityDoor());
   }
 
+  function detachObject3D(obj) {
+    if (obj && obj.parent) obj.parent.remove(obj);
+  }
+
   function disposeObject3D(root) {
     if (!root) return;
     root.traverse(function (child) {
@@ -2316,7 +3459,7 @@ if (typeof window !== "undefined") {
     if (mapId === "test") {
       BOUNDS_X = 55;
       BOUNDS_Z_MIN = -55;
-      BOUNDS_Z_MAX = 55;
+      BOUNDS_Z_MAX = 115;
       if (scene) {
         scene.fog = new THREE.Fog(0x8ecfff, 50, 160);
       }
@@ -2337,7 +3480,6 @@ if (typeof window !== "undefined") {
 
   function loadWorldMap(mapId) {
     if (!scene) return;
-    if (loadedMapId === mapId && worldRoot) return;
 
     teardownWorld();
     applyMapBounds(mapId);
@@ -2357,7 +3499,7 @@ if (typeof window !== "undefined") {
     updateMapNameDisplay();
   }
 
-  /** 测试地图 — 空旷草地 */
+  /** 测试地图 — S 形马路 + 沿路两侧包山 */
   function buildTestMap(parent) {
     colliders = [];
     var root = new THREE.Group();
@@ -2365,21 +3507,55 @@ if (typeof window !== "undefined") {
     parent.add(root);
 
     var grass = new THREE.Mesh(
-      new THREE.PlaneGeometry(120, 120, 1, 1),
-      new THREE.MeshLambertMaterial({ color: 0x4a7c3f })
+      new THREE.PlaneGeometry(TEST_GRASS_W, TEST_GRASS_Z, 1, 1),
+      makeGroundLambertMaterial(0x4a7c3f)
     );
     grass.rotation.x = -Math.PI / 2;
-    grass.position.set(0, 0, 0);
+    grass.position.set(0, TEST_GRASS_Y, TEST_GRASS_Z_CENTER);
     grass.receiveShadow = true;
     root.add(grass);
 
     var edge = new THREE.Mesh(
-      new THREE.PlaneGeometry(140, 140, 1, 1),
-      new THREE.MeshLambertMaterial({ color: 0x3d6634 })
+      new THREE.PlaneGeometry(TEST_EDGE_W, TEST_EDGE_Z, 1, 1),
+      makeGroundLambertMaterial(0x3d6634)
     );
     edge.rotation.x = -Math.PI / 2;
-    edge.position.set(0, -0.01, 0);
+    edge.position.set(0, TEST_EDGE_Y, TEST_EDGE_Z_CENTER);
     root.add(edge);
+
+    resetTestRoadSampleSets();
+    var roadSamples = sampleTestRoadCurve(72);
+    var branchSamples = sampleStraightRoad(
+      TEST_BRANCH_ROAD.from.x,
+      TEST_BRANCH_ROAD.from.z,
+      TEST_BRANCH_ROAD.to.x,
+      TEST_BRANCH_ROAD.to.z,
+      30
+    );
+    registerTestRoadSamples(roadSamples);
+    registerTestRoadSamples(branchSamples);
+    buildTestMapMountains(root, roadSamples);
+    buildTestMapRoad(root);
+    buildTestMapStraightRoadBranch(root, branchSamples);
+    buildTestMapHiddenRoom(root);
+    if (window.HiddenLootBox && window.HiddenLootBox.build) {
+      window.HiddenLootBox.build(root, {
+        registerCollider: registerCollider,
+      });
+    }
+    if (window.ActionWasteBin) {
+      var binFlank = getTestMapFirstBendBinFlank();
+      window.ActionWasteBin.setBinPositions([
+        {
+          id: 0,
+          x: binFlank.x,
+          z: binFlank.z,
+          label: "路边废料桶",
+          aimY: 0.95,
+        },
+      ]);
+      buildIndustrialWasteBins(root);
+    }
   }
 
   /** 【新手教程】0 号模拟围区 — 与 Unity 生成器同规格 */
@@ -2895,7 +4071,10 @@ if (typeof window !== "undefined") {
     return (
       isInventoryOpen() ||
       (window.LockpickingQTE && window.LockpickingQTE.isOpen()) ||
-      (window.WorldLootBox && window.WorldLootBox.isPanelOpen())
+      (window.WorldLootBox && window.WorldLootBox.isPanelOpen()) ||
+      (window.HiddenLootBox && window.HiddenLootBox.isPuzzleOpen()) ||
+      (window.HiddenLootBox && window.HiddenLootBox.isPanelOpen()) ||
+      (window.ActionWasteBin && window.ActionWasteBin.isOpen())
     );
   }
 
@@ -2934,6 +4113,13 @@ if (typeof window !== "undefined") {
 
   function tick() {
     if (!running) return;
+    if (playerDead) {
+      animId = requestAnimationFrame(tick);
+      if (renderer && scene && camera) {
+        renderer.render(scene, camera);
+      }
+      return;
+    }
     animId = requestAnimationFrame(tick);
     var dt = Math.min(clock.getDelta(), 0.05);
 
@@ -3017,9 +4203,11 @@ if (typeof window !== "undefined") {
     yaw = 0;
     pitch = -0.08;
     if (currentMapId === "test") {
-      pos.x = 0;
+      pos.x = TEST_ROAD_START.x;
       pos.y = 0;
-      pos.z = 0;
+      pos.z = TEST_ROAD_START.z;
+      resolvePositionXZ();
+      clampPosition();
     } else {
       pos.x = 0;
       pos.y = 0;
@@ -3029,6 +4217,7 @@ if (typeof window !== "undefined") {
     grounded = true;
     animTime = 0;
     staminaDrainAcc = 0;
+    resetPlayerDeathState();
     if (window.ActionHealth && window.ActionHealth.reset) {
       window.ActionHealth.reset();
     }
@@ -3223,6 +4412,7 @@ if (typeof window !== "undefined") {
     document.body.classList.remove("hub-home");
 
     clearInputKeys();
+    teardownWorld();
     resetSecurityDoorState();
     resetExplosionState();
     if (
@@ -3231,6 +4421,16 @@ if (typeof window !== "undefined") {
       window.WorldLootBox.resetForNewRun
     ) {
       window.WorldLootBox.resetForNewRun({ firstChestGuarantee: true });
+    }
+    if (
+      currentMapId === "test" &&
+      window.HiddenLootBox &&
+      window.HiddenLootBox.resetForNewRun
+    ) {
+      window.HiddenLootBox.resetForNewRun();
+    }
+    if (window.ActionWasteBin && window.ActionWasteBin.resetForNewRun) {
+      window.ActionWasteBin.resetForNewRun();
     }
     if (window.LockpickingQTE && window.LockpickingQTE.close) {
       window.LockpickingQTE.close();
@@ -3300,11 +4500,24 @@ if (typeof window !== "undefined") {
       window.PlayerStatePersist.save();
     }
     resetEvacState();
+    resetPlayerDeathState();
     resetExplosionState();
+    if (window.WorldLootBox && window.WorldLootBox.resetForNewRun) {
+      window.WorldLootBox.resetForNewRun();
+    }
+    if (window.HiddenLootBox && window.HiddenLootBox.resetForNewRun) {
+      window.HiddenLootBox.resetForNewRun();
+    }
+    if (window.ActionWasteBin && window.ActionWasteBin.resetForNewRun) {
+      window.ActionWasteBin.resetForNewRun();
+    }
     enterInProgress = false;
     hideEnterLoading();
     if (window.ActionWeapon) window.ActionWeapon.dispose();
-    if (window.ActionHealth) window.ActionHealth.hide();
+    if (window.ActionHealth) {
+      if (window.ActionHealth.reset) window.ActionHealth.reset();
+      window.ActionHealth.hide();
+    }
     if (window.ActionJoystick) window.ActionJoystick.hide();
     syncLookLayer();
     clearInputKeys();
@@ -3314,6 +4527,7 @@ if (typeof window !== "undefined") {
       document.exitPointerLock();
     }
     stopLoop();
+    teardownWorld();
     actionRoot.hidden = true;
     document.body.classList.remove("action-open");
     document.body.classList.add("hub-home");
@@ -3344,8 +4558,20 @@ if (typeof window !== "undefined") {
 
     if (e.code === "Escape") {
       e.preventDefault();
+      if (window.ActionWasteBin && window.ActionWasteBin.isOpen()) {
+        window.ActionWasteBin.close();
+        return;
+      }
+      if (window.HiddenLootBox && window.HiddenLootBox.isPuzzleOpen()) {
+        window.HiddenLootBox.closePuzzle();
+        return;
+      }
       if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
         window.LockpickingQTE.close();
+        return;
+      }
+      if (window.HiddenLootBox && window.HiddenLootBox.isPanelOpen()) {
+        window.HiddenLootBox.closeChestPanel();
         return;
       }
       if (window.WorldLootBox && window.WorldLootBox.isPanelOpen()) {
@@ -3355,6 +4581,10 @@ if (typeof window !== "undefined") {
       if (isInventoryOpen()) {
         window.ActionInventory.close();
         return;
+      }
+      exit();
+      if (window.LobbyUI && window.LobbyUI.goHome) {
+        window.LobbyUI.goHome();
       }
       return;
     }
@@ -3417,6 +4647,7 @@ if (typeof window !== "undefined") {
     canvas.addEventListener("click", function () {
       if (!running || pointerLocked || isUiBlocking() || lookDidDrag) return;
       if (shouldUseDragLook()) return;
+      ensureExplosionAudio();
       requestLock();
     });
     canvas.addEventListener("mousedown", function (e) {
@@ -3453,6 +4684,7 @@ if (typeof window !== "undefined") {
       enterMap: enterMap,
       exit: exit,
       onChestOpened: onChestOpened,
+      onPlayerDeath: onPlayerDeath,
       resetExplosionState: resetExplosionState,
       isActive: function () {
         return running && actionRoot && !actionRoot.hidden;

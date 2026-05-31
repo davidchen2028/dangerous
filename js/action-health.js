@@ -6,6 +6,7 @@
 
   var MAX_HEALTH = 100;
   var currentHealth = MAX_HEALTH;
+  var deathHandled = false;
   var wrapEl = null;
   var fillEl = null;
   var labelEl = null;
@@ -59,6 +60,7 @@
 
   function reset() {
     currentHealth = MAX_HEALTH;
+    deathHandled = false;
     render();
   }
 
@@ -72,8 +74,14 @@
   }
 
   function damage(amount) {
-    if (!amount) return currentHealth;
+    if (!amount || deathHandled) return currentHealth;
     setHealth(currentHealth - amount);
+    if (currentHealth <= 0 && !deathHandled) {
+      deathHandled = true;
+      if (window.ActionScene && window.ActionScene.onPlayerDeath) {
+        window.ActionScene.onPlayerDeath();
+      }
+    }
     return currentHealth;
   }
 

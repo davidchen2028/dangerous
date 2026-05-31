@@ -117,6 +117,7 @@ def init_db() -> None:
     _migrate_users_last_client_device()
     _migrate_banned_ips_table()
     _migrate_users_player_state_json()
+    _migrate_market_stock_table()
 
 
 def _migrate_users_banned_until() -> None:
@@ -315,6 +316,7 @@ def default_player_state() -> Dict[str, Any]:
         "grids": None,
         "loadout": None,
         "tutorialComplete": False,
+        "selectedMapId": "test",
     }
 
 
@@ -343,6 +345,9 @@ def normalize_player_state(raw: Any) -> Dict[str, Any]:
             state["tutorialComplete"] = tc
         elif tc in (1, "1", "true", "True"):
             state["tutorialComplete"] = True
+        sid = raw.get("selectedMapId")
+        if sid == "test":
+            state["selectedMapId"] = sid
     return state
 
 
@@ -840,3 +845,113 @@ def decline_friend_request(request_id: int, user_id: int) -> Tuple[bool, str]:
         if cur.rowcount == 0:
             return False, "申请不存在或已处理"
     return True, "已拒绝申请"
+
+
+def _migrate_market_stock_table() -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS market_stock (
+                product_id TEXT PRIMARY KEY,
+                quantity INTEGER NOT NULL DEFAULT 5
+            )
+            """
+        )
+
+
+def ensure_market_stock() -> None:
+    from market_catalog import MARKET_DEFAULT_STOCK, MARKET_PRODUCT_IDS
+
+    with connect() as conn:
+        for pid in MARKET_PRODUCT_IDS:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO market_stock (product_id, quantity)
+                VALUES (?, ?)
+                """,
+                (pid, MARKET_DEFAULT_STOCK),
+            )
+
+
+def get_market_stock() -> Dict[str, int]:
+    ensure_market_stock()
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT product_id, quantity FROM market_stock ORDER BY product_id"
+        ).fetchall()
+    return {str(r["product_id"]): max(0, int(r["quantity"])) for r in rows}
+
+
+def get_market_stock_summary() -> Dict[str, Any]:
+    stock = get_market_stock()
+    total_units = sum(stock.values())
+    sold_out_count = sum(1 for qty in stock.values() if qty <= 0)
+    return {
+        "productCount": len(stock),
+        "totalUnits": total_units,
+        "soldOutCount": sold_out_count,
+        "stock": stock,
+    }
+
+
+def try_consume_market_stock(product_id: str) -> Tuple[bool, str]:
+    from market_catalog import MARKET_PRODUCT_IDS
+
+    pid = (product_id or "").strip()
+    if pid not in MARKET_PRODUCT_IDS:
+        return False, "商品不存在"
+    ensure_market_stock()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT quantity FROM market_stock WHERE product_id = ?",
+            (pid,),
+        ).fetchone()
+        if not row or int(row["quantity"]) <= 0:
+            return False, "已售罄"
+        cur = conn.execute(
+            """
+            UPDATE market_stock
+            SET quantity = quantity - 1
+            WHERE product_id = ? AND quantity > 0
+            """,
+            (pid,),
+        )
+        if cur.rowcount == 0:
+            return False, "已售罄"
+    return True, ""
+
+
+def restock_market(amount: int) -> Dict[str, int]:
+    from market_catalog import MARKET_PRODUCT_IDS
+
+    if amount <= 0:
+        return get_market_stock()
+    ensure_market_stock()
+    with connect() as conn:
+        for pid in MARKET_PRODUCT_IDS:
+            conn.execute(
+                """
+                UPDATE market_stock
+                SET quantity = quantity + ?
+                WHERE product_id = ?
+                """,
+                (amount, pid),
+            )
+    return get_market_stock()
+
+
+def reset_market_stock() -> Dict[str, int]:
+    from market_catalog import MARKET_DEFAULT_STOCK, MARKET_PRODUCT_IDS
+
+    ensure_market_stock()
+    with connect() as conn:
+        for pid in MARKET_PRODUCT_IDS:
+            conn.execute(
+                """
+                UPDATE market_stock
+                SET quantity = ?
+                WHERE product_id = ?
+                """,
+                (MARKET_DEFAULT_STOCK, pid),
+            )
+    return get_market_stock()

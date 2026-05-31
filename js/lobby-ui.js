@@ -66,8 +66,12 @@
   }
 
   function selectMap(mapId) {
+    if (mapId !== "test") return;
     selectedMapId = mapId;
     syncMapSelectionUi();
+    if (window.PlayerStatePersist && window.PlayerStatePersist.scheduleSave) {
+      window.PlayerStatePersist.scheduleSave();
+    }
   }
 
   function shakeMapBtn() {

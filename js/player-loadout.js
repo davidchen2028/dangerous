@@ -271,6 +271,27 @@
     backpackManager = null;
   }
 
+  function clearManagerItems(manager) {
+    if (!manager) return;
+    var list = manager.items.slice();
+    var i;
+    for (i = 0; i < list.length; i++) {
+      manager.removeItem(list[i]);
+    }
+  }
+
+  /** 行动内死亡：清空身上装备与背包/胸挂格，保留安全箱 */
+  function applyDeathDrop() {
+    clearManagerItems(rigManager);
+    clearManagerItems(backpackManager);
+    hardResetLoadout();
+    if (window.GridStashUI && window.GridStashUI.refreshStashPanel) {
+      window.GridStashUI.refreshStashPanel();
+    }
+    renderLobby();
+    return true;
+  }
+
   function deserializeIntoManager(manager, items) {
     if (!manager || !G || !items || !items.length) return;
     manager.deserialize(items, function (itemId, entry) {
@@ -828,5 +849,6 @@
     tryPlaceLootInBackpackOnly: tryPlaceLootInBackpackOnly,
     tryPlaceLootInSecureOnly: tryPlaceLootInSecureOnly,
     tryPlaceLootInSecureThenBackpack: tryPlaceLootInSecureThenBackpack,
+    applyDeathDrop: applyDeathDrop,
   };
 })();
