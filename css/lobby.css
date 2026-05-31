@@ -36,6 +36,31 @@ html, body {
   display: none !important;
 }
 
+/* 大厅顶栏标题 */
+.hub-title {
+  position: fixed;
+  top: max(1.35rem, env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 21;
+  margin: 0;
+  padding: 0.45rem 1.1rem;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: clamp(0.95rem, 3.6vw, 1.125rem);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.96);
+  text-shadow: 0 1px 10px rgba(0, 40, 100, 0.35);
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  white-space: nowrap;
+}
+
+body:not(.hub-home) .hub-title {
+  display: none;
+}
+
 /* 大厅入口按钮 — 悬停时周围白圈高亮 */
 .btn-hub {
   position: fixed;

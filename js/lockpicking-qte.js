@@ -22,8 +22,9 @@
   var pointerEl = null;
   var greenEl = null;
   var counterEls = [];
-  var animId = 0;
-  var lastFrameTs = 0;
+  var unlockBtn = null;
+  var unlockBound = false;
+  var lastPressAt = 0;
 
   function ensureAudio() {
     if (!window.AudioContext && !window.webkitAudioContext) return null;
@@ -116,6 +117,9 @@
 
   function handleSpacePress() {
     if (!active) return false;
+    var now = Date.now();
+    if (now - lastPressAt < 80) return false;
+    lastPressAt = now;
 
     if (isInGreenZone(pointerT)) {
       successCount += 1;
@@ -162,11 +166,26 @@
     if (!rootEl) return;
     pointerEl = rootEl.querySelector(".lockpick-qte__pointer");
     greenEl = rootEl.querySelector(".lockpick-qte__zone--green");
+    unlockBtn = document.getElementById("lockpickQteUnlock");
     counterEls = [];
     var pips = rootEl.querySelectorAll(".lockpick-qte__pip");
     var i;
     for (i = 0; i < pips.length; i++) counterEls.push(pips[i]);
     applyGreenZoneVisual();
+
+    if (unlockBtn && !unlockBound) {
+      unlockBound = true;
+      unlockBtn.addEventListener(
+        "pointerdown",
+        function (e) {
+          if (e.pointerType === "mouse" && e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          handleSpacePress();
+        },
+        { passive: false }
+      );
+    }
   }
 
   function open(opts) {
@@ -192,41 +211,12 @@
 
     rootEl.hidden = false;
     document.body.classList.add("lockpick-qte-open");
-    startAnimLoop();
+    lastPressAt = 0;
     return true;
-  }
-
-  function stopAnimLoop() {
-    if (animId) {
-      cancelAnimationFrame(animId);
-      animId = 0;
-    }
-    lastFrameTs = 0;
-  }
-
-  function animLoop(ts) {
-    if (!active) {
-      stopAnimLoop();
-      return;
-    }
-    animId = requestAnimationFrame(animLoop);
-    var dt = 0;
-    if (lastFrameTs > 0) {
-      dt = Math.min((ts - lastFrameTs) / 1000, 0.05);
-    }
-    lastFrameTs = ts;
-    if (dt > 0) update(dt);
-  }
-
-  function startAnimLoop() {
-    stopAnimLoop();
-    lastFrameTs = 0;
-    animId = requestAnimationFrame(animLoop);
   }
 
   function close() {
     active = false;
-    stopAnimLoop();
     onSuccessCb = null;
     onFailCb = null;
     if (rootEl) rootEl.hidden = true;

@@ -6,14 +6,15 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>极危行动 — 行动基地</title>
-  <link rel="stylesheet" href="css/lobby.css?v=17">
+  <link rel="stylesheet" href="css/lobby.css?v=18">
   <link rel="stylesheet" href="css/market-page.css?v=8">
-  <link rel="stylesheet" href="css/action-scene.css?v=17">
+  <link rel="stylesheet" href="css/action-scene.css?v=24">
 </head>
 <body class="hub-home">
   <div class="lobby" aria-hidden="true"></div>
 
   <div class="ui-layer">
+    <p class="hub-title">极危行动·测试服</p>
     <button type="button" class="btn-hub btn-hub--room" id="btnRoom">账号</button>
     <button type="button" class="btn-hub btn-hub--stash" id="btnStash">仓库</button>
     <button type="button" class="btn-hub btn-hub--market" id="btnMarket">市场</button>
@@ -227,7 +228,7 @@
     <div class="lockpick-qte" id="lockpickQte" hidden role="dialog" aria-label="开锁校准">
       <div class="lockpick-qte__panel">
         <h2 class="lockpick-qte__title">锁芯校准</h2>
-        <p class="lockpick-qte__hint">指针在绿色区域时按空格 · 连续成功 3 次开启宝箱</p>
+        <p class="lockpick-qte__hint">指针在绿色区域时按空格或点「开锁」· 连续成功 3 次开启宝箱</p>
         <div class="lockpick-qte__track" aria-hidden="true">
           <div class="lockpick-qte__zone lockpick-qte__zone--green"></div>
           <div class="lockpick-qte__pointer"></div>
@@ -238,6 +239,10 @@
           <span class="lockpick-qte__pip"></span>
         </div>
         <p class="lockpick-qte__foot"><kbd>空格</kbd> 判定 · <kbd>Esc</kbd> 取消</p>
+        <div class="lockpick-qte__actions">
+          <p class="lockpick-qte__foot-hint">指针在绿区时点右侧「开锁」</p>
+          <button type="button" class="lockpick-qte__unlock" id="lockpickQteUnlock">开锁</button>
+        </div>
       </div>
     </div>
 
@@ -308,9 +313,11 @@
   <script src="js/net.js?v=14"></script>
   <script src="js/action-inventory.js?v=7"></script>
   <script src="js/pirate-loot-roll.js?v=12"></script>
-  <script src="js/lockpicking-qte.js?v=2"></script>
+  <script src="js/lockpicking-qte.js?v=4"></script>
   <script src="js/world-loot-box.js?v=13"></script>
+  <script src="js/action-joystick.js?v=6"></script>
   <script src="js/action-weapon.js?v=11"></script>
-  <script type="module" src="js/action-scene.js?v=61"></script>
+  <script src="js/action-npc-soldier.js?v=6"></script>
+  <script type="module" src="js/action-scene.js?v=70"></script>
 </body>
 </html>

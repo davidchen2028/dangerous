@@ -38,11 +38,17 @@ if (typeof window !== "undefined") {
   var clock = new THREE.Clock();
   var animTime = 0;
   var pointerLocked = false;
+  var lookDragId = null;
+  var lookLastX = 0;
+  var lookLastY = 0;
+  var lookDidDrag = false;
   var ready = false;
 
   var WALK_SPEED = 2.5;
   var SPRINT_SPEED = 5.5;
   var CROUCH_SPEED = 1.2;
+  var STAMINA_DRAIN_SEC = 2;
+  var staminaDrainAcc = 0;
   var LOOK_SENS = 0.0022;
   var GRAVITY = 32;
   var JUMP_SPEED = 9;
@@ -275,6 +281,7 @@ if (typeof window !== "undefined") {
   var DOOR_OPEN_OFFSET_X = 1.35;
   var durabilityBannerEl = document.getElementById("actionDurabilityBanner");
   var interactHintEl = document.getElementById("actionInteractHint");
+  var lookLayerEl = null;
   var evacOverlayEl = document.getElementById("actionEvac");
   var evacCountdownEl = document.getElementById("actionEvacTimer");
   var evacCounting = false;
@@ -947,13 +954,112 @@ if (typeof window !== "undefined") {
 
   function clearInputKeys() {
     keys = Object.create(null);
+    lookDragId = null;
+    lookDidDrag = false;
     if (window.ActionWeapon && window.ActionWeapon.clearInput) {
       window.ActionWeapon.clearInput();
     }
+    if (window.ActionJoystick && window.ActionJoystick.clear) {
+      window.ActionJoystick.clear();
+    }
+  }
+
+  function isTouchPrimaryDevice() {
+    return (
+      (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ||
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "")
+    );
+  }
+
+  function shouldUseDragLook() {
+    if (pointerLocked) return false;
+    return isTouchPrimaryDevice();
+  }
+
+  function applyLookDelta(dx, dy) {
+    if (!dx && !dy) return;
+    yaw -= dx * LOOK_SENS;
+    pitch -= dy * LOOK_SENS;
+    var maxPitch = Math.PI / 2 - 0.05;
+    pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
+  }
+
+  function syncLookLayer() {
+    if (!lookLayerEl) return;
+    var show = running && shouldUseDragLook() && !isUiBlocking();
+    lookLayerEl.hidden = !show;
+    lookLayerEl.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
+  function mountLookLayer() {
+    if (lookLayerEl || !actionRoot) return;
+    lookLayerEl = document.createElement("div");
+    lookLayerEl.className = "action-look-layer";
+    lookLayerEl.id = "actionLookLayer";
+    lookLayerEl.hidden = true;
+    lookLayerEl.setAttribute("aria-hidden", "true");
+    actionRoot.appendChild(lookLayerEl);
+
+    lookLayerEl.addEventListener("pointerdown", onLookPointerDown);
+    window.addEventListener("pointermove", onLookPointerMove);
+    window.addEventListener("pointerup", onLookPointerUp);
+    window.addEventListener("pointercancel", onLookPointerUp);
+  }
+
+  function onLookPointerDown(e) {
+    if (!running || isUiBlocking() || !shouldUseDragLook()) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
+    lookDragId = e.pointerId;
+    lookLastX = e.clientX;
+    lookLastY = e.clientY;
+    lookDidDrag = false;
+    if (lookLayerEl && lookLayerEl.setPointerCapture) {
+      lookLayerEl.setPointerCapture(e.pointerId);
+    }
+    e.preventDefault();
+  }
+
+  function onLookPointerMove(e) {
+    if (lookDragId !== e.pointerId) return;
+    var dx = e.clientX - lookLastX;
+    var dy = e.clientY - lookLastY;
+    if (Math.abs(dx) + Math.abs(dy) > 2) {
+      lookDidDrag = true;
+    }
+    lookLastX = e.clientX;
+    lookLastY = e.clientY;
+    applyLookDelta(dx, dy);
+    e.preventDefault();
+  }
+
+  function onLookPointerUp(e) {
+    if (lookDragId === null || (e && e.pointerId !== lookDragId)) return;
+    if (lookLayerEl && lookLayerEl.releasePointerCapture) {
+      try {
+        lookLayerEl.releasePointerCapture(lookDragId);
+      } catch (err) { /* ignore */ }
+    }
+    lookDragId = null;
+  }
+
+  function getMoveAxes() {
+    var forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
+    var strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+    if (window.ActionJoystick) {
+      var stick = window.ActionJoystick.getVector();
+      if (stick.x || stick.y) {
+        forward = stick.y;
+        strafe = stick.x;
+      }
+    }
+    return { forward: forward, strafe: strafe };
   }
 
   function hasMovementInput() {
-    return !!(keys.KeyW || keys.KeyS || keys.KeyA || keys.KeyD);
+    if (keys.KeyW || keys.KeyS || keys.KeyA || keys.KeyD) return true;
+    if (window.ActionJoystick && window.ActionJoystick.isActive()) return true;
+    return false;
   }
 
   /** 松开移动键后立刻停止走/跑（含 Shift） */
@@ -1446,8 +1552,28 @@ if (typeof window !== "undefined") {
     if (!interactHintEl) return;
     interactHintEl.hidden = !show;
     if (show && !doorUnlocked) {
-      interactHintEl.textContent = "靠近安全门 · 按 E 开门";
+      interactHintEl.textContent = formatInteractHint("靠近安全门 · 按 E 开门");
     }
+  }
+
+  function formatInteractHint(text) {
+    if (!shouldUseDragLook()) return text;
+    return text.replace(/按 E\s*/g, "点此字条 ");
+  }
+
+  function tryInteract() {
+    if (!running || isUiBlocking()) return false;
+    if (doorUnlocked && window.WorldLootBox) {
+      if (camera && window.WorldLootBox.updateAim) {
+        window.WorldLootBox.updateAim(pos.x, pos.z, camera);
+      }
+      if (window.WorldLootBox.tryStartLockpick()) {
+        releasePointerForUi();
+        return true;
+      }
+    }
+    trySwipeDoor();
+    return true;
   }
 
   function unlockSecurityDoor() {
@@ -1495,7 +1621,9 @@ if (typeof window !== "undefined") {
       ) {
         setInteractHintVisible(true);
         if (interactHintEl) {
-          interactHintEl.textContent = "准星对准海盗宝箱 · 按 E 开锁";
+          interactHintEl.textContent = formatInteractHint(
+            "准星对准海盗宝箱 · 按 E 开锁"
+          );
         }
         return;
       }
@@ -1506,7 +1634,9 @@ if (typeof window !== "undefined") {
       ) {
         setInteractHintVisible(true);
         if (interactHintEl) {
-          interactHintEl.textContent = "按 E 查看海盗宝箱";
+          interactHintEl.textContent = formatInteractHint(
+            "按 E 查看海盗宝箱"
+          );
         }
         return;
       }
@@ -1554,6 +1684,13 @@ if (typeof window !== "undefined") {
     addBox(root, 0.5, 3.5, 60, -6.25, 1.75, 30, 0x2e3338);
     addBox(root, 0.5, 3.5, 60, 6.25, 1.75, 30, 0x2e3338);
     buildTruck(root);
+
+    if (window.ActionNpcSoldier && window.ActionNpcSoldier.build) {
+      window.ActionNpcSoldier.build(root, {
+        loadGltfCached: loadGltfCached,
+        fitModelToBox: fitModelToBox,
+      });
+    }
 
     buildConcreteBarriers(root);
 
@@ -1950,9 +2087,44 @@ if (typeof window !== "undefined") {
     pos.z = pz;
   }
 
-  function getMoveSpeed() {
-    if (keys.KeyC) return CROUCH_SPEED;
-    if (keys.ShiftLeft || keys.ShiftRight) return SPRINT_SPEED;
+  function getStaminaSegments() {
+    if (window.ActionJoystick && window.ActionJoystick.getStamina) {
+      return window.ActionJoystick.getStamina();
+    }
+    return 10;
+  }
+
+  function wantsSprint() {
+    if (keys.ShiftLeft || keys.ShiftRight) return true;
+    if (window.ActionJoystick && window.ActionJoystick.isSprintRequested) {
+      return window.ActionJoystick.isSprintRequested();
+    }
+    return false;
+  }
+
+  function isActuallySprinting(moving) {
+    if (!moving || keys.KeyC || isCrouching()) return false;
+    if (!wantsSprint()) return false;
+    if (getStaminaSegments() <= 0) return false;
+    return true;
+  }
+
+  function updateStamina(dt, moving) {
+    if (!window.ActionJoystick || !window.ActionJoystick.setStamina) return;
+    if (!isActuallySprinting(moving)) {
+      staminaDrainAcc = 0;
+      return;
+    }
+    staminaDrainAcc += dt;
+    while (staminaDrainAcc >= STAMINA_DRAIN_SEC && getStaminaSegments() > 0) {
+      staminaDrainAcc -= STAMINA_DRAIN_SEC;
+      window.ActionJoystick.setStamina(getStaminaSegments() - 1);
+    }
+  }
+
+  function getMoveSpeed(moving) {
+    if (keys.KeyC || isCrouching()) return CROUCH_SPEED;
+    if (moving && isActuallySprinting(moving)) return SPRINT_SPEED;
     return WALK_SPEED;
   }
 
@@ -2040,11 +2212,13 @@ if (typeof window !== "undefined") {
   function onInventoryOpened() {
     clearInputKeys();
     releasePointerForUi();
+    syncLookLayer();
     if (window.ActionWeapon) window.ActionWeapon.sync();
   }
 
   function onInventoryClosed() {
     restoreGameCursor();
+    syncLookLayer();
     if (running && !pointerLocked) {
       setHintVisible(true);
     }
@@ -2060,6 +2234,7 @@ if (typeof window !== "undefined") {
     }
 
     if (isUiBlocking()) {
+      if (window.ActionJoystick) window.ActionJoystick.setBlocked(true);
       if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
         window.LockpickingQTE.update(dt);
       }
@@ -2068,10 +2243,14 @@ if (typeof window !== "undefined") {
       return;
     }
 
-    var forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
-    var strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+    if (window.ActionJoystick) window.ActionJoystick.setBlocked(false);
+
+    var move = getMoveAxes();
+    var forward = move.forward;
+    var strafe = move.strafe;
     var moving = !!(forward || strafe);
-    var speed = moving ? getMoveSpeed() : 0;
+    updateStamina(dt, moving);
+    var speed = moving ? getMoveSpeed(moving) : 0;
 
     if (moving && speed > 0) {
       var sinY = Math.sin(yaw);
@@ -2090,6 +2269,10 @@ if (typeof window !== "undefined") {
       updateClouds(dt, animTime);
     }
     updateInteractHints();
+
+    if (window.ActionNpcSoldier && window.ActionNpcSoldier.update) {
+      window.ActionNpcSoldier.update(dt);
+    }
 
     if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
       window.LockpickingQTE.update(dt);
@@ -2127,6 +2310,10 @@ if (typeof window !== "undefined") {
     velY = 0;
     grounded = true;
     animTime = 0;
+    staminaDrainAcc = 0;
+    if (window.ActionJoystick && window.ActionJoystick.resetStamina) {
+      window.ActionJoystick.resetStamina();
+    }
     bodyHeightCurrent = STAND_HEIGHT;
     if (player) {
       updatePlayerTransform();
@@ -2187,10 +2374,17 @@ if (typeof window !== "undefined") {
     }
     setWeaponHint();
     setHintVisible(true);
+    if (window.ActionJoystick) window.ActionJoystick.show();
+    mountLookLayer();
+    syncLookLayer();
 
     requestAnimationFrame(function () {
       resize();
-      requestLock();
+      if (shouldUseDragLook()) {
+        document.body.classList.add("show-cursor");
+      } else {
+        requestLock();
+      }
     });
 
     if (window.LobbyNet && window.LobbyNet.startSessionProbe) {
@@ -2303,12 +2497,27 @@ if (typeof window !== "undefined") {
 
   function setWeaponHint() {
     if (!hintEl) return;
+    if (shouldUseDragLook()) {
+      var mobileCtrl = " · 摇杆上推过线疾跑 · 右下跳跃";
+      if (window.ActionWeapon && window.ActionWeapon.hasUziEquipped()) {
+        hintEl.textContent =
+          "拖动转视角 · 摇杆移动" +
+          mobileCtrl +
+          " · E 交互 · B 背包 · Q 返回";
+      } else {
+        hintEl.textContent =
+          "拖动转视角 · 摇杆移动" +
+          mobileCtrl +
+          " · E 交互 · B 背包 · Q 返回大厅";
+      }
+      return;
+    }
     if (window.ActionWeapon && window.ActionWeapon.hasUziEquipped()) {
       hintEl.textContent =
-        "WASD 移动 · 左键连发 · 右键开镜 · E 开门/宝箱 · B 背包 · Q 返回";
+        "WASD 移动 · Shift 疾跑 · 空格跳跃 · 左键连发 · 右键开镜 · E 交互 · B 背包 · Q 返回";
     } else {
       hintEl.textContent =
-        "WASD 移动 · E 开门/宝箱 · B 背包 · Q 返回大厅";
+        "WASD 移动 · Shift 疾跑 · 空格跳跃 · E 交互 · B 背包 · Q 返回大厅";
     }
   }
 
@@ -2323,6 +2532,11 @@ if (typeof window !== "undefined") {
     enterInProgress = false;
     hideEnterLoading();
     if (window.ActionWeapon) window.ActionWeapon.dispose();
+    if (window.ActionJoystick) window.ActionJoystick.hide();
+    if (window.ActionNpcSoldier && window.ActionNpcSoldier.dispose) {
+      window.ActionNpcSoldier.dispose();
+    }
+    syncLookLayer();
     clearInputKeys();
     if (window.ActionInventory) window.ActionInventory.close();
     restoreGameCursor();
@@ -2348,16 +2562,7 @@ if (typeof window !== "undefined") {
 
     if (e.code === "KeyE" && !e.repeat) {
       e.preventDefault();
-      if (doorUnlocked && window.WorldLootBox) {
-        if (camera && window.WorldLootBox.updateAim) {
-          window.WorldLootBox.updateAim(pos.x, pos.z, camera);
-        }
-        if (window.WorldLootBox.tryStartLockpick()) {
-          releasePointerForUi();
-          return;
-        }
-      }
-      trySwipeDoor();
+      tryInteract();
       return;
     }
 
@@ -2405,10 +2610,7 @@ if (typeof window !== "undefined") {
 
   function onMouseMove(e) {
     if (!running || !pointerLocked || isUiBlocking()) return;
-    yaw -= e.movementX * LOOK_SENS;
-    pitch -= e.movementY * LOOK_SENS;
-    var maxPitch = Math.PI / 2 - 0.05;
-    pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
+    applyLookDelta(e.movementX, e.movementY);
   }
 
   function onPointerLockChange() {
@@ -2419,21 +2621,37 @@ if (typeof window !== "undefined") {
     }
     if (pointerLocked) {
       restoreGameCursor();
+    } else if (shouldUseDragLook()) {
+      document.body.classList.add("show-cursor");
     }
     setHintVisible(!pointerLocked && !isInventoryOpen());
+    syncLookLayer();
     updateCrosshair();
   }
 
   function bindUI() {
     if (!btnAction || !actionRoot || !canvas) return;
 
+    mountLookLayer();
+
     btnAction.addEventListener("click", enter);
     if (btnBack) btnBack.addEventListener("click", exit);
+    if (interactHintEl) {
+      interactHintEl.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (interactHintEl.hidden) return;
+        tryInteract();
+      });
+    }
     canvas.addEventListener("click", function () {
-      if (running && !pointerLocked && !isUiBlocking()) requestLock();
+      if (!running || pointerLocked || isUiBlocking() || lookDidDrag) return;
+      if (shouldUseDragLook()) return;
+      requestLock();
     });
     canvas.addEventListener("mousedown", function (e) {
       if (!running || isUiBlocking()) return;
+      if (shouldUseDragLook()) return;
       if (window.ActionWeapon) window.ActionWeapon.onPointerDown(e);
     });
     canvas.addEventListener("mouseup", function (e) {
@@ -2473,6 +2691,7 @@ if (typeof window !== "undefined") {
       onInventoryClosed: onInventoryClosed,
       showDurabilityBanner: showDurabilityBanner,
       releaseUiPointer: releasePointerForUi,
+      tryJump: tryJump,
     };
 
     if (typeof THREE === "undefined") {
