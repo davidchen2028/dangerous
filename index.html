@@ -6,9 +6,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>极危行动 — 行动基地</title>
-  <link rel="stylesheet" href="css/lobby.css?v=16">
-  <link rel="stylesheet" href="css/market-page.css?v=3">
-  <link rel="stylesheet" href="css/action-scene.css?v=16">
+  <link rel="stylesheet" href="css/lobby.css?v=17">
+  <link rel="stylesheet" href="css/market-page.css?v=8">
+  <link rel="stylesheet" href="css/action-scene.css?v=17">
 </head>
 <body class="hub-home">
   <div class="lobby" aria-hidden="true"></div>
@@ -35,7 +35,10 @@
           </div>
           <label class="room-bar__field">
             <span class="room-bar__label">昵称</span>
-            <input type="text" id="inputNickname" class="room-bar__input" maxlength="16" placeholder="2～16 字符" autocomplete="username">
+            <div class="room-bar__input-wrap">
+              <input type="text" id="inputNickname" class="room-bar__input" maxlength="16" placeholder="2～16 字符" autocomplete="username">
+              <span id="nicknameDeviceMark" class="device-mark" hidden title="手机/平板客户端" aria-hidden="true"></span>
+            </div>
           </label>
           <label class="room-bar__field">
             <span class="room-bar__label">密码</span>
@@ -279,6 +282,13 @@
     </div>
   </div>
 
+  <div class="session-revoked" id="sessionRevoked" hidden aria-live="assertive">
+    <div class="session-revoked__panel">
+      <p class="session-revoked__msg" id="sessionRevokedMsg"></p>
+      <button type="button" class="session-revoked__btn" id="sessionRevokedBtn">返回大厅</button>
+    </div>
+  </div>
+
   <script type="importmap">
   {
     "imports": {
@@ -287,20 +297,20 @@
   }
   </script>
   <script src="js/socket.io.min.js?v=4"></script>
-  <script src="js/lobby-ui.js?v=8"></script>
-  <script src="js/item-catalog.js?v=17"></script>
+  <script src="js/lobby-ui.js?v=10"></script>
+  <script src="js/item-catalog.js?v=30"></script>
   <script src="js/grid-inventory.js?v=4"></script>
   <script src="js/grid-stash-ui.js?v=17"></script>
   <script src="js/player-loadout.js?v=17"></script>
-  <script src="js/lobby-market.js?v=20"></script>
-  <script src="js/player-state-persist.js?v=3"></script>
+  <script src="js/lobby-market.js?v=34"></script>
+  <script src="js/player-state-persist.js?v=5"></script>
   <script src="js/stash.js?v=13"></script>
-  <script src="js/net.js?v=8"></script>
+  <script src="js/net.js?v=14"></script>
   <script src="js/action-inventory.js?v=7"></script>
-  <script src="js/pirate-loot-roll.js?v=9"></script>
+  <script src="js/pirate-loot-roll.js?v=12"></script>
   <script src="js/lockpicking-qte.js?v=2"></script>
-  <script src="js/world-loot-box.js?v=9"></script>
+  <script src="js/world-loot-box.js?v=13"></script>
   <script src="js/action-weapon.js?v=11"></script>
-  <script type="module" src="js/action-scene.js?v=52"></script>
+  <script type="module" src="js/action-scene.js?v=61"></script>
 </body>
 </html>

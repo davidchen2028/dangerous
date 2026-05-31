@@ -231,7 +231,8 @@ if (typeof window !== "undefined") {
   var CRATE_SIZE = { x: 2, y: 2, z: 2 };
   var CRATE_CENTER_Y = 1;
   var CRATE_Z = [22, 28, 34, 38];
-  var CRATE_X = [3.0, 4.0, 3.0, 4.0];
+  /** 右路木箱 · 与中路卡车留 ≥1.3m 通道（胶囊半径 0.5） */
+  var CRATE_X = [4.35, 5.0, 4.35, 5.0];
   var CRATE_GLB_URL = "models/wooden-crate.glb";
 
   var DOOR_Z = 60;
@@ -850,12 +851,17 @@ if (typeof window !== "undefined") {
   }
 
   function isInEvacZone() {
-    var halfX = EVAC_ROOM_SIZE * 0.5 - CAPSULE_RADIUS - 0.05;
-    return (
-      Math.abs(pos.x) <= halfX &&
-      pos.z >= EVAC_ROOM_START_Z + 0.25 &&
-      pos.z <= EVAC_ROOM_START_Z + EVAC_ROOM_SIZE - 0.25
-    );
+    var half = EVAC_ROOM_SIZE * 0.5;
+    var minX = -half;
+    var maxX = half;
+    /* 与 buildEvacRoom 地板一致：中心 EVAC_ROOM_CENTER_Z + 0.25 */
+    var minZ = EVAC_ROOM_START_Z + 0.25;
+    var maxZ = EVAC_ROOM_START_Z + EVAC_ROOM_SIZE + 0.25;
+    var closestX = pos.x < minX ? minX : pos.x > maxX ? maxX : pos.x;
+    var closestZ = pos.z < minZ ? minZ : pos.z > maxZ ? maxZ : pos.z;
+    var dx = pos.x - closestX;
+    var dz = pos.z - closestZ;
+    return dx * dx + dz * dz <= CAPSULE_RADIUS * CAPSULE_RADIUS;
   }
 
   function updateEvacTimerDisplay() {
@@ -1495,6 +1501,7 @@ if (typeof window !== "undefined") {
       }
       if (
         window.WorldLootBox.isOpened() &&
+        window.WorldLootBox.isAimed() &&
         window.WorldLootBox.playerNear(pos.x, pos.z)
       ) {
         setInteractHintVisible(true);
@@ -2185,9 +2192,54 @@ if (typeof window !== "undefined") {
       resize();
       requestLock();
     });
+
+    if (window.LobbyNet && window.LobbyNet.startSessionProbe) {
+      window.LobbyNet.startSessionProbe();
+    }
   }
 
   function enter() {
+    if (window.LobbyNet && window.LobbyNet.assertCanPlay) {
+      window.LobbyNet.assertCanPlay(function (ok, msg) {
+        if (!ok) {
+          if (window.LobbyNet.handlePlayBlocked) {
+            window.LobbyNet.handlePlayBlocked(msg);
+          } else if (window.LobbyUI) {
+            if (msg) {
+              var joinError = document.getElementById("joinError");
+              if (joinError) joinError.textContent = msg;
+            }
+            window.LobbyUI.openRoom();
+            if (window.LobbyUI.shakeRoomBtn) window.LobbyUI.shakeRoomBtn();
+          }
+          return;
+        }
+        enterConfirmed();
+      });
+      return;
+    }
+
+    if (
+      window.LobbyUI &&
+      window.LobbyUI.requireLogin &&
+      !window.LobbyUI.requireLogin("未注册不能玩")
+    ) {
+      return;
+    }
+
+    enterConfirmed();
+  }
+
+  function enterConfirmed() {
+    if (window.LobbyNet && window.LobbyNet.canPlay && !window.LobbyNet.canPlay()) {
+      if (window.LobbyNet.handlePlayBlocked) {
+        window.LobbyNet.handlePlayBlocked(
+          window.LobbyNet.getBlockMessage && window.LobbyNet.getBlockMessage()
+        );
+      }
+      return;
+    }
+
     if (typeof THREE === "undefined") {
       actionRoot.hidden = false;
       document.body.classList.add("action-open");
@@ -2213,7 +2265,7 @@ if (typeof window !== "undefined") {
     clearInputKeys();
     resetSecurityDoorState();
     if (window.WorldLootBox && window.WorldLootBox.resetForNewRun) {
-      window.WorldLootBox.resetForNewRun();
+      window.WorldLootBox.resetForNewRun({ firstChestGuarantee: true });
     }
     if (window.LockpickingQTE && window.LockpickingQTE.close) {
       window.LockpickingQTE.close();
@@ -2261,6 +2313,9 @@ if (typeof window !== "undefined") {
   }
 
   function exit() {
+    if (window.LobbyNet && window.LobbyNet.stopSessionProbe) {
+      window.LobbyNet.stopSessionProbe();
+    }
     if (window.PlayerStatePersist && window.PlayerStatePersist.save) {
       window.PlayerStatePersist.save();
     }
@@ -2298,14 +2353,6 @@ if (typeof window !== "undefined") {
           window.WorldLootBox.updateAim(pos.x, pos.z, camera);
         }
         if (window.WorldLootBox.tryStartLockpick()) {
-          releasePointerForUi();
-          return;
-        }
-        if (
-          window.WorldLootBox.isOpened() &&
-          window.WorldLootBox.playerNear(pos.x, pos.z)
-        ) {
-          window.WorldLootBox.openChestPanel();
           releasePointerForUi();
           return;
         }
@@ -2416,6 +2463,9 @@ if (typeof window !== "undefined") {
     window.ActionScene = {
       enter: enter,
       exit: exit,
+      isActive: function () {
+        return running && actionRoot && !actionRoot.hidden;
+      },
       ready: function () {
         return ready;
       },

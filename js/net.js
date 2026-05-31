@@ -4,12 +4,14 @@
 (function () {
   const TOKEN_KEY = "jiwei_token";
   const NICK_KEY = "jiwei_nick";
+  const SESSION_BLOCK_KEY = "jiwei_session_block";
 
   const btnAuthSubmit = document.getElementById("btnAuthSubmit");
   const btnLogout = document.getElementById("btnLogout");
   const authTabs = document.getElementById("authTabs");
   const inputName = document.getElementById("inputNickname");
   const inputPassword = document.getElementById("inputPassword");
+  const nicknameDeviceMark = document.getElementById("nicknameDeviceMark");
   const joinError = document.getElementById("joinError");
   const netStatus = document.getElementById("netStatus");
   const accountMeta = document.getElementById("accountMeta");
@@ -36,6 +38,286 @@
   let noticeTimer = null;
   let pendingAuth = null;
   let authWaitTimer = null;
+  let ipBanActive = false;
+  let sessionRevokedHandled = false;
+  let sessionBlocked = false;
+  let sessionBlockMessage = "";
+  let sessionProbeTimer = null;
+  let playCheckCallback = null;
+  let playCheckTimer = null;
+  const SESSION_PROBE_MS = 5000;
+
+  const sessionRevokedEl = document.getElementById("sessionRevoked");
+  const sessionRevokedMsg = document.getElementById("sessionRevokedMsg");
+  const sessionRevokedBtn = document.getElementById("sessionRevokedBtn");
+
+  function hideSessionRevokedOverlay() {
+    if (sessionRevokedEl) sessionRevokedEl.hidden = true;
+    document.body.classList.remove("session-revoked-open");
+  }
+
+  function showSessionRevokedOverlay(message) {
+    if (sessionRevokedMsg) {
+      sessionRevokedMsg.textContent = message || "会话已失效";
+    }
+    if (sessionRevokedEl) sessionRevokedEl.hidden = false;
+    document.body.classList.add("session-revoked-open");
+    if (document.pointerLockElement && document.exitPointerLock) {
+      document.exitPointerLock();
+    }
+  }
+
+  function saveSessionBlock(message) {
+    sessionBlocked = true;
+    sessionBlockMessage = message || "会话已失效";
+    try {
+      localStorage.setItem(SESSION_BLOCK_KEY, sessionBlockMessage);
+    } catch (e) { /* ignore */ }
+  }
+
+  function clearSessionBlock() {
+    sessionBlocked = false;
+    sessionBlockMessage = "";
+    try {
+      localStorage.removeItem(SESSION_BLOCK_KEY);
+    } catch (e) { /* ignore */ }
+  }
+
+  function loadSessionBlockFromStorage() {
+    var msg = "";
+    try {
+      msg = localStorage.getItem(SESSION_BLOCK_KEY) || "";
+    } catch (e) { /* ignore */ }
+    if (!msg) return;
+    sessionBlocked = true;
+    sessionBlockMessage = msg;
+    if (isIpBanMessage(msg)) {
+      ipBanActive = true;
+    }
+    saveToken("");
+    setLoggedInUI(false);
+    if (joinError) joinError.textContent = msg;
+    setStatus(ipBanActive ? "IP 已被封禁" : "已连接 · 请登录", false);
+  }
+
+  function canPlay() {
+    if (ipBanActive || sessionBlocked) return false;
+    if (!ready || !getToken()) return false;
+    return true;
+  }
+
+  function getBlockMessage() {
+    if (ipBanActive) return "IP 已被封禁，无法连接服务器";
+    if (sessionBlocked && sessionBlockMessage) return sessionBlockMessage;
+    if (!ready || !getToken()) return "未注册不能玩";
+    return "";
+  }
+
+  function finishPlayCheck(ok, msg) {
+    if (playCheckTimer) {
+      clearTimeout(playCheckTimer);
+      playCheckTimer = null;
+    }
+    if (!playCheckCallback) return;
+    var cb = playCheckCallback;
+    playCheckCallback = null;
+    cb(ok, msg || "");
+  }
+
+  function verifySessionHttp(callback) {
+    var token = getToken();
+    if (!token) {
+      callback(false, "未注册不能玩");
+      return;
+    }
+    fetch(
+      "/api/session/verify?token=" + encodeURIComponent(token),
+      { method: "GET", cache: "no-store", credentials: "same-origin" }
+    )
+      .then(function (r) {
+        return r
+          .json()
+          .catch(function () {
+            return {};
+          })
+          .then(function (data) {
+            if (r.ok && data && data.ok) {
+              callback(true, "");
+            } else {
+              callback(false, (data && data.message) || "登录已失效");
+            }
+          });
+      })
+      .catch(function () {
+        callback(false, "无法连接服务器");
+      });
+  }
+
+  function onSessionVerifyFailed(msg) {
+    if (isIpBanMessage(msg)) {
+      showIpBan(msg);
+      return;
+    }
+    forceSessionRevoked(msg || "登录已失效", {
+      clearToken: true,
+      showOverlay: !sessionRevokedHandled,
+    });
+  }
+
+  function assertCanPlay(callback) {
+    if (sessionBlocked || ipBanActive) {
+      callback(false, getBlockMessage());
+      return;
+    }
+    if (!ready || !getToken()) {
+      callback(false, getBlockMessage() || "未注册不能玩");
+      return;
+    }
+    if (playCheckCallback) {
+      callback(false, "正在验证账号…");
+      return;
+    }
+    playCheckCallback = callback;
+    playCheckTimer = setTimeout(function () {
+      finishPlayCheck(false, "服务器无响应，请稍后再试");
+    }, 8000);
+    verifySessionHttp(function (ok, msg) {
+      finishPlayCheck(ok, msg);
+      if (!ok) {
+        onSessionVerifyFailed(msg);
+      }
+    });
+  }
+
+  function handlePlayBlocked(message) {
+    var msg = message || getBlockMessage() || "未注册不能玩";
+    if (joinError) joinError.textContent = msg;
+    if (isIpBanMessage(msg)) {
+      showIpBan(msg);
+      return;
+    }
+    if (isSessionRevokedMessage(msg)) {
+      forceSessionRevoked(msg, {
+        clearToken: true,
+        showOverlay: !sessionRevokedHandled,
+      });
+      return;
+    }
+    if (window.LobbyUI) {
+      window.LobbyUI.openRoom();
+      if (window.LobbyUI.shakeRoomBtn) window.LobbyUI.shakeRoomBtn();
+    }
+  }
+
+  function isSessionRevokedMessage(msg) {
+    return !!(msg && /封禁|踢下线|注销|登录已过期|请登录|请重新登录/i.test(msg));
+  }
+
+  function blockSession(message, opts) {
+    opts = opts || {};
+    saveSessionBlock(message || "会话已失效");
+    if (opts.clearToken !== false) saveToken("");
+    myUserId = null;
+    myNickname = "";
+    setLoggedInUI(false);
+    stopSessionProbe();
+  }
+
+  function shouldRunSessionProbe() {
+    if (sessionBlocked || ipBanActive) return false;
+    if (!getToken()) return false;
+    if (ready) return true;
+    if (
+      window.ActionScene &&
+      window.ActionScene.isActive &&
+      window.ActionScene.isActive()
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  function exitTutorialIfActive() {
+    if (
+      window.ActionScene &&
+      window.ActionScene.isActive &&
+      window.ActionScene.isActive()
+    ) {
+      window.ActionScene.exit();
+    }
+    if (window.ActionInventory && window.ActionInventory.close) {
+      window.ActionInventory.close();
+    }
+    if (window.LockpickingQTE && window.LockpickingQTE.close) {
+      window.LockpickingQTE.close();
+    }
+    if (window.WorldLootBox && window.WorldLootBox.closeChestPanel) {
+      window.WorldLootBox.closeChestPanel();
+    }
+  }
+
+  function forceSessionRevoked(message, opts) {
+    opts = opts || {};
+    const showOverlay =
+      opts.showOverlay !== false && !sessionRevokedHandled;
+    sessionRevokedHandled = true;
+
+    if (opts.ipBan) {
+      ipBanActive = true;
+    }
+
+    blockSession(message, opts);
+
+    if (socket && socket.io) {
+      socket.io.opts.reconnection = false;
+    }
+    if (opts.ipBan || opts.disconnect !== false) {
+      if (socket) {
+        socket.disconnect();
+      }
+      socketConnected = false;
+    }
+
+    onAuthFail(message, opts.clearToken !== false);
+    showNotice(message, true);
+
+    if (opts.ipBan) {
+      setStatus("IP 已被封禁", false);
+    }
+
+    exitTutorialIfActive();
+    if (showOverlay) {
+      showSessionRevokedOverlay(message);
+      if (window.LobbyUI && window.LobbyUI.openRoom) {
+        window.LobbyUI.openRoom();
+      }
+    }
+  }
+
+  function probeSession() {
+    if (!shouldRunSessionProbe()) {
+      stopSessionProbe();
+      return;
+    }
+    verifySessionHttp(function (ok, msg) {
+      if (!ok) {
+        onSessionVerifyFailed(msg);
+      }
+    });
+  }
+
+  function startSessionProbe() {
+    stopSessionProbe();
+    probeSession();
+    sessionProbeTimer = setInterval(probeSession, SESSION_PROBE_MS);
+  }
+
+  function stopSessionProbe() {
+    if (sessionProbeTimer) {
+      clearInterval(sessionProbeTimer);
+      sessionProbeTimer = null;
+    }
+  }
 
   function getToken() {
     try {
@@ -205,6 +487,10 @@
   }
 
   function onAuthOk(data) {
+    sessionRevokedHandled = false;
+    clearSessionBlock();
+    ipBanActive = false;
+    hideSessionRevokedOverlay();
     myUserId = data.user && data.user.id;
     myNickname = (data.user && data.user.nickname) || "";
     if (data.token) saveToken(data.token);
@@ -220,10 +506,12 @@
       showNotice(data.message, false);
     }
     if (window.PlayerStatePersist && window.PlayerStatePersist.onAuthOk) {
-      window.PlayerStatePersist.onAuthOk(data.playerState);
+      var isRegister = !!(data.message && data.message.indexOf("注册成功") !== -1);
+      window.PlayerStatePersist.onAuthOk(data.playerState, { isRegister: isRegister });
     } else if (window.LobbyStash) {
       window.LobbyStash.onPanelOpen();
     }
+    startSessionProbe();
   }
 
   function onAuthFail(message, clearToken) {
@@ -237,8 +525,51 @@
     renderIncomingRequests();
   }
 
+  function getClientDevice() {
+    var ua = navigator.userAgent || "";
+    if (
+      /iPad/i.test(ua) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+    ) {
+      return "tablet";
+    }
+    if (/iPhone|iPod|Android/i.test(ua)) return "mobile";
+    return "desktop";
+  }
+
+  function isTouchClientDevice(device) {
+    return device === "mobile" || device === "tablet";
+  }
+
+  function updateNicknameDeviceMark() {
+    if (!nicknameDeviceMark) return;
+    var device = getClientDevice();
+    var show = isTouchClientDevice(device);
+    nicknameDeviceMark.hidden = !show;
+    nicknameDeviceMark.title =
+      device === "tablet" ? "iPad / 平板客户端" : "手机客户端";
+  }
+
   function isMobileDevice() {
-    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    return isTouchClientDevice(getClientDevice());
+  }
+
+  function isIpBanMessage(msg) {
+    return !!(msg && /IP.*封禁|封禁.*IP/i.test(msg));
+  }
+
+  function ipBanUserMessage(msg) {
+    if (isIpBanMessage(msg)) {
+      return "IP 已被封禁，无法连接服务器";
+    }
+    return msg;
+  }
+
+  function showIpBan(msg) {
+    forceSessionRevoked(ipBanUserMessage(msg), {
+      ipBan: true,
+      clearToken: true,
+    });
   }
 
   function connectionHelpText() {
@@ -254,11 +585,14 @@
     if (onLocalhost) {
       return "无法连接服务器。请先在终端运行 ./run.sh，浏览器打开 http://localhost:" + (window.location.port || "8080");
     }
-    return "无法连接 " + host + "。请确认电脑已运行 ./run.sh，且防火墙未拦截该端口";
+    return "无法连接 " + host + "。请确认服务器已启动且网络正常";
   }
 
   function tryAuthSubmit() {
     if (ready) return;
+    if (window.PlayerStatePersist && window.PlayerStatePersist.save) {
+      window.PlayerStatePersist.save();
+    }
     const nickname = inputName.value.trim();
     const password = inputPassword.value;
     if (!nickname) {
@@ -278,7 +612,11 @@
     joinError.textContent = "";
     btnAuthSubmit.disabled = true;
     const event = authMode === "register" ? "auth_register" : "auth_login";
-    const payload = { nickname: nickname, password: password };
+    const payload = {
+      nickname: nickname,
+      password: password,
+      clientDevice: getClientDevice(),
+    };
     if (authWaitTimer) clearTimeout(authWaitTimer);
     authWaitTimer = setTimeout(function () {
       if (!ready && btnAuthSubmit && btnAuthSubmit.disabled) {
@@ -300,10 +638,14 @@
   function tryResume() {
     const token = getToken();
     if (!token || !socket || !socketConnected || ready) return;
-    socket.emit("auth_resume", { token: token });
+    socket.emit("auth_resume", {
+      token: token,
+      clientDevice: getClientDevice(),
+    });
   }
 
   function tryLogout() {
+    stopSessionProbe();
     if (window.PlayerStatePersist && window.PlayerStatePersist.onAuthLogout) {
       window.PlayerStatePersist.onAuthLogout();
     }
@@ -381,6 +723,7 @@
     });
 
     socket.on("connect", function () {
+      if (ipBanActive) return;
       socketConnected = true;
       if (pendingAuth) {
         const p = pendingAuth;
@@ -398,9 +741,19 @@
           setStatus("已连接 · 请登录或注册", false);
         }
       }
+      if (
+        window.ActionScene &&
+        window.ActionScene.isActive &&
+        window.ActionScene.isActive()
+      ) {
+        startSessionProbe();
+      } else if (ready) {
+        startSessionProbe();
+      }
     });
 
     socket.on("connect_error", function () {
+      if (ipBanActive) return;
       socketConnected = false;
       setStatus("连接失败", false);
       joinError.textContent = connectionHelpText();
@@ -408,7 +761,13 @@
       setLoggedInUI(false);
     });
 
+    socket.on("ip_banned", function (data) {
+      if (authWaitTimer) clearTimeout(authWaitTimer);
+      showIpBan((data && data.message) || "IP 已被封禁");
+    });
+
     socket.on("connected", function () {
+      if (ipBanActive) return;
       tryResume();
     });
 
@@ -421,16 +780,55 @@
     socket.on("auth_error", function (data) {
       if (authWaitTimer) clearTimeout(authWaitTimer);
       if (btnAuthSubmit) btnAuthSubmit.disabled = false;
-      const msg = (data && data.message) || "登录失败";
-      const clear = /过期|请登录/.test(msg);
+      const raw = (data && data.message) || "登录失败";
+      if (isIpBanMessage(raw)) {
+        if (playCheckCallback) finishPlayCheck(false, ipBanUserMessage(raw));
+        showIpBan(raw);
+        return;
+      }
+      if (isSessionRevokedMessage(raw) && (ready || getToken() || sessionBlocked)) {
+        if (playCheckCallback) finishPlayCheck(false, raw);
+        forceSessionRevoked(raw, { clearToken: true });
+        return;
+      }
+      const msg = raw;
+      const clear = /过期|请登录|请重新登录/.test(msg);
       onAuthFail(msg, clear);
     });
 
     socket.on("auth_kicked", function (data) {
-      saveToken("");
       const msg = (data && data.message) || "账号在其他窗口登录";
-      onAuthFail(msg, true);
-      showNotice(msg, true);
+      forceSessionRevoked(msg, { clearToken: true });
+    });
+
+    socket.on("session_ok", function () {
+      finishPlayCheck(true, "");
+    });
+
+    socket.on("session_invalid", function (data) {
+      const msg = (data && data.message) || "登录已失效";
+      if (isIpBanMessage(msg)) {
+        if (playCheckCallback) finishPlayCheck(false, ipBanUserMessage(msg));
+        showIpBan(msg);
+        return;
+      }
+      if (playCheckCallback) finishPlayCheck(false, msg);
+      if (
+        ready ||
+        getToken() ||
+        sessionBlocked ||
+        (window.ActionScene &&
+          window.ActionScene.isActive &&
+          window.ActionScene.isActive())
+      ) {
+        forceSessionRevoked(msg, {
+          clearToken: true,
+          showOverlay: !sessionRevokedHandled,
+        });
+      } else {
+        blockSession(msg, { clearToken: true });
+        onAuthFail(msg, true);
+      }
     });
 
     socket.on("friends_updated", function (data) {
@@ -538,6 +936,10 @@
     isReady: function () {
       return ready;
     },
+    canPlay: canPlay,
+    getBlockMessage: getBlockMessage,
+    assertCanPlay: assertCanPlay,
+    handlePlayBlocked: handlePlayBlocked,
     savePlayerState: function (state) {
       if (socket && ready && state) {
         socket.emit("player_state_save", { state: state });
@@ -552,15 +954,29 @@
         window.LobbyUI.shakeRoomBtn();
       }
     },
+    startSessionProbe: startSessionProbe,
+    stopSessionProbe: stopSessionProbe,
   };
+
+  if (sessionRevokedBtn) {
+    sessionRevokedBtn.addEventListener("click", function () {
+      hideSessionRevokedOverlay();
+      if (window.LobbyUI) {
+        window.LobbyUI.goHome();
+        window.LobbyUI.openRoom();
+      }
+    });
+  }
 
   try {
     const savedNick = localStorage.getItem(NICK_KEY);
     if (savedNick && inputName) inputName.value = savedNick;
   } catch (e) { /* ignore */ }
 
+  loadSessionBlockFromStorage();
   setAuthMode("login");
   setLoggedInUI(false);
+  updateNicknameDeviceMark();
   renderFriendList();
   renderIncomingRequests();
   setStatus("连接中…", false);

@@ -72,12 +72,66 @@
       image: "img/market/backpack-light.svg",
     },
     {
+      id: "collectible_3008",
+      stashId: "c3008",
+      cat: "collectible",
+      sub: "treasure",
+      name: "「微缩新星」坍缩黑金单晶",
+      desc: "MINIATURE NOVA · 1×1 终极孤品 · 仅黑市 · 12000000",
+      w: 1,
+      h: 1,
+      rarity: "ultimate",
+      rarityLabel: "终极",
+      rarityIcon: "⬛",
+      reclaimMin: 11000000,
+      minMarketPrice: 12000000,
+      maxMarketPrice: 12000000,
+      price: 12000000,
+      image: "img/market/mini-nova-singularity-crystal.png?v=1",
+    },
+    {
+      id: "collectible_3007",
+      stashId: "c3007",
+      cat: "collectible",
+      sub: "treasure",
+      name: "「永夜极光」黑曜石星象仪",
+      desc: "EVERNIGHT AURORA · 4×4 终极 · 占满宝箱 · 0.05% · 黑市 7000000",
+      w: 4,
+      h: 4,
+      rarity: "ultimate",
+      rarityLabel: "终极",
+      rarityIcon: "⬛",
+      reclaimMin: 6300000,
+      minMarketPrice: 7000000,
+      maxMarketPrice: 7000000,
+      price: 7000000,
+      image: "img/market/evernight-aurora-star-chart.png?v=1",
+    },
+    {
+      id: "collectible_3006",
+      stashId: "c3006",
+      cat: "collectible",
+      sub: "treasure",
+      name: "「红莲审判」时间晶体指挥仪",
+      desc: "CRIMSON LOTUS · 3×3 神话 · 宝箱 0.5% · 黑市 1500000",
+      w: 3,
+      h: 3,
+      rarity: "mythic",
+      rarityLabel: "神话",
+      rarityIcon: "🔴",
+      reclaimMin: 1300000,
+      minMarketPrice: 1500000,
+      maxMarketPrice: 1500000,
+      price: 1500000,
+      image: "img/market/crimson-lotus-director.png?v=1",
+    },
+    {
       id: "pirate_1004",
       stashId: "p1004",
       cat: "collectible",
       sub: "treasure",
       name: "纯金战术指挥鹰雕像",
-      desc: "藏品类 · 传奇摆件 · 宝箱可出",
+      desc: "AQUILA TACTICA · 2×2 传奇藏品 · 宝箱 2% · 黑市 500000",
       w: 2,
       h: 2,
       rarity: "legendary",
@@ -87,7 +141,7 @@
       minMarketPrice: 500000,
       maxMarketPrice: 500000,
       price: 500000,
-      image: "img/market/heavy-industrial-drill.svg",
+      image: "img/market/aquila-tactica-eagle.png?v=2",
     },
     {
       id: "collectible_3001",
@@ -95,7 +149,7 @@
       cat: "collectible",
       sub: "treasure",
       name: "前线指挥官的合金火机",
-      desc: "藏品类 · 传奇藏品",
+      desc: "FRONT-LINE COMMANDER'S · 1×1 传奇 · 宝箱 3.5% · 黑市 350000",
       w: 1,
       h: 1,
       rarity: "legendary",
@@ -105,7 +159,7 @@
       minMarketPrice: 350000,
       maxMarketPrice: 350000,
       price: 350000,
-      image: "img/market/heavy-industrial-drill.svg",
+      image: "img/market/commander-alloy-lighter.png?v=2",
     },
     {
       id: "collectible_3002",
@@ -113,7 +167,7 @@
       cat: "collectible",
       sub: "treasure",
       name: "复古废土手摇八音盒",
-      desc: "藏品类 · 传奇藏品",
+      desc: "OLD WORLD MELODIES · 1×1 传奇 · 宝箱 4% · 黑市 260000",
       w: 1,
       h: 1,
       rarity: "legendary",
@@ -123,7 +177,7 @@
       minMarketPrice: 260000,
       maxMarketPrice: 260000,
       price: 260000,
-      image: "img/market/heavy-industrial-drill.svg",
+      image: "img/market/wasteland-music-box.png",
     },
     {
       id: "collectible_3003",
@@ -131,7 +185,7 @@
       cat: "collectible",
       sub: "treasure",
       name: "全息推演沙盘",
-      desc: "藏品类 · 史诗藏品",
+      desc: "HOLOGRAPHIC TACTICAL SANDBOX · 2×2 史诗 · 黑市 95000",
       w: 2,
       h: 2,
       rarity: "epic",
@@ -141,7 +195,7 @@
       minMarketPrice: 95000,
       maxMarketPrice: 95000,
       price: 95000,
-      image: "img/market/heavy-industrial-drill.svg",
+      image: "img/market/holographic-sand-table.png?v=1",
     },
     {
       id: "collectible_3004",
@@ -149,7 +203,7 @@
       cat: "collectible",
       sub: "treasure",
       name: "已停产的初代微光观测镜",
-      desc: "藏品类 · 史诗藏品",
+      desc: "MODEL-1 NIGHTSIGHT · 1×2 史诗 · 黑市 75000",
       w: 1,
       h: 2,
       rarity: "epic",
@@ -159,7 +213,7 @@
       minMarketPrice: 75000,
       maxMarketPrice: 75000,
       price: 75000,
-      image: "img/market/heavy-industrial-drill.svg",
+      image: "img/market/micro-light-scope.png?v=1",
     },
     {
       id: "collectible_3005",
@@ -167,7 +221,7 @@
       cat: "collectible",
       sub: "treasure",
       name: "极危行动初代荣誉勋章",
-      desc: "藏品类 · 稀有藏品",
+      desc: "DANGEROUS · 1×1 稀有 · 黑市 38000",
       w: 1,
       h: 1,
       rarity: "rare",
@@ -177,7 +231,7 @@
       minMarketPrice: 38000,
       maxMarketPrice: 38000,
       price: 38000,
-      image: "img/market/heavy-industrial-drill.svg",
+      image: "img/market/honor-medal-gen1.png?v=1",
     },
     {
       id: "pirate_1005",
@@ -469,12 +523,13 @@
         (economy
           ? '<span class="market-card__economy">' + economy + "</span>"
           : "") +
+        "</div>" +
         '<div class="market-card__foot">' +
         '<span class="market-card__price">' +
         product.price.toLocaleString() +
         " ₱</span>" +
         '<button type="button" class="market-card__buy">购买</button>' +
-        "</div></div>";
+        "</div>";
 
       card.querySelector(".market-card__buy").addEventListener("click", function () {
         buyProduct(product);

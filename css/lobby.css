@@ -989,6 +989,16 @@ body.loadout-drag-active .loadout-slot {
   color: #7a8a9a;
 }
 
+.room-bar__input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.room-bar__input-wrap .room-bar__input {
+  padding-right: 1.85rem;
+}
+
 .room-bar__input {
   width: 100%;
   padding: 0.5rem 0.65rem;
@@ -998,6 +1008,18 @@ body.loadout-drag-active .loadout-slot {
   border: 1px solid rgba(70, 90, 110, 0.45);
   border-radius: 6px;
   outline: none;
+}
+
+.device-mark {
+  position: absolute;
+  right: 0.55rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  border: 2px solid #6ab4e8;
+  border-radius: 1px;
+  box-shadow: 0 0 6px rgba(90, 170, 230, 0.35);
+  pointer-events: none;
+  flex-shrink: 0;
 }
 
 .room-bar__input:focus {

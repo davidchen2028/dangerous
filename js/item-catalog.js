@@ -199,6 +199,9 @@
       minMarketPrice: 350000,
       maxMarketPrice: 350000,
       category: "collectible",
+      flavor:
+        "FRONT-LINE COMMANDER'S ALLOY LIGHTER — 战痕合金打火机，鹰徽与「FOR THE BRAVE」刻字。宝箱约 3.5% 产出。",
+      image: "img/market/commander-alloy-lighter.png?v=2",
     },
     collectible_3002: {
       id: "collectible_3002",
@@ -213,6 +216,9 @@
       minMarketPrice: 260000,
       maxMarketPrice: 260000,
       category: "collectible",
+      flavor:
+        "OLD WORLD MELODIES — 废土手摇八音盒，黄铜机芯与星图顶盖，侧面刻有旧世旋律卷轴。宝箱约 4% 产出。",
+      image: "img/market/wasteland-music-box.png",
     },
     collectible_3003: {
       id: "collectible_3003",
@@ -227,6 +233,9 @@
       minMarketPrice: 95000,
       maxMarketPrice: 95000,
       category: "collectible",
+      flavor:
+        "HOLOGRAPHIC TACTICAL SANDBOX — 金框战术推演台，投射紫青全息地形与单位标绘，用于战前沙盘推演。",
+      image: "img/market/holographic-sand-table.png?v=1",
     },
     collectible_3004: {
       id: "collectible_3004",
@@ -241,6 +250,9 @@
       minMarketPrice: 75000,
       maxMarketPrice: 75000,
       category: "collectible",
+      flavor:
+        "MODEL-1 NIGHTSIGHT — 黄铜镜筒与铭牌上的 61-85M 序列号，初代微光夜视观测镜，宝箱史诗档产出。",
+      image: "img/market/micro-light-scope.png?v=1",
     },
     collectible_3005: {
       id: "collectible_3005",
@@ -255,6 +267,60 @@
       minMarketPrice: 38000,
       maxMarketPrice: 38000,
       category: "collectible",
+      flavor:
+        "DANGEROUS — 极危行动初代荣誉勋章，铜质罗盘星章与狮鹫盾徽，宝箱稀有档常见产出。",
+      image: "img/market/honor-medal-gen1.png?v=1",
+    },
+    collectible_3006: {
+      id: "collectible_3006",
+      name: "「红莲审判」时间晶体指挥仪",
+      type: "loot",
+      w: 3,
+      h: 3,
+      rarity: "mythic",
+      rarityLabel: "神话",
+      rarityIcon: "🔴",
+      reclaimMin: 1300000,
+      minMarketPrice: 1500000,
+      maxMarketPrice: 1500000,
+      category: "collectible",
+      flavor:
+        "CRIMSON LOTUS JUDGEMENT TIME CRYSTAL DIRECTOR — 殿堂级动态艺术藏品，红莲时间晶体与星轨矩阵，终极战略密钥。宝箱 0.5% 产出。",
+      image: "img/market/crimson-lotus-director.png?v=1",
+    },
+    collectible_3007: {
+      id: "collectible_3007",
+      name: "「永夜极光」黑曜石星象仪",
+      type: "loot",
+      w: 4,
+      h: 4,
+      rarity: "ultimate",
+      rarityLabel: "终极",
+      rarityIcon: "⬛",
+      reclaimMin: 6300000,
+      minMarketPrice: 7000000,
+      maxMarketPrice: 7000000,
+      category: "collectible",
+      flavor:
+        "EVERNIGHT AURORA OBSIDIAN STAR CHART — 黑曜石镜面与黑金浑天仪，底座微雕冷光封存永夜极光，纪念极危行动全面胜利的限量首席战略家藏品。宝箱 0.05% 产出。",
+      image: "img/market/evernight-aurora-star-chart.png?v=1",
+    },
+    collectible_3008: {
+      id: "collectible_3008",
+      name: "「微缩新星」坍缩黑金单晶",
+      type: "loot",
+      w: 1,
+      h: 1,
+      rarity: "ultimate",
+      rarityLabel: "终极",
+      rarityIcon: "⬛",
+      reclaimMin: 11000000,
+      minMarketPrice: 12000000,
+      maxMarketPrice: 12000000,
+      category: "collectible",
+      flavor:
+        "MINIATURE NOVA SINGULARITY BLACK-GOLD MONOCrystal — 坍缩黑金多面体，纳米金丝微雕，仅 1 格孤品。维持战术世界的能源奇点，提炼技术已失传，宝箱不产出。",
+      image: "img/market/mini-nova-singularity-crystal.png?v=1",
     },
     pirate_1004: {
       id: "pirate_1004",
@@ -269,6 +335,9 @@
       minMarketPrice: 500000,
       maxMarketPrice: 500000,
       category: "collectible",
+      flavor:
+        "AQUILA TACTICA — 纯金铸造的战术指挥鹰，胸挂弹匣、头戴夜视，立于地球仪之上。海盗宝箱极低概率产出，黑市标价五十万。",
+      image: "img/market/aquila-tactica-eagle.png?v=2",
     },
     pirate_1005: {
       id: "pirate_1005",
@@ -331,6 +400,9 @@
     c3003: "collectible_3003",
     c3004: "collectible_3004",
     c3005: "collectible_3005",
+    c3006: "collectible_3006",
+    c3007: "collectible_3007",
+    c3008: "collectible_3008",
   };
 
   var SLOT_TYPES = {

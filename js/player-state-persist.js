@@ -174,29 +174,65 @@
     return false;
   }
 
-  function ensureSeededIfEmpty() {
-    if (window.GridStashUI.ensureSeeded) {
-      window.GridStashUI.ensureSeeded();
-    }
+  function makeEmptyState(credits) {
+    return {
+      v: 1,
+      credits: credits,
+      grids: { stash: [], secure: [] },
+      loadout: {
+        primary: null,
+        melee: null,
+        secondary: null,
+        pistol: null,
+        helmet: null,
+        armor: null,
+        rig: null,
+        backpack: null,
+        cards: [null, null, null, null],
+        rigItems: [],
+        backpackItems: [],
+      },
+    };
+  }
+
+  function applyGuestState(credits) {
+    if (!hasDeps()) return;
+    importState(makeEmptyState(credits));
     if (window.GridStashUI.markSeeded) {
       window.GridStashUI.markSeeded();
     }
   }
 
-  function onAuthOk(serverState) {
+  function clearLocalStorage() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function flushSaveToServer() {
+    clearTimeout(serverSaveTimer);
+    saveToServer();
+  }
+
+  function onAuthOk(serverState, options) {
+    options = options || {};
     serverSyncEnabled = true;
 
-    if (serverHasProgress(serverState)) {
+    if (options.isRegister) {
+      applyGuestState(DEFAULT_CREDITS);
+      flushSaveToServer();
+    } else if (serverHasProgress(serverState)) {
       importState(serverState);
       if (window.GridStashUI.markSeeded) {
         window.GridStashUI.markSeeded();
       }
-    } else if (hasSavedState()) {
-      loadLocal();
-      saveToServer();
     } else {
-      importState(serverState || { v: 1, credits: DEFAULT_CREDITS });
-      ensureSeededIfEmpty();
+      importState(serverState || makeEmptyState(DEFAULT_CREDITS));
+      if (window.GridStashUI.markSeeded) {
+        window.GridStashUI.markSeeded();
+      }
     }
 
     refreshUi();
@@ -207,34 +243,30 @@
   }
 
   function onAuthLogout() {
-    saveLocal();
-    saveToServer();
+    if (serverSyncEnabled) {
+      flushSaveToServer();
+    }
     serverSyncEnabled = false;
+    clearTimeout(saveTimer);
     clearTimeout(serverSaveTimer);
+    if (window.GridStashUI.disablePersist) {
+      window.GridStashUI.disablePersist();
+    }
+    applyGuestState(0);
+    clearLocalStorage();
+    refreshUi();
   }
 
   function boot() {
     if (!hasDeps()) return;
-
-    var restored = loadLocal();
-    if (!restored) {
-      ensureSeededIfEmpty();
-    } else if (window.GridStashUI.markSeeded) {
-      window.GridStashUI.markSeeded();
-    }
-
+    applyGuestState(0);
     refreshUi();
-
-    if (window.GridStashUI.enablePersist) {
-      window.GridStashUI.enablePersist();
-    }
   }
 
   window.addEventListener("beforeunload", function () {
+    if (!serverSyncEnabled) return;
     saveLocal();
-    if (serverSyncEnabled) {
-      saveToServer();
-    }
+    saveToServer();
   });
 
   window.PlayerStatePersist = {

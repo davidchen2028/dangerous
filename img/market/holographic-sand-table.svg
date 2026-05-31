@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a1030"/>
+      <stop offset="100%" stop-color="#0a0814"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c9a227"/>
+      <stop offset="50%" stop-color="#f0d878"/>
+      <stop offset="100%" stop-color="#8a6a18"/>
+    </linearGradient>
+    <linearGradient id="table" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2a2438"/>
+      <stop offset="100%" stop-color="#121018"/>
+    </linearGradient>
+    <linearGradient id="holo" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#9b7bff" stop-opacity="0.95"/>
+      <stop offset="55%" stop-color="#4fd4ff" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#2a6b88" stop-opacity="0.35"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="42%" r="45%">
+      <stop offset="0%" stop-color="#c49bff" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#7b4fd4" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+  </defs>
+
+  <rect width="256" height="256" fill="url(#bg)" rx="18"/>
+  <rect x="18" y="18" width="220" height="220" rx="14" fill="url(#glow)"/>
+
+  <path d="M58 188 L198 188 L186 206 L70 206 Z" fill="#15121c" stroke="#3a3550" stroke-width="2"/>
+  <rect x="72" y="176" width="112" height="14" rx="3" fill="url(#table)" stroke="#5a5070" stroke-width="1.5"/>
+
+  <rect x="52" y="92" width="152" height="92" rx="6" fill="url(#frame)" stroke="#6a5010" stroke-width="2"/>
+  <rect x="58" y="98" width="140" height="80" rx="4" fill="#0e0c14" stroke="#2a2438" stroke-width="1.5"/>
+
+  <g filter="url(#blur)" opacity="0.35">
+    <ellipse cx="128" cy="132" rx="58" ry="24" fill="#7b4fd4"/>
+  </g>
+  <path d="M70 148 L92 118 L118 132 L142 108 L186 138 L186 152 L70 152 Z" fill="url(#holo)" opacity="0.88"/>
+  <path d="M82 140 L104 124 L128 136 L154 116 L174 132" stroke="#e8f8ff" stroke-width="1.5" fill="none" opacity="0.7"/>
+  <circle cx="118" cy="126" r="3" fill="#fff" opacity="0.85"/>
+  <circle cx="148" cy="122" r="2.5" fill="#9b7bff" opacity="0.9"/>
+  <path d="M96 132 L112 128 M136 130 L152 126" stroke="#4fd4ff" stroke-width="1" opacity="0.55"/>
+
+  <rect x="58" y="118" width="140" height="2" fill="#c49bff" opacity="0.35"/>
+  <rect x="58" y="142" width="140" height="1" fill="#4fd4ff" opacity="0.25"/>
+</svg>

@@ -1169,6 +1169,10 @@
     persistReady = true;
   }
 
+  function disablePersist() {
+    persistReady = false;
+  }
+
   window.GridStashUI = {
     init: init,
     ensureSeeded: seedStarterKit,
@@ -1176,6 +1180,7 @@
       seeded = true;
     },
     enablePersist: enablePersist,
+    disablePersist: disablePersist,
     exportPersistState: exportPersistState,
     importPersistState: importPersistState,
     render: renderAll,

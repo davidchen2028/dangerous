@@ -112,7 +112,9 @@ def init_db() -> None:
     close_orphan_online_sessions()
     _migrate_users_banned_until()
     _migrate_users_kick_requested_at()
+    _migrate_users_kick_message()
     _migrate_users_last_ip()
+    _migrate_users_last_client_device()
     _migrate_banned_ips_table()
     _migrate_users_player_state_json()
 
@@ -131,11 +133,25 @@ def _migrate_users_kick_requested_at() -> None:
             conn.execute("ALTER TABLE users ADD COLUMN kick_requested_at TEXT")
 
 
+def _migrate_users_kick_message() -> None:
+    with connect() as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "kick_message" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN kick_message TEXT")
+
+
 def _migrate_users_last_ip() -> None:
     with connect() as conn:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         if "last_ip" not in cols:
             conn.execute("ALTER TABLE users ADD COLUMN last_ip TEXT")
+
+
+def _migrate_users_last_client_device() -> None:
+    with connect() as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "last_client_device" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN last_client_device TEXT")
 
 
 def _migrate_banned_ips_table() -> None:
@@ -181,6 +197,17 @@ def update_user_last_ip(user_id: int, ip: str) -> None:
         return
     with connect() as conn:
         conn.execute("UPDATE users SET last_ip = ? WHERE id = ?", (ip, user_id))
+
+
+def update_user_last_client_device(user_id: int, device: str) -> None:
+    value = (device or "").strip().lower()
+    if value not in ("mobile", "tablet", "desktop"):
+        value = "desktop"
+    with connect() as conn:
+        conn.execute(
+            "UPDATE users SET last_client_device = ? WHERE id = ?",
+            (value, user_id),
+        )
 
 
 def get_user_ids_by_last_ip(ip: str) -> List[int]:
@@ -683,27 +710,28 @@ def get_online_user_ids_from_db() -> set:
     return {int(r["user_id"]) for r in rows}
 
 
-def request_kick(user_id: int) -> None:
+def request_kick(user_id: int, message: str = "你已被管理员踢下线") -> None:
     with connect() as conn:
         conn.execute(
-            "UPDATE users SET kick_requested_at = ? WHERE id = ?",
-            (_utc_now(), user_id),
+            "UPDATE users SET kick_requested_at = ?, kick_message = ? WHERE id = ?",
+            (_utc_now(), message, user_id),
         )
 
 
-def consume_kick_request(user_id: int) -> bool:
+def consume_kick_request(user_id: int) -> Optional[str]:
     with connect() as conn:
         row = conn.execute(
-            "SELECT kick_requested_at FROM users WHERE id = ?",
+            "SELECT kick_requested_at, kick_message FROM users WHERE id = ?",
             (user_id,),
         ).fetchone()
         if not row or not row["kick_requested_at"]:
-            return False
+            return None
+        msg = row["kick_message"] or "你已被管理员踢下线"
         conn.execute(
-            "UPDATE users SET kick_requested_at = NULL WHERE id = ?",
+            "UPDATE users SET kick_requested_at = NULL, kick_message = NULL WHERE id = ?",
             (user_id,),
         )
-        return True
+        return msg
 
 
 def end_open_sessions_for_user(user_id: int) -> None:
@@ -724,7 +752,7 @@ def list_users_online_stats(online_user_ids: Optional[set] = None) -> List[Dict[
     with connect() as conn:
         users = conn.execute(
             """
-            SELECT id, nickname, created_at, banned_until, last_ip
+            SELECT id, nickname, created_at, banned_until, last_ip, last_client_device
             FROM users
             ORDER BY nickname COLLATE NOCASE
             """
@@ -748,6 +776,9 @@ def list_users_online_stats(online_user_ids: Optional[set] = None) -> List[Dict[
         banned_until = u["banned_until"] if "banned_until" in u.keys() else None
         is_banned = _ban_active(banned_until, uid)
         last_ip = u["last_ip"] if "last_ip" in u.keys() else None
+        last_client_device = (
+            u["last_client_device"] if "last_client_device" in u.keys() else None
+        )
         ip_banned = False
         ip_banned_until = None
         if last_ip and last_ip in ip_bans:
@@ -760,6 +791,7 @@ def list_users_online_stats(online_user_ids: Optional[set] = None) -> List[Dict[
             "nickname": u["nickname"],
             "registeredAt": u["created_at"],
             "lastIp": last_ip or None,
+            "lastClientDevice": last_client_device or "desktop",
             "totalOnlineSeconds": 0,
             "sessionCount": 0,
             "lastSeenAt": None,

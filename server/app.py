@@ -160,6 +160,40 @@ def _touch_user_ip(user_id: int) -> None:
     db.update_user_last_ip(user_id, _client_ip())
 
 
+def _parse_client_device(data: Optional[dict]) -> str:
+    raw = ""
+    if data:
+        raw = (data.get("clientDevice") or "").strip().lower()
+    if raw in ("mobile", "tablet", "desktop"):
+        return raw
+
+    ua = request.headers.get("User-Agent", "")
+    if "iPad" in ua or ("Macintosh" in ua and "Mobile" in ua):
+        return "tablet"
+    if any(token in ua for token in ("iPhone", "iPod", "Android")):
+        return "mobile"
+    return "desktop"
+
+
+def _touch_user_session_meta(user_id: int, data: Optional[dict]) -> str:
+    _touch_user_ip(user_id)
+    device = _parse_client_device(data)
+    db.update_user_last_client_device(user_id, device)
+    return device
+
+
+def _enrich_user_stats_with_client_device(stats: list) -> None:
+    for row in stats:
+        uid = int(row["userId"])
+        fallback = row.get("lastClientDevice") or "desktop"
+        sid = sid_by_user_id.get(uid)
+        if sid:
+            sess = sessions_by_sid.get(sid) or {}
+            row["clientDevice"] = sess.get("client_device") or fallback
+        else:
+            row["clientDevice"] = fallback
+
+
 def _kick_all_on_ip(ip: str, message: str) -> int:
     uids = db.get_user_ids_by_last_ip(ip)
     for uid in uids:
@@ -167,7 +201,13 @@ def _kick_all_on_ip(ip: str, message: str) -> int:
     return len(uids)
 
 
-def _bind_session(sid: str, user_id: int, nickname: str, token: str) -> None:
+def _bind_session(
+    sid: str,
+    user_id: int,
+    nickname: str,
+    token: str,
+    client_device: str = "desktop",
+) -> None:
     old_sid = sid_by_user_id.get(user_id)
     if old_sid and old_sid != sid:
         old_sess = sessions_by_sid.pop(old_sid, None)
@@ -184,6 +224,7 @@ def _bind_session(sid: str, user_id: int, nickname: str, token: str) -> None:
         "nickname": nickname,
         "token": token,
         "online_session_id": online_session_id,
+        "client_device": client_device,
     }
     sid_by_user_id[user_id] = sid
     join_room(LOBBY_ROOM, sid=sid)
@@ -208,12 +249,16 @@ def _disconnect_user(
     """踢下线：清会话 token、断开 Socket，按账号不按 IP。"""
     db.delete_all_user_sessions(user_id)
     if notify_game_server:
-        db.request_kick(user_id)
+        db.request_kick(user_id, message)
     was_online = False
     sid = sid_by_user_id.get(user_id)
     if sid:
         was_online = True
-        socketio.emit("auth_kicked", {"message": message}, room=sid)
+        socketio.emit("auth_kicked", {"message": message}, to=sid)
+        try:
+            socketio.server.disconnect(sid)
+        except Exception:
+            pass
         _unbind_session(sid)
     else:
         db.end_open_sessions_for_user(user_id)
@@ -223,12 +268,13 @@ def _disconnect_user(
 def _poll_admin_kick_requests() -> None:
     """游戏服（8080）轮询：执行 8082 管理端发起的踢下线。"""
     while True:
-        socketio.sleep(2)
+        socketio.sleep(1)
         for user_id in list(sid_by_user_id.keys()):
-            if db.consume_kick_request(user_id):
+            kick_msg = db.consume_kick_request(user_id)
+            if kick_msg:
                 _disconnect_user(
                     user_id,
-                    "你已被管理员踢下线",
+                    kick_msg,
                     notify_game_server=False,
                 )
 
@@ -263,6 +309,7 @@ def api_admin_user_online_stats() -> Any:
     try:
         online_ids = db.get_online_user_ids_from_db() | set(sid_by_user_id.keys())
         stats = db.list_users_online_stats(online_ids)
+        _enrich_user_stats_with_client_device(stats)
         return jsonify(
             {
                 "generatedAt": datetime.now(timezone.utc)
@@ -460,8 +507,8 @@ def on_connect() -> None:
         return
     ip_err = db.get_active_ip_ban_message(_client_ip())
     if ip_err:
-        emit("auth_error", {"message": ip_err})
-        return False
+        emit("ip_banned", {"message": ip_err})
+        return
     emit("connected", {"message": "已连接服务器"})
 
 
@@ -497,8 +544,8 @@ def on_auth_register(data: dict) -> None:
     db.create_session(user_id, token)
 
     user = db.get_user_by_id(user_id)
-    _touch_user_ip(user_id)
-    _bind_session(sid, user_id, nickname, token)
+    device = _touch_user_session_meta(user_id, data)
+    _bind_session(sid, user_id, nickname, token, device)
     _emit_auth_ok(sid, user, token, message="注册成功")
     _notify_friends_presence(user_id, True)
 
@@ -536,8 +583,8 @@ def on_auth_login(data: dict) -> None:
 
     token = secrets.token_urlsafe(32)
     db.create_session(int(user["id"]), token)
-    _touch_user_ip(int(user["id"]))
-    _bind_session(sid, int(user["id"]), user["nickname"], token)
+    device = _touch_user_session_meta(int(user["id"]), data)
+    _bind_session(sid, int(user["id"]), user["nickname"], token, device)
     _emit_auth_ok(sid, user, token, message="登录成功")
     _notify_friends_presence(int(user["id"]), True)
 
@@ -568,10 +615,46 @@ def on_auth_resume(data: dict) -> None:
         emit("auth_error", {"message": ban_msg})
         return
 
-    _touch_user_ip(int(user["id"]))
-    _bind_session(sid, int(user["id"]), user["nickname"], token)
+    _touch_user_session_meta(int(user["id"]), data)
+    _bind_session(sid, int(user["id"]), user["nickname"], token, _parse_client_device(data))
     _emit_auth_ok(sid, user, token, message="")
     _notify_friends_presence(int(user["id"]), True)
+
+
+def _verify_session_token(token: str) -> tuple[bool, str]:
+    if not token:
+        return False, "请登录"
+    ip_err = _ip_ban_error()
+    if ip_err:
+        return False, ip_err
+    user = db.get_user_by_token(token)
+    if not user:
+        return False, "登录已过期，请重新登录"
+    ban_msg = db.get_active_ban_message(int(user["id"]))
+    if ban_msg:
+        return False, ban_msg
+    return True, ""
+
+
+@app.route("/api/session/verify")
+def api_session_verify() -> Any:
+    """HTTP 心跳：教程/大厅校验 token（不依赖 WebSocket）。"""
+    token = request.args.get("token", "").strip()
+    ok, msg = _verify_session_token(token)
+    if ok:
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "message": msg}), 403
+
+
+@socketio.on("session_check")
+def on_session_check(data: dict) -> None:
+    """教程内心跳：只校验 token/封禁，不重新绑定会话。"""
+    token = (data or {}).get("token", "").strip()
+    ok, msg = _verify_session_token(token)
+    if not ok:
+        emit("session_invalid", {"message": msg})
+        return
+    emit("session_ok", {})
 
 
 @socketio.on("auth_logout")

@@ -185,6 +185,7 @@
   grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
   gap: 0.85rem;
   align-content: start;
+  align-items: start;
   overflow-y: auto;
   padding-right: 0.25rem;
 }
@@ -200,6 +201,9 @@
 .market-card {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  height: auto;
+  align-self: start;
   background: linear-gradient(180deg, #1a222c 0%, #12181f 100%);
   border: 1px solid rgba(70, 90, 110, 0.45);
   border-radius: 10px;
@@ -217,23 +221,40 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.75rem;
+  padding: 0.25rem 0.2rem;
   background: radial-gradient(ellipse at 50% 30%, #243040 0%, #101418 70%);
 }
 
 .market-card__visual img {
-  width: 72%;
-  height: 72%;
+  width: 96%;
+  height: 96%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
   filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.45));
 }
 
 .market-card__body {
-  padding: 0.55rem 0.65rem 0.65rem;
+  padding: 0.55rem 0.65rem 0.35rem;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  flex: 1;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 6.75rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 120, 140, 0.55) transparent;
+}
+
+.market-card__body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.market-card__body::-webkit-scrollbar-thumb {
+  background: rgba(100, 120, 140, 0.55);
+  border-radius: 4px;
 }
 
 .market-card__name {
@@ -281,6 +302,20 @@
   box-shadow: 0 0 20px rgba(220, 170, 70, 0.22);
 }
 
+.market-card--mythic {
+  border-color: rgba(220, 60, 70, 0.85);
+  box-shadow: 0 0 22px rgba(200, 40, 55, 0.35);
+  background: linear-gradient(165deg, rgba(48, 12, 18, 0.95) 0%, rgba(22, 8, 12, 0.98) 100%);
+}
+
+.market-card--ultimate {
+  border-color: rgba(150, 155, 165, 0.65);
+  box-shadow:
+    0 0 20px rgba(0, 0, 0, 0.55),
+    0 0 8px rgba(180, 185, 195, 0.18);
+  background: linear-gradient(165deg, rgba(16, 16, 18, 0.98) 0%, rgba(6, 6, 8, 0.99) 100%);
+}
+
 .market-card--epic .market-card__economy {
   color: #b89ae8;
 }
@@ -305,14 +340,32 @@
   color: #fff0bc;
 }
 
+.market-card--mythic .market-card__economy {
+  color: #ff8a96;
+}
+
+.market-card--mythic .market-card__name {
+  color: #ffd4d8;
+}
+
+.market-card--ultimate .market-card__economy {
+  color: #aeb4c0;
+}
+
+.market-card--ultimate .market-card__name {
+  color: #eef0f4;
+}
+
 .market-card__foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.35rem;
-  margin-top: 0.35rem;
-  padding-top: 0.4rem;
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 0.45rem 0.65rem 0.55rem;
   border-top: 1px solid rgba(60, 75, 90, 0.35);
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .market-card__price {

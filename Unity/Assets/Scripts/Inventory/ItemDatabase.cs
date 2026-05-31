@@ -30,6 +30,8 @@ public static class ItemDatabase
         Rare = 1,
         Epic = 2,
         Legendary = 3,
+        Mythic = 4,
+        Ultimate = 5,
     }
 
     /// <summary>单条物资记录（ID 为字典 Key，不在结构体内重复存储）。</summary>
@@ -60,15 +62,17 @@ public static class ItemDatabase
             Category == ItemCategory.Collectible && Rarity != ItemRarity.None;
     }
 
-    /// <summary>单槽权重分母 1000（数值 = 百分比×10）。</summary>
-    public const int ChestWeightTotal = 1000;
+    /// <summary>单槽权重分母 10000（数值 = 百分比×100，0.05% = 5）。</summary>
+    public const int ChestWeightTotal = 10000;
 
-    public const int ChestWeightEmpty = 223;
-    public const int ChestWeight1004 = 20;
-    public const int ChestWeight3001 = 35;
-    public const int ChestWeight3002 = 40;
-    public const int ChestWeightEpic = 142;
-    public const int ChestWeightRare = 398;
+    public const int ChestWeightEmpty = 2175;
+    public const int ChestWeight1004 = 200;
+    public const int ChestWeight3001 = 350;
+    public const int ChestWeight3002 = 400;
+    public const int ChestWeight3006 = 50;
+    public const int ChestWeight3007 = 5;
+    public const int ChestWeightEpic = 1420;
+    public const int ChestWeightRare = 3980;
 
     static readonly Dictionary<string, ItemRecord> Table;
 
@@ -110,6 +114,24 @@ public static class ItemDatabase
                 ItemRarity.Rare,
                 38_000,
                 24_000),
+            ["3006"] = new ItemRecord(
+                "「红莲审判」时间晶体指挥仪",
+                ItemCategory.Collectible,
+                ItemRarity.Mythic,
+                1_500_000,
+                1_300_000),
+            ["3007"] = new ItemRecord(
+                "「永夜极光」黑曜石星象仪",
+                ItemCategory.Collectible,
+                ItemRarity.Ultimate,
+                7_000_000,
+                6_300_000),
+            ["3008"] = new ItemRecord(
+                "「微缩新星」坍缩黑金单晶",
+                ItemCategory.Collectible,
+                ItemRarity.Ultimate,
+                12_000_000,
+                11_000_000),
             ["1004"] = new ItemRecord(
                 "纯金战术指挥鹰雕像",
                 ItemCategory.Collectible,
@@ -193,6 +215,12 @@ public static class ItemDatabase
                 return ChestWeight3001;
             case "3002":
                 return ChestWeight3002;
+            case "3006":
+                return ChestWeight3006;
+            case "3007":
+                return ChestWeight3007;
+            case "3008":
+                return 0;
             case "3003":
             case "3004":
                 return ChestWeightEpic;
@@ -212,6 +240,10 @@ public static class ItemDatabase
                 return ChestWeightEpic;
             case ItemRarity.Rare:
                 return ChestWeightRare;
+            case ItemRarity.Mythic:
+                return ChestWeight3006;
+            case ItemRarity.Ultimate:
+                return ChestWeight3007;
             default:
                 return 0;
         }

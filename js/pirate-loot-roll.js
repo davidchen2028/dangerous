@@ -1,17 +1,19 @@
 /**
- * 海盗宝箱 — 藏品类 3001–3005 + 1004（Unity ItemDatabase 对齐）
+ * 海盗宝箱 — 藏品类 3001–3007 + 1004（Unity ItemDatabase 对齐）
  * 先 roll 件数：1 件 20% · 2 件 40% · 3 件 30% · 4 件 10%
- * 再按单件权重 roll 具体藏品（无空手）
+ * 单槽分母 10000：1004 2% · 3001 3.5% · 3002 4% · 3006 0.5% · 3007 0.05%
  */
 (function () {
   "use strict";
 
-  var CHEST_WEIGHT_TOTAL = 1000;
-  var CHEST_WEIGHT_1004 = 20;
-  var CHEST_WEIGHT_3001 = 35;
-  var CHEST_WEIGHT_3002 = 40;
-  var CHEST_WEIGHT_EPIC = 142;
-  var CHEST_WEIGHT_RARE = 398;
+  var CHEST_WEIGHT_TOTAL = 10000;
+  var CHEST_WEIGHT_1004 = 200;
+  var CHEST_WEIGHT_3001 = 350;
+  var CHEST_WEIGHT_3002 = 400;
+  var CHEST_WEIGHT_3006 = 50;
+  var CHEST_WEIGHT_3007 = 5;
+  var CHEST_WEIGHT_EPIC = 1420;
+  var CHEST_WEIGHT_RARE = 3980;
 
   var LOOT_COUNT_TABLE = [
     { count: 1, w: 200 },
@@ -27,15 +29,24 @@
     "3003": "collectible_3003",
     "3004": "collectible_3004",
     "3005": "collectible_3005",
+    "3006": "collectible_3006",
+    "3007": "collectible_3007",
   };
 
   var CHEST_ITEM_POOL = [
     { id: 1004, w: CHEST_WEIGHT_1004 },
     { id: 3001, w: CHEST_WEIGHT_3001 },
     { id: 3002, w: CHEST_WEIGHT_3002 },
+    { id: 3006, w: CHEST_WEIGHT_3006 },
+    { id: 3007, w: CHEST_WEIGHT_3007 },
     { id: 3003, w: CHEST_WEIGHT_EPIC },
     { id: 3004, w: CHEST_WEIGHT_EPIC },
     { id: 3005, w: CHEST_WEIGHT_RARE },
+  ];
+
+  var EPIC_GUARANTEE_POOL = [
+    { id: 3003, w: 1 },
+    { id: 3004, w: 1 },
   ];
 
   function rollWeighted(pool) {
@@ -67,8 +78,35 @@
     return window.ItemCatalog.getItem(catId);
   }
 
-  /** @returns {string[]} catalog id 列表，1–4 件 */
-  function rollPirateChest() {
+  function catalogIdIsPurpleOrBetter(catalogId) {
+    if (!window.ItemCatalog || !catalogId) return false;
+    var cat = window.ItemCatalog.getItem(catalogId);
+    if (!cat || !cat.rarity) return false;
+    return (
+      cat.rarity === "epic" ||
+      cat.rarity === "legendary" ||
+      cat.rarity === "mythic" ||
+      cat.rarity === "ultimate"
+    );
+  }
+
+  function rollEpicCatalogId() {
+    var cat = pirateIdToCatalog(rollWeighted(EPIC_GUARANTEE_POOL));
+    return cat ? cat.id : "collectible_3003";
+  }
+
+  function ensurePurpleInRoll(ids) {
+    var i;
+    for (i = 0; i < ids.length; i++) {
+      if (catalogIdIsPurpleOrBetter(ids[i])) return ids;
+    }
+    ids.push(rollEpicCatalogId());
+    return ids;
+  }
+
+  /** @returns {string[]} catalog id 列表，1–4 件（可选首箱史诗保底） */
+  function rollPirateChest(options) {
+    options = options || {};
     var count = rollLootItemCount();
     var ids = [];
     var tries = 0;
@@ -86,11 +124,16 @@
       if (fallback) ids.push(fallback.id);
     }
 
+    if (options.guaranteeEpic) {
+      ids = ensurePurpleInRoll(ids);
+    }
+
     return ids;
   }
 
   window.PirateLootRoll = {
     rollPirateChest: rollPirateChest,
+    catalogIdIsPurpleOrBetter: catalogIdIsPurpleOrBetter,
     rollLootItemCount: rollLootItemCount,
     pirateIdToCatalog: pirateIdToCatalog,
     CHEST_ITEM_POOL: CHEST_ITEM_POOL,

@@ -18,6 +18,8 @@
   var AIM_MAX_DIST = 12;
   var AIM_DOT_MIN = 0.88;
   var STORAGE_KEY = "dangerous_pirate_chest_opened";
+  /** 新手教程首箱：若无紫色则强制塞一件史诗 */
+  var firstChestGuarantee = false;
 
   var pickMesh = null;
   var chestRoot = null;
@@ -333,7 +335,22 @@
 
     if ((opened || isOpenedPersisted()) && pickMesh) {
       var h2 = _raycaster.intersectObject(pickMesh, false);
-      if (h2.length > 0) aimed = true;
+      if (h2.length > 0) {
+        aimed = true;
+        return;
+      }
+      _dir.set(
+        CHEST_X - _raycaster.ray.origin.x,
+        0.85 - _raycaster.ray.origin.y,
+        CHEST_Z - _raycaster.ray.origin.z
+      );
+      dist = _dir.length();
+      if (dist <= AIM_MAX_DIST) {
+        _dir.multiplyScalar(1 / dist);
+        if (_raycaster.ray.direction.dot(_dir) >= AIM_DOT_MIN) {
+          aimed = true;
+        }
+      }
     }
   }
 
@@ -390,7 +407,12 @@
     mgr.items = [];
     mgr._initGrid();
 
-    var catalogIds = window.PirateLootRoll.rollPirateChest();
+    var catalogIds = window.PirateLootRoll.rollPirateChest({
+      guaranteeEpic: firstChestGuarantee,
+    });
+    if (firstChestGuarantee) {
+      firstChestGuarantee = false;
+    }
     var queue = [];
     var i;
     var cum = 350;
@@ -620,6 +642,7 @@
 
   function tryStartLockpick() {
     if (opened || isOpenedPersisted()) {
+      if (!aimed) return false;
       openChestPanel();
       return true;
     }
@@ -641,7 +664,9 @@
     return true;
   }
 
-  function resetForNewRun() {
+  function resetForNewRun(options) {
+    options = options || {};
+    firstChestGuarantee = !!options.firstChestGuarantee;
     aimed = false;
     opened = false;
     clearRevealTimers();

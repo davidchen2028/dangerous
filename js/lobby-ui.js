@@ -39,6 +39,31 @@
     hideAllPanels();
   }
 
+  function shakeRoomBtn() {
+    if (!btnRoom) return;
+    btnRoom.classList.add("btn-hub--shake");
+    setTimeout(function () {
+      btnRoom.classList.remove("btn-hub--shake");
+    }, 400);
+  }
+
+  function requireLogin(message) {
+    if (window.LobbyNet && window.LobbyNet.canPlay && window.LobbyNet.canPlay()) {
+      return true;
+    }
+    var joinError = document.getElementById("joinError");
+    var blockMsg =
+      window.LobbyNet && window.LobbyNet.getBlockMessage
+        ? window.LobbyNet.getBlockMessage()
+        : "";
+    if (joinError) {
+      joinError.textContent = blockMsg || message || "未注册不能玩";
+    }
+    openRoom();
+    shakeRoomBtn();
+    return false;
+  }
+
   function openRoom() {
     hideAllPanels();
     document.body.classList.remove("hub-home", "stash-open", "tutorial-open", "market-open");
@@ -57,6 +82,7 @@
   }
 
   function openTutorial() {
+    if (!requireLogin("未注册不能玩")) return;
     hideAllPanels();
     document.body.classList.remove("hub-home", "room-open", "stash-open", "market-open");
     document.body.classList.add("tutorial-open");
@@ -115,11 +141,7 @@
     openStash: openStash,
     openTutorial: openTutorial,
     openMarket: openMarket,
-    shakeRoomBtn: function () {
-      btnRoom.classList.add("btn-hub--shake");
-      setTimeout(function () {
-        btnRoom.classList.remove("btn-hub--shake");
-      }, 400);
-    },
+    requireLogin: requireLogin,
+    shakeRoomBtn: shakeRoomBtn,
   };
 })();
