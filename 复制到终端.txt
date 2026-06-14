@@ -45,3 +45,22 @@ chmod +x run.sh get-ip.sh
 #
 # ── 手机联机失败 ──
 # 点「房间」→「进入」，看红色提示；成功时显示「已联机 · 房间 xxx」
+
+# ── 管理端（在线统计 / 黑市补货）──
+# 先设置密钥（自己记牢，URL 里要带）：
+# export JIWEI_ADMIN_KEY='你的长随机密码'
+#
+# 方式 A（推荐，只开一个服务）：
+#   ./run.sh
+#   浏览器打开：http://127.0.0.1:8080/admin/online-stats?key=你的长随机密码
+#
+# 方式 B（管理端单独 8082）：
+#   终端1: ./run.sh
+#   终端2: export JIWEI_ADMIN_KEY='同上' && ./run-admin.sh
+#   浏览器打开：http://127.0.0.1:8082/admin/online-stats?key=你的长随机密码
+#
+# 若提示「无法连接」/ 加载失败：
+#   ① 必须先 ./run.sh（或 ./run-admin.sh），终端窗口不能关
+#   ② 地址必须是 http://127.0.0.1:端口/... 不要双击 index.html
+#   ③ 管理页 key= 必须与 export 的 JIWEI_ADMIN_KEY 完全一致
+#   ④ 游戏大厅用 8080，管理页用 8080（方式A）或 8082（方式B），别混端口

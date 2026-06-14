@@ -36,7 +36,13 @@ ADMIN_LOCAL_ONLY = os.environ.get("JIWEI_ADMIN_LOCAL_ONLY", "").strip().lower() 
 
 app = Flask(__name__, static_folder=str(ROOT), static_url_path="")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "jiwei-lobby-dev")
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="threading",
+    ping_interval=25,
+    ping_timeout=60,
+)
 
 # sid -> { user_id, nickname, token }
 sessions_by_sid: Dict[str, dict] = {}
@@ -921,6 +927,7 @@ def on_disconnect() -> None:
 
 def main() -> None:
     db.init_db()
+    db.ensure_market_stock()
 
     parser = argparse.ArgumentParser(description="极危行动联机大厅")
     parser.add_argument("--host", default="0.0.0.0", help="监听地址，0.0.0.0 可局域网联机")

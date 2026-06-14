@@ -21,6 +21,21 @@ cd "/Users/admin/project/david/极危/极危行动"
 
 本机：**http://localhost:8080**
 
+### 管理端（在线统计 / 黑市补货）
+
+```bash
+export JIWEI_ADMIN_KEY='你的长随机密码'
+./run.sh
+```
+
+浏览器打开（与游戏同端口，无需另开 8082）：
+
+**http://127.0.0.1:8080/admin/online-stats?key=你的长随机密码**
+
+也可另开终端运行 `./run-admin.sh`，使用 **8082** 端口。
+
+若页面提示「无法连接服务器」或加载失败：确认 `./run.sh` 终端未关闭；地址为 `http://` 而非本地文件；URL 中 `key=` 与 `JIWEI_ADMIN_KEY` 一致。
+
 ### 和好友联机
 
 1. 主机运行 `./run.sh`（`--host 0.0.0.0` 已开启局域网）

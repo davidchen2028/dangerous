@@ -6,6 +6,8 @@ MARKET_PRODUCT_IDS = [
     "rig_light",
     "bp_sport",
     "bp_light",
+    "bp_small",
+    "bp_test",
     "collectible_3008",
     "collectible_3007",
     "collectible_3006",

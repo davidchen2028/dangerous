@@ -13,7 +13,7 @@
   var FIXED_ITEM_ID = "collectible_3002";
   var INTERACT_DIST = 4.2;
   var AIM_MAX_DIST = 12;
-  var AIM_DOT_MIN = 0.88;
+  var PICK_MESH_SCALE = 0.78;
   var STORAGE_KEY = "dangerous_hidden_chest_opened";
 
   var pickMesh = null;
@@ -43,7 +43,6 @@
 
   var _raycaster = null;
   var _ndc = null;
-  var _dir = null;
 
   function isOpenedPersisted() {
     try {
@@ -106,21 +105,34 @@
     if (!window.THREE || !root) return;
 
     var THREE = window.THREE;
-    root.updateMatrixWorld(true);
-    var box = new THREE.Box3().setFromObject(root);
+    var box = new THREE.Box3();
     var center = new THREE.Vector3();
+    var size = new THREE.Vector3();
+    var inv = new THREE.Matrix4();
+
+    root.updateMatrixWorld(true);
+    box.setFromObject(root);
     box.getCenter(center);
     root.position.set(CHEST_X - center.x, -box.min.y, CHEST_Z - center.z);
     root.updateMatrixWorld(true);
 
     rememberLidPose();
 
+    box.setFromObject(root);
+    box.getSize(size);
+    box.getCenter(center);
+    inv.copy(root.matrixWorld).invert();
+    center.applyMatrix4(inv);
     var pick = new THREE.Mesh(
-      new THREE.BoxGeometry(binSize.x, binSize.y, binSize.z),
+      new THREE.BoxGeometry(
+        size.x * PICK_MESH_SCALE,
+        size.y * PICK_MESH_SCALE,
+        size.z * PICK_MESH_SCALE
+      ),
       new THREE.MeshBasicMaterial({ visible: false, depthWrite: false })
     );
     pick.name = "HiddenChestPickVolume";
-    pick.position.y = binSize.y * 0.5;
+    pick.position.copy(center);
     root.add(pick);
     registerPickMesh(pick);
 
@@ -180,38 +192,35 @@
     return chestRoot;
   }
 
+  function canSeeChest(px, pz) {
+    if (window.ActionScene && window.ActionScene.hasLineOfSight) {
+      return window.ActionScene.hasLineOfSight(
+        px,
+        pz,
+        CHEST_X,
+        CHEST_SIZE.y * 0.55,
+        CHEST_Z
+      );
+    }
+    return true;
+  }
+
   function updateAim(px, pz, camera) {
     aimed = false;
-    if (!camera) return;
-    if (!playerNear(px, pz)) return;
+    if (!camera || !pickMesh) return;
+    if (!playerNear(px, pz) || !canSeeChest(px, pz)) return;
 
     var THREE = window.THREE;
     if (!THREE) return;
 
     if (!_raycaster) _raycaster = new THREE.Raycaster();
     if (!_ndc) _ndc = new THREE.Vector2(0, 0);
-    if (!_dir) _dir = new THREE.Vector3();
 
+    pickMesh.updateMatrixWorld(true);
     _raycaster.setFromCamera(_ndc, camera);
-
-    if (pickMesh) {
-      var hits = _raycaster.intersectObject(pickMesh, false);
-      if (hits.length > 0) {
-        aimed = true;
-        return;
-      }
-      _dir.set(
-        CHEST_X - _raycaster.ray.origin.x,
-        0.85 - _raycaster.ray.origin.y,
-        CHEST_Z - _raycaster.ray.origin.z
-      );
-      var dist = _dir.length();
-      if (dist <= AIM_MAX_DIST) {
-        _dir.multiplyScalar(1 / dist);
-        if (_raycaster.ray.direction.dot(_dir) >= AIM_DOT_MIN) {
-          aimed = true;
-        }
-      }
+    var hits = _raycaster.intersectObject(pickMesh, false);
+    if (hits.length > 0) {
+      aimed = true;
     }
   }
 

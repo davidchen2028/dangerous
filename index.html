@@ -6,15 +6,18 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>极危行动 — 行动基地</title>
-  <link rel="stylesheet" href="css/lobby.css?v=20">
+  <link rel="stylesheet" href="css/lobby.css?v=22">
   <link rel="stylesheet" href="css/market-page.css?v=9">
-  <link rel="stylesheet" href="css/action-scene.css?v=32">
+  <link rel="stylesheet" href="css/action-scene.css?v=39">
 </head>
 <body class="hub-home">
   <div class="lobby" aria-hidden="true"></div>
 
   <div class="ui-layer">
-    <p class="hub-title">极危行动·测试服</p>
+    <div class="hub-top" id="hubTop">
+      <p class="hub-title">极危行动·测试服</p>
+      <p class="hub-mode-badge" id="hubModeBadge" hidden>单机</p>
+    </div>
     <button type="button" class="btn-hub btn-hub--room" id="btnRoom">账号</button>
     <button type="button" class="btn-hub btn-hub--stash" id="btnStash">仓库</button>
     <button type="button" class="btn-hub btn-hub--market" id="btnMarket">市场</button>
@@ -167,33 +170,35 @@
           <h2 class="hub-panel__title" id="stashTitle">仓库</h2>
           <span class="hub-panel__meta">6 × 10 · 市场购入先入此处</span>
         </header>
-        <div class="stash-layout">
-          <aside class="lobby-loadout" id="lobbyLoadout" aria-label="身上装备"></aside>
-          <div class="stash-main">
-            <p class="stash-hint ui-hidden" id="stashHint">请先登录账号后再整理仓库</p>
-            <p class="stash-tip">拖拽整理 · 子弹可拖入下方胸挂快取/背包 · 拖到左侧槽位装备</p>
-            <div class="stash-item-popover ui-hidden" id="stashItemPopover" role="dialog" aria-label="物品详情">
-              <p class="stash-item-popover__text" id="stashItemPopoverText"></p>
-              <div class="stash-item-popover__actions">
-                <button type="button" class="stash-item-popover__sell" id="stashItemSellBtn">官方回收</button>
-                <button type="button" class="stash-item-popover__close" id="stashItemPopoverClose">关闭</button>
+        <div class="stash-body">
+          <div class="stash-layout">
+            <aside class="lobby-loadout" id="lobbyLoadout" aria-label="身上装备"></aside>
+            <div class="stash-main">
+              <p class="stash-hint ui-hidden" id="stashHint">请先登录账号后再整理仓库</p>
+              <p class="stash-tip">拖拽整理 · 子弹可拖入下方胸挂快取/背包 · 拖到左侧槽位装备</p>
+              <div class="stash-item-popover ui-hidden" id="stashItemPopover" role="dialog" aria-label="物品详情">
+                <p class="stash-item-popover__text" id="stashItemPopoverText"></p>
+                <div class="stash-item-popover__actions">
+                  <button type="button" class="stash-item-popover__sell" id="stashItemSellBtn">官方回收</button>
+                  <button type="button" class="stash-item-popover__close" id="stashItemPopoverClose">关闭</button>
+                </div>
               </div>
+              <div class="stash-grid" id="stashGrid" aria-label="仓库格子，6 列 10 行"></div>
             </div>
-            <div class="stash-grid" id="stashGrid" aria-label="仓库格子，6 列 10 行"></div>
           </div>
-        </div>
-        <div class="stash-subgrids">
-          <div class="stash-subgrids__block">
-            <p class="loadout-section__title">胸挂快取 <span id="lobbyRigMeta">未装备</span></p>
-            <div class="inv-grid-host" id="lobbyRigGrid"></div>
-          </div>
-          <div class="stash-subgrids__block">
-            <p class="loadout-section__title">装备背包 <span id="lobbyBackpackMeta">未装备</span></p>
-            <div class="inv-grid-host" id="lobbyBackpackGrid"></div>
-          </div>
-          <div class="stash-subgrids__block">
-            <p class="loadout-section__title loadout-section__title--secure">安全箱 <span>1×2 · 死亡不掉落</span></p>
-            <div class="inv-grid-host" id="lobbySecureGrid"></div>
+          <div class="stash-subgrids">
+            <div class="stash-subgrids__block">
+              <p class="loadout-section__title">胸挂快取 <span id="lobbyRigMeta">未装备</span></p>
+              <div class="inv-grid-host" id="lobbyRigGrid"></div>
+            </div>
+            <div class="stash-subgrids__block stash-subgrids__block--backpack">
+              <p class="loadout-section__title">装备背包 <span id="lobbyBackpackMeta">未装备</span></p>
+              <div class="inv-grid-host inv-grid-host--scroll" id="lobbyBackpackGrid"></div>
+            </div>
+            <div class="stash-subgrids__block">
+              <p class="loadout-section__title loadout-section__title--secure">安全箱 <span>1×2 · 死亡不掉落</span></p>
+              <div class="inv-grid-host" id="lobbySecureGrid"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -227,12 +232,14 @@
         <div class="action-load-screen__bar-fill" id="actionLoadProgress"></div>
       </div>
     </div>
+    <p class="action-load-screen__credit">制作者：铭恒游戏公司</p>
   </div>
 
   <div class="action-scene" id="actionScene" hidden>
     <canvas class="action-scene__canvas" id="actionCanvas"></canvas>
     <button type="button" class="action-scene__back" id="btnActionBack" aria-label="返回大厅">×</button>
     <p class="action-scene__map-name" id="actionMapName">新手教程</p>
+    <p class="action-scene__pos" id="actionPosHud" hidden aria-live="off">X 0.00 · Z 0.00</p>
     <p class="action-scene__hint" id="actionHint">WASD 移动 · E 开门/宝箱 · B 背包 · Q 返回大厅</p>
     <div class="action-crosshair action-crosshair--hidden" id="actionCrosshair" aria-hidden="true"></div>
     <p class="action-ammo-hud action-ammo-hud--hidden" id="actionAmmoHud" aria-live="polite"></p>
@@ -305,6 +312,32 @@
       </div>
     </div>
 
+    <div class="pirate-chest-loot waiting-lockbox-loot" id="waitingLockboxLoot" hidden role="dialog" aria-label="等候厅古董匣">
+      <div class="pirate-chest-loot__backdrop" id="waitingLockboxLootBackdrop"></div>
+      <div class="pirate-chest-loot__panel waiting-lockbox-loot__panel">
+        <header class="pirate-chest-loot__head">
+          <h2 class="pirate-chest-loot__title">古董匣</h2>
+          <button type="button" class="pirate-chest-loot__close" id="waitingLockboxLootClose" aria-label="关闭">×</button>
+        </header>
+        <p class="pirate-chest-loot__status" id="waitingLockboxLootStatus">4×4 · 双击取出</p>
+        <div class="inv-grid-host" id="waitingLockboxLootGrid"></div>
+        <p class="pirate-chest-loot__foot"><kbd>Esc</kbd> 关闭 · 双击先安全箱再背包</p>
+      </div>
+    </div>
+
+    <div class="pirate-chest-loot collection-room-loot" id="collectionRoomChestLoot" hidden role="dialog" aria-label="宝箱">
+      <div class="pirate-chest-loot__backdrop" id="collectionRoomChestLootBackdrop"></div>
+      <div class="pirate-chest-loot__panel collection-room-loot__panel">
+        <header class="pirate-chest-loot__head">
+          <h2 class="pirate-chest-loot__title">宝箱</h2>
+          <button type="button" class="pirate-chest-loot__close" id="collectionRoomChestLootClose" aria-label="关闭">×</button>
+        </header>
+        <p class="pirate-chest-loot__status" id="collectionRoomChestLootStatus">物资逐渐显现… 双击：先安全箱，再背包</p>
+        <div class="inv-grid-host" id="collectionRoomChestLootGrid"></div>
+        <p class="pirate-chest-loot__foot"><kbd>Esc</kbd> 关闭 · 双击先安全箱再背包</p>
+      </div>
+    </div>
+
     <div class="pirate-chest-loot hidden-chest-loot" id="hiddenChestLoot" hidden role="dialog" aria-label="隐秘藏品箱1">
       <div class="pirate-chest-loot__backdrop" id="hiddenChestLootBackdrop"></div>
       <div class="pirate-chest-loot__panel hidden-chest-loot__panel">
@@ -346,7 +379,9 @@
           <h2 class="action-inventory__title" id="actionStorageTitle">背包内容</h2>
           <span class="action-inventory__meta" id="actionStorageMeta">未装备背包</span>
         </header>
-        <div class="action-grid action-grid--storage" id="actionStorageGrid"></div>
+        <div class="action-inventory__storage-wrap">
+          <div class="action-grid action-grid--storage" id="actionStorageGrid"></div>
+        </div>
         <section class="action-inventory__cards">
           <header class="action-inventory__secure-head">
             <h3>卡槽</h3>
@@ -362,7 +397,7 @@
           </header>
           <div class="action-grid action-grid--secure" id="actionSecureGrid"></div>
         </section>
-        <p class="action-inventory__foot">B / Tab 关闭 · 装备请在大厅「仓库」左侧调整</p>
+        <p class="action-inventory__foot">B / Tab 关闭 · 悬停物品按 G 丢下（或拖出面板）· 装备请在大厅仓库调整</p>
       </div>
     </div>
   </div>
@@ -383,24 +418,28 @@
   </script>
   <script src="js/socket.io.min.js?v=4"></script>
   <script src="js/tutorial-progress.js?v=2"></script>
-  <script src="js/lobby-ui.js?v=13"></script>
-  <script src="js/item-catalog.js?v=30"></script>
-  <script src="js/grid-inventory.js?v=4"></script>
-  <script src="js/grid-stash-ui.js?v=18"></script>
+  <script src="js/lobby-ui.js?v=18"></script>
+  <script src="js/item-catalog.js?v=38"></script>
+  <script src="js/grid-inventory.js?v=5"></script>
+  <script src="js/grid-stash-ui.js?v=26"></script>
   <script src="js/player-loadout.js?v=17"></script>
-  <script src="js/lobby-market.js?v=35"></script>
-  <script src="js/player-state-persist.js?v=9"></script>
+  <script src="js/lobby-market.js?v=40"></script>
+  <script src="js/player-state-persist.js?v=11"></script>
   <script src="js/stash.js?v=13"></script>
-  <script src="js/net.js?v=16"></script>
+  <script src="js/net.js?v=18"></script>
   <script src="js/action-inventory.js?v=7"></script>
-  <script src="js/pirate-loot-roll.js?v=12"></script>
-  <script src="js/lockpicking-qte.js?v=5"></script>
-  <script src="js/world-loot-box.js?v=14"></script>
-  <script src="js/hidden-loot-box.js?v=2"></script>
-  <script src="js/action-waste-bin.js?v=3"></script>
+  <script src="js/pirate-loot-roll.js?v=13"></script>
+  <script src="js/lockpicking-qte.js?v=6"></script>
+  <script src="js/world-loot-box.js?v=23"></script>
+  <script src="js/hidden-loot-box.js?v=5"></script>
+  <script src="js/waiting-hall-lockbox.js?v=12"></script>
+  <script src="js/collection-room-chest.js?v=13"></script>
+  <script src="js/collection-room-floor-loot.js?v=12"></script>
+  <script src="js/action-drop-loot.js?v=8"></script>
+  <script src="js/action-waste-bin.js?v=7"></script>
   <script src="js/action-health.js?v=3"></script>
-  <script src="js/action-joystick.js?v=10"></script>
+  <script src="js/action-joystick.js?v=11"></script>
   <script src="js/action-weapon.js?v=11"></script>
-  <script type="module" src="js/action-scene.js?v=118"></script>
-</body>
+  <script type="module" src="js/action-scene.js?v=212"></script>
+·</body>
 </html>

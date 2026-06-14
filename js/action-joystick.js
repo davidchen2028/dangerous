@@ -16,6 +16,10 @@
   var wrapEl = null;
   var jumpWrapEl = null;
   var jumpBtnEl = null;
+  var crouchWrapEl = null;
+  var crouchBtnEl = null;
+  var crouchHeld = false;
+  var crouchPointerId = null;
   var bagWrapEl = null;
   var bagBtnEl = null;
   var staminaWrapEl = null;
@@ -116,6 +120,64 @@
   function syncJumpVisibility() {
     var show = sceneActive && shouldShowJoystick();
     if (jumpWrapEl) jumpWrapEl.hidden = !show;
+    syncCrouchVisibility();
+  }
+
+  function syncCrouchVisibility() {
+    var show = sceneActive && shouldShowJoystick();
+    if (crouchWrapEl) crouchWrapEl.hidden = !show;
+  }
+
+  function setCrouchHeld(next) {
+    crouchHeld = !!next;
+    if (crouchBtnEl) {
+      crouchBtnEl.classList.toggle("action-crouch-btn--held", crouchHeld);
+    }
+  }
+
+  function onCrouchPointerDown(e) {
+    if (blocked || !sceneActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+    crouchPointerId = e.pointerId;
+    if (crouchBtnEl && crouchBtnEl.setPointerCapture) {
+      crouchBtnEl.setPointerCapture(e.pointerId);
+    }
+    setCrouchHeld(true);
+  }
+
+  function onCrouchPointerUp(e) {
+    if (crouchPointerId != null && e.pointerId !== crouchPointerId) return;
+    if (crouchBtnEl && crouchBtnEl.releasePointerCapture) {
+      try {
+        crouchBtnEl.releasePointerCapture(e.pointerId);
+      } catch (err) {
+        /* ignore */
+      }
+    }
+    crouchPointerId = null;
+    setCrouchHeld(false);
+  }
+
+  function mountCrouchButton() {
+    if (crouchWrapEl) return;
+    var host = document.getElementById("actionScene");
+    if (!host) return;
+
+    crouchWrapEl = document.createElement("div");
+    crouchWrapEl.className = "action-crouch-wrap";
+    crouchWrapEl.id = "actionCrouchWrap";
+    crouchWrapEl.hidden = true;
+    crouchWrapEl.innerHTML =
+      '<button type="button" class="action-crouch-btn" id="actionCrouchBtn" aria-label="蹲下">蹲</button>';
+    host.appendChild(crouchWrapEl);
+    crouchBtnEl = crouchWrapEl.querySelector(".action-crouch-btn");
+    if (crouchBtnEl) {
+      crouchBtnEl.addEventListener("pointerdown", onCrouchPointerDown);
+      crouchBtnEl.addEventListener("pointerup", onCrouchPointerUp);
+      crouchBtnEl.addEventListener("pointercancel", onCrouchPointerUp);
+      crouchBtnEl.addEventListener("lostpointercapture", onCrouchPointerUp);
+    }
   }
 
   function onJumpPointerDown(e) {
@@ -139,6 +201,7 @@
     jumpWrapEl.innerHTML =
       '<button type="button" class="action-jump-btn" id="actionJumpBtn" aria-label="跳跃">跳</button>';
     host.appendChild(jumpWrapEl);
+    mountCrouchButton();
     jumpBtnEl = jumpWrapEl.querySelector(".action-jump-btn");
     if (jumpBtnEl) {
       jumpBtnEl.addEventListener("pointerdown", onJumpPointerDown);
@@ -339,6 +402,8 @@
     sceneActive = false;
     joystickVisible = false;
     blocked = false;
+    crouchPointerId = null;
+    setCrouchHeld(false);
     clear();
     syncJumpVisibility();
     syncBagVisibility();
@@ -351,6 +416,13 @@
     }
     if (jumpBtnEl) {
       jumpBtnEl.classList.toggle("action-jump-btn--blocked", blocked);
+    }
+    if (crouchBtnEl) {
+      crouchBtnEl.classList.toggle("action-crouch-btn--blocked", blocked);
+      if (blocked) {
+        crouchPointerId = null;
+        setCrouchHeld(false);
+      }
     }
     if (bagBtnEl) {
       var invOpen =
@@ -417,6 +489,9 @@
     },
     isJoystickVisible: function () {
       return joystickVisible;
+    },
+    isCrouchHeld: function () {
+      return crouchHeld;
     },
     shouldShowJoystick: shouldShowJoystick,
     setForceVisible: function (on) {

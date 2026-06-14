@@ -17,8 +17,7 @@ COPY css/ css/
 COPY js/ js/
 COPY img/ img/
 COPY models/ models/
-COPY server/app.py server/app.py
-COPY server/db.py server/db.py
+COPY server/ server/
 COPY admin/ admin/
 
 EXPOSE 8080

@@ -244,6 +244,7 @@
     }
     if (e.code === "Escape" && !e.repeat) {
       e.preventDefault();
+      e.stopPropagation();
       close();
     }
   }

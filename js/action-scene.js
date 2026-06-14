@@ -118,6 +118,22 @@ if (typeof window !== "undefined") {
     if (window.ActionWasteBin && window.ActionWasteBin.BIN_GLB_URL) {
       urls.push(window.ActionWasteBin.BIN_GLB_URL);
     }
+    urls.push(TEST_IRON_GATE_GLB_URL);
+    urls.push(CAT_SCULPTURE_GLB_URL);
+    urls.push(WAITING_HALL_BENCH_GLB_URL);
+    urls.push(WAITING_HALL_END_TABLE_GLB_URL);
+    if (window.WaitingHallLockbox && window.WaitingHallLockbox.LOCKBOX_GLB_URL) {
+      urls.push(window.WaitingHallLockbox.LOCKBOX_GLB_URL);
+    }
+    if (window.CollectionRoomChest && window.CollectionRoomChest.CHEST_GLB_URL) {
+      urls.push(window.CollectionRoomChest.CHEST_GLB_URL);
+    }
+    if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.getPreloadUrls) {
+      urls = urls.concat(window.CollectionRoomFloorLoot.getPreloadUrls());
+    }
+    if (window.ActionDropLoot && window.ActionDropLoot.getPreloadUrls) {
+      urls = urls.concat(window.ActionDropLoot.getPreloadUrls());
+    }
     return urls;
   }
 
@@ -214,6 +230,77 @@ if (typeof window !== "undefined") {
       minZ: pz - sz * 0.5,
       maxZ: pz + sz * 0.5,
     });
+    return colliders[colliders.length - 1];
+  }
+
+  var _colliderBoundsBox = new THREE.Box3();
+  var securityDoorOpenCollider = null;
+  var testNorthCatColliders = [];
+
+  function applyBox3ToCollider(c, box, pad) {
+    pad = pad == null ? 0.05 : pad;
+    c.minX = box.min.x - pad;
+    c.maxX = box.max.x + pad;
+    c.minY = box.min.y - pad;
+    c.maxY = box.max.y + pad;
+    c.minZ = box.min.z - pad;
+    c.maxZ = box.max.z + pad;
+  }
+
+  function addColliderFromBox3(box, pad) {
+    var c = {
+      minX: 0,
+      maxX: 0,
+      minY: 0,
+      maxY: 0,
+      minZ: 0,
+      maxZ: 0,
+    };
+    applyBox3ToCollider(c, box, pad);
+    colliders.push(c);
+    return c;
+  }
+
+  function addColliderFromObject(object3D, pad) {
+    object3D.updateMatrixWorld(true);
+    _colliderBoundsBox.setFromObject(object3D);
+    return addColliderFromBox3(_colliderBoundsBox, pad);
+  }
+
+  /** 仅保留物体 XZ 中心区域碰撞，避免雕花外扩挡路 */
+  function addColliderFromObjectTightXZ(object3D, pad, shrinkX, shrinkZ) {
+    object3D.updateMatrixWorld(true);
+    _colliderBoundsBox.setFromObject(object3D);
+    var center = new THREE.Vector3();
+    _colliderBoundsBox.getCenter(center);
+    var spanX = _colliderBoundsBox.max.x - _colliderBoundsBox.min.x;
+    var spanZ = _colliderBoundsBox.max.z - _colliderBoundsBox.min.z;
+    shrinkX = shrinkX == null ? 0.3 : shrinkX;
+    shrinkZ = shrinkZ == null ? 0.3 : shrinkZ;
+    var halfX = spanX * 0.5 * (1 - shrinkX);
+    var halfZ = spanZ * 0.5 * (1 - shrinkZ);
+    var tight = new THREE.Box3(
+      new THREE.Vector3(center.x - halfX, _colliderBoundsBox.min.y, center.z - halfZ),
+      new THREE.Vector3(center.x + halfX, _colliderBoundsBox.max.y, center.z + halfZ)
+    );
+    return addColliderFromBox3(tight, pad);
+  }
+
+  function syncColliderFromObject(c, object3D, pad) {
+    if (!c || !object3D) return;
+    object3D.updateMatrixWorld(true);
+    _colliderBoundsBox.setFromObject(object3D);
+    applyBox3ToCollider(c, _colliderBoundsBox, pad);
+  }
+
+  function removeCollidersFromList(list) {
+    if (!list || !list.length) return;
+    var i;
+    for (i = list.length - 1; i >= 0; i--) {
+      var idx = colliders.indexOf(list[i]);
+      if (idx >= 0) colliders.splice(idx, 1);
+    }
+    list.length = 0;
   }
 
   function addBox(parent, sx, sy, sz, px, py, pz, color, solid) {
@@ -263,6 +350,61 @@ if (typeof window !== "undefined") {
   var SECTOR_WALL_H = 3.5;
   var DOOR_SIZE = { x: 1.5, y: 2.2, z: 0.28 };
   var DOOR_GLB_URL = "models/security-door.glb";
+  var TEST_IRON_GATE_GLB_URL = "models/iron-gate.glb";
+  var CAT_SCULPTURE_GLB_URL = "models/cat-sculpture.glb";
+  var CAT_SCULPTURE_SIZE = { x: 1.0, y: 1.5, z: 0.85 };
+  /** 雕塑与挡墙北面（墙北侧）间隙 */
+  var CAT_SCULPTURE_CLEAR_FROM_WALL_Z = 0.45;
+  /** 相对左右挡墙中心向路中平移 */
+  var CAT_SCULPTURE_X_INWARD = 2;
+  var TEST_NORTH_GATE_OPEN_Y = Math.PI * 0.52;
+  var TEST_NORTH_GATE_LEAF = { w: 0, h: 2.4, d: 0.24 };
+  var TEST_WAITING_HALL_WIDTH = 5;
+  var TEST_WAITING_HALL_DEPTH = 10;
+  var TEST_WAITING_HALL_WALL_THICK = 0.5;
+  var TEST_WAITING_HALL_FLOOR_THICK = 0.08;
+  /** 与北端横墙/竖墙同高（TEST_NORTH_GATE_LEAF.h） */
+  var TEST_WAITING_HALL_WALL_H = TEST_NORTH_GATE_LEAF.h;
+  var TEST_WAITING_HALL_CEILING_THICK = 0.12;
+  /** 低于此高度的碰撞体不按天花板处理（避免地板薄盒顶头） */
+  var CEILING_COLLIDE_MIN_Y = 2;
+  /** 相对猫雕塑向远离方向（+Z）平移 */
+  var TEST_WAITING_HALL_OFFSET_FROM_CAT = 2;
+  /** 南门洞宽（略大于玩家碰撞直径，留余量） */
+  var TEST_WAITING_HALL_DOOR_W = CAPSULE_RADIUS * 2 + 0.55;
+  /** 南门洞高（其上方补过梁墙） */
+  var TEST_WAITING_HALL_DOOR_H = 2.15;
+  var WAITING_HALL_BENCH_GLB_URL = "models/baroque-throne-bench.glb";
+  /** 等候厅北墙内侧单椅占位（宽 × 高 × 深，等比缩放上限） */
+  var WAITING_HALL_BENCH_SIZE = { x: 6.7, y: 2.84, z: 2.2 };
+  /** 北墙椅朝向（相对朝南门 Math.PI 再向左 90°，正面朝 +X） */
+  var WAITING_HALL_BENCH_YAW_TO_DOOR = Math.PI - Math.PI / 2;
+  var WAITING_HALL_END_TABLE_GLB_URL = "models/baroque-end-table.glb";
+  /** 等候厅 / 收藏室 — 内墙与天花板 */
+  var SIDE_ROOM_INTERIOR_COLOR = 0xffffff;
+  /** 等候厅中央边桌占位（宽 × 高 × 深，等比缩放上限） */
+  var WAITING_HALL_END_TABLE_SIZE = { x: 2.16, y: 1.56, z: 2.16 };
+  /** 边桌立起后绕 Y 轴朝向（相对原朝南再转 180°） */
+  var WAITING_HALL_END_TABLE_YAW = 0;
+  /** 边桌摆放：upright | upside_down | on_side（侧放且腿朝 +Y） */
+  var WAITING_HALL_END_TABLE_LAYOUT = "on_side";
+  /** 边桌略向西移，留出东侧靠墙通道 */
+  var WAITING_HALL_END_TABLE_SHIFT_WEST = 0.22;
+  var WAITING_HALL_END_TABLE_COLLIDER_SHRINK_X = 0.4;
+  var WAITING_HALL_END_TABLE_COLLIDER_SHRINK_Z = 0.3;
+  /** 等候厅/收藏室北墙后空档，再接总统主楼（倒 T：上栋 30×8 + 中柱 8×7，角各挖 11×7） */
+  var TEST_NORTH_REAR_HOUSE_GAP = 10;
+  var TEST_NORTH_REAR_HOUSE_WIDTH = 30;
+  var TEST_NORTH_REAR_HOUSE_DEPTH = 15;
+  var TEST_NORTH_REAR_HOUSE_TOP_DEPTH = 8;
+  var TEST_NORTH_REAR_HOUSE_STEM_WIDTH = 8;
+  var TEST_NORTH_REAR_HOUSE_STEM_DEPTH = 7;
+  var TEST_NORTH_REAR_HOUSE_WING_W = 11;
+  var TEST_NORTH_REAR_HOUSE_WALL_H = 2;
+  var TEST_NORTH_REAR_HOUSE_DOOR_H = 1.85;
+  var testWaitingHall = null;
+  var testCollectionRoom = null;
+  var testNorthRearHouse = null;
   var MISSILE_GLB_URL = "models/missile.glb";
   var ARMS_GLB_URL = "models/soldier-arms.glb";
   /** 第一人称视野内双臂占位（宽 × 高 × 纵深） */
@@ -330,24 +472,47 @@ if (typeof window !== "undefined") {
   var loadedMapId = null;
   var worldRoot = null;
   var mapNameEl = document.getElementById("actionMapName");
+  var posHudEl = document.getElementById("actionPosHud");
   var TUTORIAL_BOUNDS_X = 5.5;
   var TUTORIAL_BOUNDS_Z_MIN = 1.2;
+  /** 新手教程出生点（马路南端 Alpha） */
+  var TUTORIAL_SPAWN = { x: 0, y: 0, z: 2 };
   var TEST_ROAD_START = { x: 0, z: -46 };
   var TEST_ROAD_WIDTH = 6.5;
   var TEST_ROAD_MOUNTAIN_MARGIN = 1.8;
-  var TEST_GRASS_W = 120;
-  var TEST_GRASS_Z = 180;
-  var TEST_GRASS_Z_CENTER = 30;
-  var TEST_EDGE_W = 140;
-  var TEST_EDGE_Z = 200;
-  var TEST_EDGE_Z_CENTER = 35;
+  /** 测试图草地 — 覆盖南端山路至北端平房并留边 */
+  var TEST_GRASS_W = 130;
+  var TEST_GRASS_Z = 300;
+  var TEST_GRASS_Z_CENTER = 80;
+  var TEST_EDGE_W = 155;
+  var TEST_EDGE_Z = 325;
+  var TEST_EDGE_Z_CENTER = 82;
   var TEST_GRASS_Y = 0.002;
   var TEST_EDGE_Y = -0.04;
   var TEST_ROAD_SURFACE_Y = 0.08;
   var TEST_ROAD_LINE_Y = 0.095;
   var TEST_MOUNTAIN_LIFT = 0.05;
+  var TEST_MOUNTAIN_ROCK_COLORS = [
+    0x6d5238, 0x7a5d42, 0x5a4530, 0x85654a, 0x705340,
+  ];
+  var TEST_MOUNTAIN_GRASS_H = 0.2;
+  var TEST_MOUNTAIN_GRASS_COLORS = [0x4a7c3f, 0x527a44, 0x3d6b35, 0x5f8f4e];
   var TEST_BRANCH_ROAD_LEN = 30;
   var TEST_BRANCH_ROAD = { from: { x: 0, z: 48 }, to: { x: -30, z: 48 } };
+  var TEST_NORTH_BRANCH_ROAD_LEN = 120;
+  var TEST_NORTH_BRANCH_ROAD = {
+    from: { x: 0, z: 48 },
+    to: { x: 0, z: 48 + TEST_NORTH_BRANCH_ROAD_LEN },
+  };
+  /** 测试地图复活点（临时，北向支路尽头） */
+  var TEST_SPAWN = { x: 0, z: TEST_NORTH_BRANCH_ROAD.to.z };
+  /** 北向支路尽头 (0,168) 前方左右侧墙宽（沿 X 向） */
+  var TEST_NORTH_END_WALL_WIDTH = 11;
+  var TEST_NORTH_END_WALL_THICK = 0.5;
+  /** 北端横墙后左右竖墙（沿 Z 向长度） */
+  var TEST_NORTH_END_VERTICAL_WALL_LEN = 22;
+  var TEST_NORTH_END_VERTICAL_WALL_THICK = 0.5;
+  var testNorthIronGates = null;
   var testRoadSampleSets = [];
   var TEST_ROAD_CURVE_POINTS = [
     { x: 0, z: -48 },
@@ -561,7 +726,7 @@ if (typeof window !== "undefined") {
             bd = 4.2;
             hw = bw * 0.5;
             hd = bd * 0.5;
-            bh = Math.max(6, bh - 1.5);
+            bh = Math.max(3.2, bh - 1.2);
             if (pushNx != null && pushNz != null) {
               pushed = pushMountainOffRoad(px, pz, pushNx, pushNz, hw, hd);
               if (pushed) {
@@ -587,7 +752,6 @@ if (typeof window !== "undefined") {
     var dz = z2 - z1;
     var len = Math.sqrt(dx * dx + dz * dz) || 1;
     var steps = Math.max(4, Math.ceil(len / 2.6));
-    var rockColors = [0x4a5058, 0x555c64, 0x3e444b, 0x626970];
     var i;
     var t;
     var px;
@@ -608,10 +772,10 @@ if (typeof window !== "undefined") {
         parent,
         px,
         pz,
-        4.8 + (i % 2) * 1.1,
-        (opts.h || 8) + (i % 3),
-        5.2 + (i % 2) * 0.7,
-        rockColors[i % rockColors.length],
+        7.2 + (i % 2) * 1.4,
+        (opts.h || 5) + (i % 2) * 0.6,
+        7.5 + (i % 2) * 1.1,
+        TEST_MOUNTAIN_ROCK_COLORS[i % TEST_MOUNTAIN_ROCK_COLORS.length],
         true,
         samples,
         {
@@ -749,9 +913,9 @@ if (typeof window !== "undefined") {
     var cz = pt.z + frame.tz * 2.5;
     var rotY = frame.rotY + Math.PI / 2;
     var stripOpts = {
-      h: 10,
-      thick: 5.5,
-      d: 7,
+      h: 5.5,
+      thick: 7.5,
+      d: 8.5,
       solid: true,
       roadSamples: samples,
       connectMode: true,
@@ -788,7 +952,7 @@ if (typeof window !== "undefined") {
         nearFlank.x,
         nearFlank.z,
         samples,
-        { h: 8, pushNx: frame.nx * side, pushNz: frame.nz * side }
+        { h: 4.5, pushNx: frame.nx * side, pushNz: frame.nz * side }
       );
       addMountainBridgeStrip(
         parent,
@@ -797,18 +961,45 @@ if (typeof window !== "undefined") {
         farFlank.x,
         farFlank.z,
         samples,
-        { h: 9, pushNx: frame.nx * side, pushNz: frame.nz * side }
+        { h: 5, pushNx: frame.nx * side, pushNz: frame.nz * side }
       );
     }
   }
 
-  function buildTestMapStraightRoadBranch(parent, samples) {
+  /**
+   * @param {{ withMountains?: boolean }} [opts] withMountains 默认 true（路旁山 + 尽头封口）
+   */
+  function buildTestMapStraightRoadBranch(parent, samples, opts) {
+    opts = opts || {};
+    var withMountains = opts.withMountains !== false;
     buildRoadFromCurve(
       parent,
       createStraightRoadCurve(samples[0], samples[samples.length - 1])
     );
-    buildTestMapRoadFlankMountains(parent, samples);
-    buildStraightRoadEndCaps(parent, samples);
+    if (withMountains) {
+      buildTestMapRoadFlankMountains(parent, samples);
+      buildStraightRoadEndCaps(parent, samples);
+    }
+  }
+
+  function addMountainGrassCap(parent, cx, cz, w, h, d) {
+    var topY = h + TEST_MOUNTAIN_LIFT;
+    var grassW = w * 0.96;
+    var grassD = d * 0.94;
+    var pick =
+      Math.abs(Math.floor(cx * 2.7 + cz * 4.1)) %
+      TEST_MOUNTAIN_GRASS_COLORS.length;
+    addBox(
+      parent,
+      grassW,
+      TEST_MOUNTAIN_GRASS_H,
+      grassD,
+      cx,
+      topY + TEST_MOUNTAIN_GRASS_H * 0.5,
+      cz,
+      TEST_MOUNTAIN_GRASS_COLORS[pick],
+      false
+    );
   }
 
   function addMountainBlock(parent, cx, cz, w, h, d, color, solid, allowOnRoad) {
@@ -829,33 +1020,35 @@ if (typeof window !== "undefined") {
       color,
       solid === true
     );
-    if (h > 4) {
+    if (h > 2.8) {
       addBox(
         parent,
-        w * 0.72,
-        h * 0.42,
-        d * 0.75,
-        cx + w * 0.08,
-        h + h * 0.18,
-        cz - d * 0.06,
-        0x353a40,
+        w * 0.78,
+        h * 0.28,
+        d * 0.8,
+        cx + w * 0.04,
+        h + h * 0.12 + TEST_MOUNTAIN_LIFT,
+        cz - d * 0.04,
+        TEST_MOUNTAIN_ROCK_COLORS[
+          Math.abs(Math.floor(cx + cz * 3)) % TEST_MOUNTAIN_ROCK_COLORS.length
+        ],
         false
       );
     }
+    addMountainGrassCap(parent, cx, cz, w, h, d);
   }
 
   function addMountainStrip(parent, stripLen, cx, cz, rotY, opts) {
     opts = opts || {};
-    var h = opts.h || 7;
-    var d = opts.d || 5.5;
-    var thick = opts.thick || 3.8;
+    var h = opts.h || 4.5;
+    var d = opts.d || 7.5;
+    var thick = opts.thick || 6.5;
     var solid = opts.solid !== false;
     var roadSamples = opts.roadSamples;
     var pushNx = opts.pushNx;
     var pushNz = opts.pushNz;
     var connectMode = opts.connectMode === true;
     var ignoreRoadLimit = opts.ignoreRoadLimit === true;
-    var rockColors = [0x4a5058, 0x555c64, 0x3e444b, 0x626970];
     var steps = Math.max(2, Math.ceil(stripLen / 3.2));
     var si = Math.sin(rotY);
     var co = Math.cos(rotY);
@@ -864,16 +1057,16 @@ if (typeof window !== "undefined") {
       var t = ((i + 0.5) / steps - 0.5) * stripLen;
       var px = cx + si * t;
       var pz = cz + co * t;
-      var bw = thick + (i % 2) * 1.2;
-      var bd = d + (i % 2) * 0.8;
+      var bw = thick + (i % 2) * 1.6;
+      var bd = d + (i % 2) * 1.2;
       placeMountainBlockWithRoadRules(
         parent,
         px,
         pz,
         bw,
-        h + (i % 3) * 1.4,
+        h + (i % 3) * 0.75,
         bd,
-        rockColors[i % rockColors.length],
+        TEST_MOUNTAIN_ROCK_COLORS[i % TEST_MOUNTAIN_ROCK_COLORS.length],
         solid,
         ignoreRoadLimit ? null : roadSamples,
         {
@@ -902,9 +1095,9 @@ if (typeof window !== "undefined") {
     var cx = a.x - (dx / segLen) * 3.5;
     var cz = a.z - (dz / segLen) * 3.5;
     var stripOpts = {
-      h: 11,
-      thick: 6,
-      d: 8,
+      h: 5.5,
+      thick: 8,
+      d: 9,
       solid: true,
       connectMode: true,
       ignoreRoadLimit: true,
@@ -912,7 +1105,17 @@ if (typeof window !== "undefined") {
     var side;
 
     addMountainStrip(parent, capLen, cx, cz, rotY, stripOpts);
-    addMountainBlock(parent, cx, cz, capLen * 0.92, 12, 8, 0x3e444b, true, true);
+    addMountainBlock(
+      parent,
+      cx,
+      cz,
+      capLen * 0.92,
+      6,
+      9,
+      TEST_MOUNTAIN_ROCK_COLORS[0],
+      true,
+      true
+    );
 
     for (side = -1; side <= 1; side += 2) {
       var capEdgeX = cx + nx * side * (capLen * 0.32);
@@ -926,7 +1129,7 @@ if (typeof window !== "undefined") {
         nearFlank.x,
         nearFlank.z,
         samples,
-        { h: 8, pushNx: nx * side, pushNz: nz * side }
+        { h: 4.5, pushNx: nx * side, pushNz: nz * side }
       );
       addMountainBridgeStrip(
         parent,
@@ -935,7 +1138,7 @@ if (typeof window !== "undefined") {
         farFlank.x,
         farFlank.z,
         samples,
-        { h: 9, pushNx: nx * side, pushNz: nz * side }
+        { h: 5, pushNx: nx * side, pushNz: nz * side }
       );
     }
   }
@@ -987,7 +1190,7 @@ if (typeof window !== "undefined") {
           mx + pushNx * nearOffset,
           mz + pushNz * nearOffset,
           rotY,
-          Object.assign({ h: 7 + (i % 3), thick: 4.5, d: 5.5 }, stripOpts)
+          Object.assign({ h: 4 + (i % 2), thick: 7, d: 8 }, stripOpts)
         );
         addMountainStrip(
           parent,
@@ -995,7 +1198,7 @@ if (typeof window !== "undefined") {
           mx + pushNx * farOffset,
           mz + pushNz * farOffset,
           rotY,
-          Object.assign({ h: 9 + (i % 4), thick: 5.5, d: 6.5 }, stripOpts)
+          Object.assign({ h: 5 + (i % 3) * 0.5, thick: 8, d: 9 }, stripOpts)
         );
       }
     }
@@ -1006,16 +1209,1260 @@ if (typeof window !== "undefined") {
     buildTestMapRoadSouthCap(parent, samples);
   }
 
-  var TEST_HIDDEN_ROOM_SIZE = 5;
+  var TEST_HIDDEN_ROOM_SIZE_X = 6;
+  /** 沿 Z 向加宽至 ≥ 支路宽度，东侧敞开接路 */
+  var TEST_HIDDEN_ROOM_SIZE_Z = TEST_ROAD_WIDTH + 1.5;
   var TEST_HIDDEN_ROOM_CENTER_X = -30;
   var TEST_HIDDEN_ROOM_CENTER_Z = 48;
 
-  /** 支路西端 (-30,48) · 5×5 隐秘间（东侧敞开接支路，西/南/北封闭 + 屋顶） */
+  /** 支路西端 (-30,48) · 隐秘间（东侧敞开接支路，西/南/北墙 + 屋顶） */
+  /**
+   * 北向支路尽头 (0,168) 前方：左侧、右侧各一面宽 11m 的挡墙（封堵继续向北）
+   */
+  function getTestNorthGateLayout() {
+    var endZ = TEST_NORTH_BRANCH_ROAD.to.z;
+    var roadHalf = TEST_ROAD_WIDTH * 0.5;
+    var wallW = TEST_NORTH_END_WALL_WIDTH;
+    var wallThick = TEST_NORTH_END_WALL_THICK;
+    var gap = 0.35;
+    var wallZ = endZ + wallThick * 0.5 + 0.15;
+    var gateZ = endZ + 0.22;
+    return {
+      endZ: endZ,
+      roadHalf: roadHalf,
+      gateZ: gateZ,
+      wallZ: wallZ,
+      wallSouthZ: wallZ - wallThick * 0.5,
+      wallNorthZ: wallZ + wallThick * 0.5,
+      leftWallCenterX: -(roadHalf + gap + wallW * 0.5),
+      rightWallCenterX: roadHalf + gap + wallW * 0.5,
+      wallHalfW: wallW * 0.5,
+    };
+  }
+
+  function buildTestMapNorthEndGateWalls(parent) {
+    var L = getTestNorthGateLayout();
+    var wallH = TEST_NORTH_GATE_LEAF.h;
+    var wallY = wallH * 0.5;
+    var wallColor = 0x2e3338;
+
+    addBox(
+      parent,
+      TEST_NORTH_END_WALL_WIDTH,
+      wallH,
+      TEST_NORTH_END_WALL_THICK,
+      L.leftWallCenterX,
+      wallY,
+      L.wallZ,
+      wallColor
+    );
+    addBox(
+      parent,
+      TEST_NORTH_END_WALL_WIDTH,
+      wallH,
+      TEST_NORTH_END_WALL_THICK,
+      L.rightWallCenterX,
+      wallY,
+      L.wallZ,
+      wallColor
+    );
+  }
+
+  /** 横墙北侧：左右各一道竖墙，长 22m（沿 +Z） */
+  function buildTestMapNorthEndVerticalWalls(parent) {
+    var L = getTestNorthGateLayout();
+    var wallH = TEST_NORTH_GATE_LEAF.h;
+    var wallY = wallH * 0.5;
+    var wallColor = 0x2e3338;
+    var len = TEST_NORTH_END_VERTICAL_WALL_LEN;
+    var thick = TEST_NORTH_END_VERTICAL_WALL_THICK;
+    var centerZ = L.wallNorthZ + len * 0.5;
+
+    addBox(
+      parent,
+      thick,
+      wallH,
+      len,
+      L.leftWallCenterX,
+      wallY,
+      centerZ,
+      wallColor
+    );
+    addBox(
+      parent,
+      thick,
+      wallH,
+      len,
+      L.rightWallCenterX,
+      wallY,
+      centerZ,
+      wallColor
+    );
+  }
+
+  /** 仅移除关闭态下的静态门扇占位碰撞（开门后改跟 pivot 同步） */
+  function removeTestNorthGateClosedColliders() {
+    if (!testNorthIronGates) return;
+    removeCollidersFromList(testNorthIronGates.colliders);
+  }
+
+  function syncTestNorthIronGateLeafColliders() {
+    if (!testNorthIronGates || !testNorthIronGates.leafColliders) return;
+    var pad = 0.05;
+    if (
+      testNorthIronGates.leafColliders[0] &&
+      testNorthIronGates.leftPivot
+    ) {
+      syncColliderFromObject(
+        testNorthIronGates.leafColliders[0],
+        testNorthIronGates.leftPivot,
+        pad
+      );
+    }
+    if (
+      testNorthIronGates.leafColliders[1] &&
+      testNorthIronGates.rightPivot
+    ) {
+      syncColliderFromObject(
+        testNorthIronGates.leafColliders[1],
+        testNorthIronGates.rightPivot,
+        pad
+      );
+    }
+  }
+
+  function initTestNorthIronGateOpenColliders() {
+    if (!testNorthIronGates) return;
+    if (!testNorthIronGates.leafColliders) {
+      testNorthIronGates.leafColliders = [];
+    }
+    if (testNorthIronGates.leafColliders.length === 0) {
+      if (testNorthIronGates.leftPivot) {
+        testNorthIronGates.leafColliders.push(
+          addColliderFromObject(testNorthIronGates.leftPivot, 0.05)
+        );
+      }
+      if (testNorthIronGates.rightPivot) {
+        testNorthIronGates.leafColliders.push(
+          addColliderFromObject(testNorthIronGates.rightPivot, 0.05)
+        );
+      }
+    }
+    syncTestNorthIronGateLeafColliders();
+  }
+
+  function registerTestNorthGateCollider(sx, sy, sz, px, py, pz) {
+    registerCollider(sx, sy, sz, px, py, pz);
+    if (testNorthIronGates) {
+      testNorthIronGates.colliders.push(colliders[colliders.length - 1]);
+    }
+  }
+
+  function applyIronGateMaterial(root) {
+    applyDoorMaterial(root, 0x4a5058, 0x1a2028, 0.12);
+  }
+
+  function clearObjectGroup(group) {
+    if (!group) return;
+    if (typeof group.clear === "function") {
+      group.clear();
+      return;
+    }
+    while (group.children.length) {
+      group.remove(group.children[0]);
+    }
+  }
+
+  function addIronGateLeafBox(pivot, localX, leafW, leafH, leafD) {
+    var mesh = addBox(
+      pivot,
+      leafW,
+      leafH,
+      leafD,
+      localX,
+      leafH * 0.5,
+      0,
+      0x4a5058,
+      false
+    );
+    mesh.name = "TestNorthIronGate_Leaf";
+    return mesh;
+  }
+
+  function orientIronGateModel(model) {
+    orientDoorUpright(model);
+    model.rotation.y += Math.PI / 2;
+    model.updateMatrixWorld(true);
+  }
+
+  function prepareIronGateMaterials(root) {
+    root.traverse(function (child) {
+      if (!child.isMesh || !child.material) return;
+      var mats = Array.isArray(child.material)
+        ? child.material
+        : [child.material];
+      var m;
+      for (m = 0; m < mats.length; m++) {
+        var mat = mats[m];
+        mat.side = THREE.DoubleSide;
+        if (mat.metalness != null) {
+          mat.metalness = Math.min(mat.metalness, 0.4);
+        }
+        if (mat.roughness != null) {
+          mat.roughness = Math.max(mat.roughness, 0.5);
+        }
+      }
+    });
+  }
+
+  function placeIronGateLeafModel(model, pivot, localX, leafW, leafH, leafD, side) {
+    var leaf = model.clone(true);
+    var root = new THREE.Group();
+    root.name = "TestNorthIronGate_Leaf_" + (side || "L");
+    root.add(leaf);
+    orientIronGateModel(leaf);
+    if (side === "right") {
+      leaf.rotation.y += Math.PI;
+      leaf.updateMatrixWorld(true);
+    }
+    fitModelToBox(root, { x: leafW, y: leafH, z: leafD });
+    root.position.set(localX, 0, 0);
+    var box = new THREE.Box3().setFromObject(root);
+    root.position.y -= box.min.y;
+    pivot.add(root);
+    enableShadows(root);
+    prepareIronGateMaterials(root);
+    return root;
+  }
+
+  function mountTestNorthIronGateGltf(gltf, leftPivot, rightPivot, leafW, leafH, leafD) {
+    if (!gltf || !gltf.scene || !testNorthIronGates) return;
+    clearObjectGroup(leftPivot);
+    clearObjectGroup(rightPivot);
+    placeIronGateLeafModel(gltf.scene, leftPivot, leafW * 0.5, leafW, leafH, leafD, "left");
+    placeIronGateLeafModel(gltf.scene, rightPivot, -leafW * 0.5, leafW, leafH, leafD, "right");
+  }
+
+  function loadTestNorthIronGateGltf(leftPivot, rightPivot, leafW, leafH, leafD) {
+    var cached = gltfCache[TEST_IRON_GATE_GLB_URL];
+    if (cached && cached.scene) {
+      mountTestNorthIronGateGltf(cached, leftPivot, rightPivot, leafW, leafH, leafD);
+      return;
+    }
+    getGltfLoader().load(
+      TEST_IRON_GATE_GLB_URL,
+      function (gltf) {
+        gltfCache[TEST_IRON_GATE_GLB_URL] = gltf;
+        mountTestNorthIronGateGltf(gltf, leftPivot, rightPivot, leafW, leafH, leafD);
+      },
+      undefined,
+      function (err) {
+        console.warn("[ActionScene] 铁门 GLB 加载失败，使用方块门", err);
+      }
+    );
+  }
+
+  /** (0,168) 双扇铁门：关闭时挡路，按 E 向内（朝南）打开 */
+  function buildTestMapNorthEndIronGates(parent) {
+    var L = getTestNorthGateLayout();
+    var roadHalf = L.roadHalf;
+    var leafW = roadHalf;
+    var leafH = TEST_NORTH_GATE_LEAF.h;
+    var leafD = TEST_NORTH_GATE_LEAF.d;
+    var gateZ = L.gateZ;
+    TEST_NORTH_GATE_LEAF.w = leafW;
+
+    testNorthIronGates = {
+      open: false,
+      animating: false,
+      t: 0,
+      leftPivot: null,
+      rightPivot: null,
+      colliders: [],
+      leafColliders: [],
+      gateZ: gateZ,
+      leafW: leafW,
+      leafH: leafH,
+      leafD: leafD,
+    };
+
+    var leftPivot = new THREE.Group();
+    leftPivot.name = "TestNorthIronGate_LeftPivot";
+    leftPivot.position.set(-roadHalf, 0, gateZ);
+
+    var rightPivot = new THREE.Group();
+    rightPivot.name = "TestNorthIronGate_RightPivot";
+    rightPivot.position.set(roadHalf, 0, gateZ);
+
+    addIronGateLeafBox(leftPivot, leafW * 0.5, leafW, leafH, leafD);
+    addIronGateLeafBox(rightPivot, -leafW * 0.5, leafW, leafH, leafD);
+
+    parent.add(leftPivot);
+    parent.add(rightPivot);
+
+    testNorthIronGates.leftPivot = leftPivot;
+    testNorthIronGates.rightPivot = rightPivot;
+
+    registerTestNorthGateCollider(leafW, leafH, leafD, -leafW * 0.5, leafH * 0.5, gateZ);
+    registerTestNorthGateCollider(leafW, leafH, leafD, leafW * 0.5, leafH * 0.5, gateZ);
+
+    loadTestNorthIronGateGltf(leftPivot, rightPivot, leafW, leafH, leafD);
+  }
+
+  /** 与铁门同轴，再转 180° */
+  function orientCatSculptureModel(model) {
+    orientIronGateModel(model);
+    model.rotation.y += Math.PI;
+    model.updateMatrixWorld(true);
+  }
+
+  function placeTestNorthCatSculpture(gltf, parent, side, worldX, worldZ) {
+    var model = gltf.scene.clone(true);
+    var root = new THREE.Group();
+    root.name = "TestNorthCatSculpture_" + side;
+    root.add(model);
+    orientCatSculptureModel(model);
+    fitModelToBox(root, CAT_SCULPTURE_SIZE);
+    root.position.set(worldX, 0, worldZ);
+    var box = new THREE.Box3().setFromObject(root);
+    root.position.y -= box.min.y;
+    parent.add(root);
+    enableShadows(root);
+    root.updateMatrixWorld(true);
+    testNorthCatColliders.push(addColliderFromObject(root, 0.08));
+    return root;
+  }
+
+  function getNorthEndWallAabb(L) {
+    var halfT = TEST_NORTH_END_WALL_THICK * 0.5;
+    return {
+      z0: L.wallZ - halfT,
+      z1: L.wallZ + halfT,
+      left: {
+        x0: L.leftWallCenterX - L.wallHalfW,
+        x1: L.leftWallCenterX + L.wallHalfW,
+      },
+      right: {
+        x0: L.rightWallCenterX - L.wallHalfW,
+        x1: L.rightWallCenterX + L.wallHalfW,
+      },
+    };
+  }
+
+  function sculptureAabbHitsNorthEndWall(x, z, L) {
+    var halfX = CAT_SCULPTURE_SIZE.x * 0.5;
+    var halfZ = CAT_SCULPTURE_SIZE.z * 0.5;
+    var w = getNorthEndWallAabb(L);
+    var sx0 = x - halfX;
+    var sx1 = x + halfX;
+    var sz0 = z - halfZ;
+    var sz1 = z + halfZ;
+    var box = x < 0 ? w.left : w.right;
+    return sx0 < box.x1 && sx1 > box.x0 && sz0 < w.z1 && sz1 > w.z0;
+  }
+
+  /**
+   * 挡墙北侧（S 弯 / 支路一侧的对面），左右挡墙中线对称
+   */
+  function getTestNorthCatSculpturePlacement(L) {
+    var halfZ = CAT_SCULPTURE_SIZE.z * 0.5;
+    var inward = CAT_SCULPTURE_X_INWARD;
+    var leftX = L.leftWallCenterX + inward;
+    var rightX = L.rightWallCenterX - inward;
+    var z = L.wallNorthZ + halfZ + CAT_SCULPTURE_CLEAR_FROM_WALL_Z;
+    while (
+      sculptureAabbHitsNorthEndWall(leftX, z, L) ||
+      sculptureAabbHitsNorthEndWall(rightX, z, L)
+    ) {
+      z += 0.12;
+      if (z > L.endZ + 8) break;
+    }
+    return { leftX: leftX, rightX: rightX, z: z };
+  }
+
+  function mountTestNorthCatSculptures(gltf, parent) {
+    if (!gltf || !gltf.scene) return;
+    var L = getTestNorthGateLayout();
+    var p = getTestNorthCatSculpturePlacement(L);
+    placeTestNorthCatSculpture(gltf, parent, "left", p.leftX, p.z);
+    placeTestNorthCatSculpture(gltf, parent, "right", p.rightX, p.z);
+  }
+
+  function getTestNorthSideRoomCenterZ(L, cat) {
+    var halfD = TEST_WAITING_HALL_DEPTH * 0.5;
+    var gap = 0.55;
+    var catHalfZ = CAT_SCULPTURE_SIZE.z * 0.5;
+    return cat.z + catHalfZ + gap + halfD + TEST_WAITING_HALL_OFFSET_FROM_CAT;
+  }
+
+  function makeTestNorthSideRoomLayout(centerX, centerZ) {
+    var width = TEST_WAITING_HALL_WIDTH;
+    var depth = TEST_WAITING_HALL_DEPTH;
+    var halfW = width * 0.5;
+    var halfD = depth * 0.5;
+    var inset = 0.55;
+    return {
+      centerX: centerX,
+      centerZ: centerZ,
+      halfW: halfW,
+      halfD: halfD,
+      width: width,
+      depth: depth,
+      wallH: TEST_WAITING_HALL_WALL_H,
+      innerX0: centerX - halfW + inset,
+      innerX1: centerX + halfW - inset,
+      innerZ0: centerZ - halfD + inset,
+      innerZ1: centerZ + halfD - inset,
+    };
+  }
+
+  function getTestNorthWaitingHallLayout() {
+    var L = getTestNorthGateLayout();
+    var cat = getTestNorthCatSculpturePlacement(L);
+    var thick = TEST_WAITING_HALL_WALL_THICK;
+    var halfW = TEST_WAITING_HALL_WIDTH * 0.5;
+    var vertWallWestX = L.rightWallCenterX - thick * 0.5;
+    var centerX = vertWallWestX - halfW;
+    var centerZ = getTestNorthSideRoomCenterZ(L, cat);
+    return makeTestNorthSideRoomLayout(centerX, centerZ);
+  }
+
+  /** 与等候厅对称：贴在左侧竖墙东侧（路左） */
+  function getTestNorthCollectionRoomLayout() {
+    var L = getTestNorthGateLayout();
+    var cat = getTestNorthCatSculpturePlacement(L);
+    var thick = TEST_WAITING_HALL_WALL_THICK;
+    var halfW = TEST_WAITING_HALL_WIDTH * 0.5;
+    var vertWallEastX = L.leftWallCenterX + thick * 0.5;
+    var centerX = vertWallEastX + halfW;
+    var centerZ = getTestNorthSideRoomCenterZ(L, cat);
+    return makeTestNorthSideRoomLayout(centerX, centerZ);
+  }
+
+  function buildTestNorthSideRoomShell(parent, hall, roomName) {
+    var halfW = hall.halfW;
+    var halfD = hall.halfD;
+    var cx = hall.centerX;
+    var cz = hall.centerZ;
+    var wallH = hall.wallH;
+    var wallY = wallH * 0.5;
+    var thick = TEST_WAITING_HALL_WALL_THICK;
+    var wallColor = SIDE_ROOM_INTERIOR_COLOR;
+    var floorColor = 0x5a5e64;
+    var roofColor = SIDE_ROOM_INTERIOR_COLOR;
+    var doorW = TEST_WAITING_HALL_DOOR_W;
+    var sideSeg = (hall.width - doorW) * 0.5;
+    var floorThick = TEST_WAITING_HALL_FLOOR_THICK;
+    var floorY = TEST_ROAD_SURFACE_Y - floorThick * 0.5;
+    var floorMat = new THREE.MeshLambertMaterial({
+      color: floorColor,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    });
+    var floorMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(hall.width, floorThick, hall.depth),
+      floorMat
+    );
+    floorMesh.name = roomName + "_Floor";
+    floorMesh.position.set(cx, floorY, cz);
+    floorMesh.renderOrder = 1;
+    parent.add(floorMesh);
+    addBox(
+      parent,
+      hall.width,
+      wallH,
+      thick,
+      cx,
+      wallY,
+      cz + halfD - thick * 0.5,
+      wallColor
+    );
+    addBox(
+      parent,
+      thick,
+      wallH,
+      hall.depth,
+      cx - halfW + thick * 0.5,
+      wallY,
+      cz,
+      wallColor
+    );
+    if (sideSeg > 0.2) {
+      addBox(
+        parent,
+        sideSeg,
+        wallH,
+        thick,
+        cx - halfW + sideSeg * 0.5,
+        wallY,
+        cz - halfD + thick * 0.5,
+        wallColor
+      );
+      addBox(
+        parent,
+        sideSeg,
+        wallH,
+        thick,
+        cx + halfW - sideSeg * 0.5,
+        wallY,
+        cz - halfD + thick * 0.5,
+        wallColor
+      );
+    }
+    var lintelH = wallH - TEST_WAITING_HALL_DOOR_H;
+    if (lintelH > 0.12) {
+      addBox(
+        parent,
+        doorW,
+        lintelH,
+        thick,
+        cx,
+        TEST_WAITING_HALL_DOOR_H + lintelH * 0.5,
+        cz - halfD + thick * 0.5,
+        wallColor,
+        false
+      );
+    }
+    if (roomName === "CollectionRoom") {
+      addBox(
+        parent,
+        thick,
+        wallH,
+        hall.depth,
+        cx + halfW - thick * 0.5,
+        wallY,
+        cz,
+        wallColor
+      );
+    }
+    addBox(
+      parent,
+      hall.width,
+      TEST_WAITING_HALL_CEILING_THICK,
+      hall.depth,
+      cx,
+      wallH + TEST_WAITING_HALL_CEILING_THICK * 0.5,
+      cz,
+      roofColor
+    );
+  }
+
+  function buildTestMapNorthWaitingHall(parent) {
+    var hall = getTestNorthWaitingHallLayout();
+    testWaitingHall = { layout: hall, playerInside: false };
+    buildTestNorthSideRoomShell(parent, hall, "WaitingHall");
+    loadTestMapWaitingHallBench(parent, hall);
+    loadTestMapWaitingHallEndTable(parent, hall);
+  }
+
+  function getTestNorthRearHouseLayout() {
+    var coll = getTestNorthCollectionRoomLayout();
+    var wait = getTestNorthWaitingHallLayout();
+    var roomNorthZ = Math.max(
+      coll.centerZ + coll.halfD,
+      wait.centerZ + wait.halfD
+    );
+    var w = TEST_NORTH_REAR_HOUSE_WIDTH;
+    var d = TEST_NORTH_REAR_HOUSE_DEPTH;
+    var topD = TEST_NORTH_REAR_HOUSE_TOP_DEPTH;
+    var stemW = TEST_NORTH_REAR_HOUSE_STEM_WIDTH;
+    var stemD = TEST_NORTH_REAR_HOUSE_STEM_DEPTH;
+    var wingW = TEST_NORTH_REAR_HOUSE_WING_W;
+    var halfW = w * 0.5;
+    var halfD = d * 0.5;
+    var stemHalfW = stemW * 0.5;
+    var southZ = roomNorthZ + TEST_NORTH_REAR_HOUSE_GAP;
+    var northZ = southZ + d;
+    var splitZ = southZ + stemD;
+    var centerZ = southZ + halfD;
+    return {
+      centerX: 0,
+      centerZ: centerZ,
+      southZ: southZ,
+      northZ: northZ,
+      splitZ: splitZ,
+      halfW: halfW,
+      halfD: halfD,
+      topHalfW: halfW,
+      stemHalfW: stemHalfW,
+      wingW: wingW,
+      topDepth: topD,
+      stemDepth: stemD,
+      width: w,
+      depth: d,
+      wallH: TEST_NORTH_REAR_HOUSE_WALL_H,
+    };
+  }
+
+  function addRearHouseFloor(parent, sx, sz, cx, cz, floorY, floorThick, mat) {
+    var floorMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(sx, floorThick, sz),
+      mat
+    );
+    floorMesh.position.set(cx, floorY, cz);
+    floorMesh.renderOrder = 1;
+    parent.add(floorMesh);
+  }
+
+  function buildTestNorthRearHouseShell(parent, house) {
+    var cx = house.centerX;
+    var southZ = house.southZ;
+    var northZ = house.northZ;
+    var splitZ = house.splitZ;
+    var topHalfW = house.topHalfW;
+    var stemHalfW = house.stemHalfW;
+    var wingW = house.wingW;
+    var topDepth = house.topDepth;
+    var stemDepth = house.stemDepth;
+    var wallH = house.wallH;
+    var wallY = wallH * 0.5;
+    var thick = TEST_WAITING_HALL_WALL_THICK;
+    var wallColor = 0x2e3338;
+    var floorColor = 0x5a5e64;
+    var roofColor = 0x343840;
+    var doorW = TEST_WAITING_HALL_DOOR_W;
+    var stemSideSeg = (house.stemHalfW * 2 - doorW) * 0.5;
+    var floorThick = TEST_WAITING_HALL_FLOOR_THICK;
+    var floorY = TEST_ROAD_SURFACE_Y - floorThick * 0.5;
+    var topCenterZ = (splitZ + northZ) * 0.5;
+    var stemCenterZ = (southZ + splitZ) * 0.5;
+    var floorMat = new THREE.MeshLambertMaterial({
+      color: floorColor,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    });
+
+    addRearHouseFloor(
+      parent,
+      house.width,
+      topDepth,
+      cx,
+      topCenterZ,
+      floorY,
+      floorThick,
+      floorMat
+    );
+    addRearHouseFloor(
+      parent,
+      stemHalfW * 2,
+      stemDepth,
+      cx,
+      stemCenterZ,
+      floorY,
+      floorThick,
+      floorMat
+    );
+
+    addBox(
+      parent,
+      house.width,
+      wallH,
+      thick,
+      cx,
+      wallY,
+      northZ - thick * 0.5,
+      wallColor
+    );
+    addBox(
+      parent,
+      thick,
+      wallH,
+      topDepth,
+      cx - topHalfW + thick * 0.5,
+      wallY,
+      topCenterZ,
+      wallColor
+    );
+    addBox(
+      parent,
+      thick,
+      wallH,
+      topDepth,
+      cx + topHalfW - thick * 0.5,
+      wallY,
+      topCenterZ,
+      wallColor
+    );
+    addBox(
+      parent,
+      wingW,
+      wallH,
+      thick,
+      cx - topHalfW + wingW * 0.5,
+      wallY,
+      splitZ + thick * 0.5,
+      wallColor
+    );
+    addBox(
+      parent,
+      wingW,
+      wallH,
+      thick,
+      cx + topHalfW - wingW * 0.5,
+      wallY,
+      splitZ + thick * 0.5,
+      wallColor
+    );
+    addBox(
+      parent,
+      thick,
+      wallH,
+      stemDepth,
+      cx - stemHalfW + thick * 0.5,
+      wallY,
+      stemCenterZ,
+      wallColor
+    );
+    addBox(
+      parent,
+      thick,
+      wallH,
+      stemDepth,
+      cx + stemHalfW - thick * 0.5,
+      wallY,
+      stemCenterZ,
+      wallColor
+    );
+    if (stemSideSeg > 0.2) {
+      addBox(
+        parent,
+        stemSideSeg,
+        wallH,
+        thick,
+        cx - stemHalfW + stemSideSeg * 0.5,
+        wallY,
+        southZ + thick * 0.5,
+        wallColor
+      );
+      addBox(
+        parent,
+        stemSideSeg,
+        wallH,
+        thick,
+        cx + stemHalfW - stemSideSeg * 0.5,
+        wallY,
+        southZ + thick * 0.5,
+        wallColor
+      );
+    }
+    var lintelH = wallH - TEST_NORTH_REAR_HOUSE_DOOR_H;
+    if (lintelH > 0.08) {
+      addBox(
+        parent,
+        doorW,
+        lintelH,
+        thick,
+        cx,
+        TEST_NORTH_REAR_HOUSE_DOOR_H + lintelH * 0.5,
+        southZ + thick * 0.5,
+        wallColor,
+        false
+      );
+    }
+    addBox(
+      parent,
+      house.width,
+      TEST_WAITING_HALL_CEILING_THICK,
+      topDepth,
+      cx,
+      wallH + TEST_WAITING_HALL_CEILING_THICK * 0.5,
+      topCenterZ,
+      roofColor,
+      false
+    );
+    addBox(
+      parent,
+      stemHalfW * 2,
+      TEST_WAITING_HALL_CEILING_THICK,
+      stemDepth,
+      cx,
+      wallH + TEST_WAITING_HALL_CEILING_THICK * 0.5,
+      stemCenterZ,
+      roofColor,
+      false
+    );
+  }
+
+  function buildTestMapNorthRearHouse(parent) {
+    var house = getTestNorthRearHouseLayout();
+    testNorthRearHouse = { layout: house, playerInside: false };
+    buildTestNorthRearHouseShell(parent, house);
+  }
+
+  function buildTestMapNorthCollectionRoom(parent) {
+    var hall = getTestNorthCollectionRoomLayout();
+    testCollectionRoom = { layout: hall, playerInside: false };
+    buildTestNorthSideRoomShell(parent, hall, "CollectionRoom");
+    if (window.CollectionRoomChest && window.CollectionRoomChest.build) {
+      window.CollectionRoomChest.build(parent, getWaitingHallGltfHelpers(), {
+        hall: hall,
+      });
+    }
+    if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.build) {
+      window.CollectionRoomFloorLoot.build(parent, getWaitingHallGltfHelpers(), {
+        hall: hall,
+      });
+    }
+  }
+
+  function ensureWaitingHallBenchBaseOnFloor(model) {
+    model.updateMatrixWorld(true);
+    var box = new THREE.Box3().setFromObject(model);
+    var size = new THREE.Vector3();
+    box.getSize(size);
+    var tol = Math.max(0.04, size.y * 0.08);
+    var areaBottom = xzFootprintAreaAtWorldY(model, box.min.y + tol, tol);
+    var areaTop = xzFootprintAreaAtWorldY(model, box.max.y - tol, tol);
+    if (areaTop > areaBottom * 1.02) {
+      model.rotation.x += Math.PI;
+      model.updateMatrixWorld(true);
+    }
+  }
+
+  /** 边桌/茶几：桌面水平（Y 为桌高，XZ 为台面 footprint） */
+  function orientWaitingHallEndTableUpright(model) {
+    var presets = [
+      { x: 0, z: 0 },
+      { x: Math.PI / 2, z: 0 },
+      { x: Math.PI, z: 0 },
+      { x: -Math.PI / 2, z: 0 },
+      { x: 0, z: Math.PI / 2 },
+      { x: Math.PI / 2, z: Math.PI / 2 },
+      { x: -Math.PI / 2, z: 0 },
+      { x: -Math.PI / 2, z: Math.PI / 2 },
+    ];
+    var best = presets[0];
+    var bestScore = -1e9;
+    var i;
+
+    for (i = 0; i < presets.length; i++) {
+      var r = presets[i];
+      model.rotation.set(r.x, WAITING_HALL_END_TABLE_YAW, r.z);
+      model.updateMatrixWorld(true);
+      var box = new THREE.Box3().setFromObject(model);
+      var size = new THREE.Vector3();
+      box.getSize(size);
+      var foot = Math.max(size.x, size.z, 0.001);
+      var heightRatio = size.y / foot;
+      if (heightRatio > 0.62) continue;
+
+      var tol = Math.max(0.04, size.y * 0.08);
+      var areaBottom = xzFootprintAreaAtWorldY(model, box.min.y + tol, tol);
+      var areaTop = xzFootprintAreaAtWorldY(model, box.max.y - tol, tol);
+      var score = areaBottom * 6;
+      if (areaBottom >= areaTop * 1.02) score += 130;
+      else score -= 180;
+      if (size.y <= size.x && size.y <= size.z) score += 80;
+      score += (size.x * size.z) / (size.y + 0.02);
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = r;
+      }
+    }
+
+    model.rotation.set(best.x, WAITING_HALL_END_TABLE_YAW, best.z);
+    model.updateMatrixWorld(true);
+    ensureWaitingHallBenchBaseOnFloor(model);
+    if (WAITING_HALL_END_TABLE_LAYOUT === "upside_down") {
+      model.rotation.x += Math.PI;
+      model.updateMatrixWorld(true);
+    } else if (WAITING_HALL_END_TABLE_LAYOUT === "on_side") {
+      model.rotation.x += Math.PI;
+      model.updateMatrixWorld(true);
+      model.rotation.y += Math.PI / 2;
+      model.updateMatrixWorld(true);
+    }
+    model.rotation.z = 0;
+    model.updateMatrixWorld(true);
+  }
+
+  function orientWaitingHallBenchUpright(model) {
+    var presets = [
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: Math.PI / 2, z: 0 },
+      { x: 0, y: Math.PI, z: 0 },
+      { x: 0, y: -Math.PI / 2, z: 0 },
+      { x: Math.PI / 2, y: 0, z: 0 },
+      { x: -Math.PI / 2, y: 0, z: 0 },
+      { x: Math.PI / 2, y: Math.PI / 2, z: 0 },
+      { x: -Math.PI / 2, y: Math.PI / 2, z: 0 },
+      { x: 0, y: 0, z: Math.PI / 2 },
+      { x: 0, y: Math.PI / 2, z: Math.PI / 2 },
+      { x: -Math.PI / 2, y: 0, z: Math.PI / 2 },
+    ];
+    var best = presets[0];
+    var bestScore = -1e9;
+    var i;
+
+    for (i = 0; i < presets.length; i++) {
+      var r = presets[i];
+      model.rotation.set(r.x, r.y, r.z);
+      model.updateMatrixWorld(true);
+      var box = new THREE.Box3().setFromObject(model);
+      var size = new THREE.Vector3();
+      box.getSize(size);
+      var dims = [size.x, size.y, size.z].sort(function (a, b) {
+        return a - b;
+      });
+      var tol = Math.max(0.05, size.y * 0.08);
+      var areaBottom = xzFootprintAreaAtWorldY(model, box.min.y + tol, tol);
+      var areaTop = xzFootprintAreaAtWorldY(model, box.max.y - tol, tol);
+      var score = areaBottom * 4;
+      if (areaBottom >= areaTop * 1.01) score += 120;
+      else score -= 150;
+      if (Math.abs(size.y - dims[1]) < dims[1] * 0.25) score += 35;
+      if (size.y >= size.x * 0.25 && size.y >= size.z * 0.25) score += 20;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = r;
+      }
+    }
+
+    model.rotation.set(best.x, best.y, best.z);
+    model.updateMatrixWorld(true);
+    ensureWaitingHallBenchBaseOnFloor(model);
+    model.rotation.z = 0;
+    model.updateMatrixWorld(true);
+  }
+
+  function snapWaitingHallBenchToFloor(root) {
+    var box = new THREE.Box3().setFromObject(root);
+    root.position.y += TEST_ROAD_SURFACE_Y - box.min.y;
+    root.updateMatrixWorld(true);
+  }
+
+  function faceWaitingHallBenchToward(model, root, faceX, faceZ, yawExtra) {
+    root.updateMatrixWorld(true);
+    var box = new THREE.Box3().setFromObject(root);
+    var cx = (box.min.x + box.max.x) * 0.5;
+    var cz = (box.min.z + box.max.z) * 0.5;
+    var dx = faceX - cx;
+    var dz = faceZ - cz;
+    model.rotation.y = Math.atan2(dx, dz) + (yawExtra || 0);
+    model.updateMatrixWorld(true);
+  }
+
+  function placeWaitingHallBenchInstance(gltf, parent, hall, opts) {
+    if (!gltf || !gltf.scene) return;
+    opts = opts || {};
+    var benchSize = opts.size || WAITING_HALL_BENCH_SIZE;
+    var benchZ = opts.z != null ? opts.z : hall.centerZ;
+    var faceX = opts.faceX != null ? opts.faceX : hall.centerX;
+    var faceZ = opts.faceZ != null ? opts.faceZ : hall.centerZ;
+    var wallPad = 0.1;
+
+    var model = gltf.scene.clone(true);
+    var root = new THREE.Group();
+    root.name = "WaitingHallBench_" + (opts.label || "Bench");
+    root.add(model);
+    orientWaitingHallBenchUpright(model);
+    root.updateMatrixWorld(true);
+    fitModelUniformToBox(root, benchSize);
+    ensureWaitingHallBenchBaseOnFloor(model);
+
+    root.position.set(0, 0, 0);
+    root.updateMatrixWorld(true);
+
+    var box = new THREE.Box3().setFromObject(root);
+    var center = new THREE.Vector3();
+    box.getCenter(center);
+
+    if (opts.wall === "north") {
+      var northInnerZ =
+        hall.centerZ + hall.halfD - TEST_WAITING_HALL_WALL_THICK * 0.5;
+      root.position.set(hall.centerX - center.x, 0, 0);
+      root.updateMatrixWorld(true);
+      box.setFromObject(root);
+      root.position.z += northInnerZ - wallPad - box.max.z;
+      root.updateMatrixWorld(true);
+      model.rotation.y =
+        opts.yawToDoor != null ? opts.yawToDoor : WAITING_HALL_BENCH_YAW_TO_DOOR;
+      model.updateMatrixWorld(true);
+    } else {
+      faceWaitingHallBenchToward(model, root, faceX, faceZ, opts.yawExtra);
+      root.position.set(0, 0, benchZ - center.z);
+      box.setFromObject(root);
+      if (opts.wall === "west") {
+        root.position.x += hall.innerX0 + wallPad - box.min.x;
+      } else if (opts.wall === "east") {
+        root.position.x += hall.innerX1 - wallPad - box.max.x;
+      }
+    }
+
+    root.updateMatrixWorld(true);
+    snapWaitingHallBenchToFloor(root);
+    ensureWaitingHallBenchBaseOnFloor(model);
+    snapWaitingHallBenchToFloor(root);
+
+    parent.add(root);
+    enableShadows(root);
+    addColliderFromObject(root, 0.06);
+  }
+
+  function mountWaitingHallBenches(gltf, parent, hall) {
+    placeWaitingHallBenchInstance(gltf, parent, hall, {
+      label: "North",
+      size: WAITING_HALL_BENCH_SIZE,
+      wall: "north",
+      yawToDoor: WAITING_HALL_BENCH_YAW_TO_DOOR,
+    });
+  }
+
+  function loadTestMapWaitingHallBench(parent, hall) {
+    var cached = gltfCache[WAITING_HALL_BENCH_GLB_URL];
+    if (cached && cached.scene) {
+      mountWaitingHallBenches(cached, parent, hall);
+      return;
+    }
+    loadGltfCached(
+      WAITING_HALL_BENCH_GLB_URL,
+      function (gltf) {
+        mountWaitingHallBenches(gltf, parent, hall);
+      },
+      function (err) {
+        console.warn("[ActionScene] 等候厅凳子 GLB 加载失败", err);
+      }
+    );
+  }
+
+  function getWaitingHallGltfHelpers() {
+    return {
+      registerCollider: registerCollider,
+      loadGltfCached: loadGltfCached,
+      fitModelToBox: fitModelToBox,
+      fitModelUniformToBox: fitModelUniformToBox,
+      hasLineOfSight: function (px, pz, tx, ty, tz, margin) {
+        return hasLineOfSight(px, pos.y, pz, tx, ty, tz, margin);
+      },
+    };
+  }
+
+  function getWaitingHallTableTopPlacement(tableRoot) {
+    if (!tableRoot) return null;
+    tableRoot.updateMatrixWorld(true);
+    var box = new THREE.Box3().setFromObject(tableRoot);
+    var center = new THREE.Vector3();
+    box.getCenter(center);
+    return {
+      x: center.x,
+      z: center.z,
+      topY: box.max.y + 0.02,
+    };
+  }
+
+  function mountWaitingHallLockbox(parent, hall, tableTop) {
+    if (!window.WaitingHallLockbox || !window.WaitingHallLockbox.build) return;
+    var placement = { hall: hall };
+    if (tableTop) placement.tableTop = tableTop;
+    window.WaitingHallLockbox.build(parent, getWaitingHallGltfHelpers(), placement);
+  }
+
+  function placeWaitingHallEndTableFromGltf(gltf, parent, hall, onReady) {
+    if (!gltf || !gltf.scene) {
+      if (onReady) onReady(null);
+      return null;
+    }
+    var model = gltf.scene.clone(true);
+    var root = new THREE.Group();
+    root.name = "WaitingHallEndTable_GLB";
+    root.add(model);
+    orientWaitingHallEndTableUpright(model);
+    root.updateMatrixWorld(true);
+    fitModelUniformToBox(root, WAITING_HALL_END_TABLE_SIZE);
+
+    root.position.set(0, 0, 0);
+    root.updateMatrixWorld(true);
+    var box = new THREE.Box3().setFromObject(root);
+    var center = new THREE.Vector3();
+    box.getCenter(center);
+    root.position.set(
+      hall.centerX - center.x - WAITING_HALL_END_TABLE_SHIFT_WEST,
+      0,
+      hall.centerZ - center.z
+    );
+    root.updateMatrixWorld(true);
+    snapWaitingHallBenchToFloor(root);
+    snapWaitingHallBenchToFloor(root);
+
+    parent.add(root);
+    enableShadows(root);
+    addColliderFromObjectTightXZ(
+      root,
+      0.03,
+      WAITING_HALL_END_TABLE_COLLIDER_SHRINK_X,
+      WAITING_HALL_END_TABLE_COLLIDER_SHRINK_Z
+    );
+    if (onReady) onReady(root);
+    return root;
+  }
+
+  function loadTestMapWaitingHallEndTable(parent, hall) {
+    function afterTable(tableRoot) {
+      mountWaitingHallLockbox(
+        parent,
+        hall,
+        getWaitingHallTableTopPlacement(tableRoot)
+      );
+    }
+    var cached = gltfCache[WAITING_HALL_END_TABLE_GLB_URL];
+    if (cached && cached.scene) {
+      placeWaitingHallEndTableFromGltf(cached, parent, hall, afterTable);
+      return;
+    }
+    loadGltfCached(
+      WAITING_HALL_END_TABLE_GLB_URL,
+      function (gltf) {
+        placeWaitingHallEndTableFromGltf(gltf, parent, hall, afterTable);
+      },
+      function (err) {
+        console.warn("[ActionScene] 等候厅桌子 GLB 加载失败", err);
+        mountWaitingHallLockbox(parent, hall, null);
+      }
+    );
+  }
+
+  function isInsideTestSideRoom(room) {
+    if (!room || currentMapId !== "test") return false;
+    var h = room.layout;
+    return (
+      pos.x >= h.innerX0 &&
+      pos.x <= h.innerX1 &&
+      pos.z >= h.innerZ0 &&
+      pos.z <= h.innerZ1
+    );
+  }
+
+  function isInsideTestNorthRearHouse(room) {
+    if (!room || currentMapId !== "test") return false;
+    var h = room.layout;
+    var inset = 0.55;
+    if (
+      pos.z >= h.splitZ - inset &&
+      pos.z <= h.northZ - inset &&
+      pos.x >= -h.topHalfW + inset &&
+      pos.x <= h.topHalfW - inset
+    ) {
+      return true;
+    }
+    if (
+      pos.z >= h.southZ + inset &&
+      pos.z <= h.splitZ + inset &&
+      pos.x >= -h.stemHalfW + inset &&
+      pos.x <= h.stemHalfW - inset
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  function updateTestSideRoomBanner(room, label) {
+    if (!room || currentMapId !== "test") return;
+    var inside = isInsideTestSideRoom(room);
+    if (inside && !room.playerInside) {
+      showActionTopBanner(label, 2000);
+    }
+    room.playerInside = inside;
+  }
+
+  function updateTestNorthRearHouseBanner() {
+    if (!testNorthRearHouse || currentMapId !== "test") return;
+    var inside = isInsideTestNorthRearHouse(testNorthRearHouse);
+    if (inside && !testNorthRearHouse.playerInside) {
+      showActionTopBanner("总统主楼", 2000);
+    }
+    testNorthRearHouse.playerInside = inside;
+  }
+
+  function updateTestNorthSideRooms() {
+    updateTestSideRoomBanner(testWaitingHall, "等候厅");
+    updateTestSideRoomBanner(testCollectionRoom, "收藏室");
+    updateTestNorthRearHouseBanner();
+  }
+
+  function buildTestMapNorthEndCatSculptures(parent) {
+    var cached = gltfCache[CAT_SCULPTURE_GLB_URL];
+    if (cached && cached.scene) {
+      mountTestNorthCatSculptures(cached, parent);
+      return;
+    }
+    getGltfLoader().load(
+      CAT_SCULPTURE_GLB_URL,
+      function (gltf) {
+        gltfCache[CAT_SCULPTURE_GLB_URL] = gltf;
+        mountTestNorthCatSculptures(gltf, parent);
+      },
+      undefined,
+      function (err) {
+        console.warn("[ActionScene] 猫雕塑 GLB 加载失败", err);
+      }
+    );
+  }
+
+  function isNearTestNorthIronGates() {
+    if (!testNorthIronGates || testNorthIronGates.open) return false;
+    var endZ = TEST_NORTH_BRANCH_ROAD.to.z;
+    return (
+      Math.abs(pos.z - endZ) < 5 &&
+      Math.abs(pos.x) < TEST_ROAD_WIDTH * 0.55 + 0.5
+    );
+  }
+
+  function tryOpenTestNorthIronGates() {
+    if (!testNorthIronGates || testNorthIronGates.open) return false;
+    if (!isNearTestNorthIronGates()) return false;
+    testNorthIronGates.open = true;
+    testNorthIronGates.animating = true;
+    testNorthIronGates.t = 0;
+    removeTestNorthGateClosedColliders();
+    initTestNorthIronGateOpenColliders();
+    showDurabilityBanner("铁门已向内侧打开");
+    setInteractHintVisible(false);
+    return true;
+  }
+
+  function updateTestNorthIronGates(dt) {
+    if (!testNorthIronGates) return;
+    if (testNorthIronGates.animating) {
+      testNorthIronGates.t += dt;
+      var u = Math.min(1, testNorthIronGates.t / 0.7);
+      var ease = u * u * (3 - 2 * u);
+      var ang = TEST_NORTH_GATE_OPEN_Y * ease;
+      if (testNorthIronGates.leftPivot) {
+        testNorthIronGates.leftPivot.rotation.y = ang;
+      }
+      if (testNorthIronGates.rightPivot) {
+        testNorthIronGates.rightPivot.rotation.y = -ang;
+      }
+      syncTestNorthIronGateLeafColliders();
+      if (u >= 1) {
+        testNorthIronGates.animating = false;
+      }
+    } else if (testNorthIronGates.open) {
+      syncTestNorthIronGateLeafColliders();
+    }
+  }
+
+  function updateSecurityDoorOpenCollider() {
+    if (!doorUnlocked || !securityDoorRoot || currentMapId !== "tutorial") {
+      return;
+    }
+    if (!securityDoorOpenCollider) {
+      securityDoorOpenCollider = addColliderFromObject(securityDoorRoot, 0.06);
+      return;
+    }
+    syncColliderFromObject(securityDoorOpenCollider, securityDoorRoot, 0.06);
+  }
+
   function buildTestMapHiddenRoom(parent) {
     var cx = TEST_HIDDEN_ROOM_CENTER_X;
     var cz = TEST_HIDDEN_ROOM_CENTER_Z + 0.25;
-    var half = TEST_HIDDEN_ROOM_SIZE * 0.5;
-    var wallX = half + 0.25;
+    var halfX = TEST_HIDDEN_ROOM_SIZE_X * 0.5;
+    var halfZ = TEST_HIDDEN_ROOM_SIZE_Z * 0.5;
+    var thick = 0.5;
     var wallY = SECTOR_WALL_H * 0.5;
     var floorColor = 0x5a5e64;
     var wallColor = 0x2e3338;
@@ -1023,9 +2470,9 @@ if (typeof window !== "undefined") {
 
     addBox(
       parent,
-      TEST_HIDDEN_ROOM_SIZE,
+      TEST_HIDDEN_ROOM_SIZE_X,
       0.1,
-      TEST_HIDDEN_ROOM_SIZE,
+      TEST_HIDDEN_ROOM_SIZE_Z,
       cx,
       0.05,
       cz,
@@ -1034,58 +2481,53 @@ if (typeof window !== "undefined") {
     );
     addBox(
       parent,
-      0.5,
+      thick,
       SECTOR_WALL_H,
-      TEST_HIDDEN_ROOM_SIZE,
-      cx - wallX,
+      TEST_HIDDEN_ROOM_SIZE_Z,
+      cx - halfX + thick * 0.5,
       wallY,
       cz,
       wallColor
     );
-
     addBox(
       parent,
-      TEST_HIDDEN_ROOM_SIZE,
+      TEST_HIDDEN_ROOM_SIZE_X,
       SECTOR_WALL_H,
-      0.5,
+      thick,
       cx,
       wallY,
-      cz - half - 0.25,
+      cz - halfZ + thick * 0.5,
       wallColor
     );
     addBox(
       parent,
-      TEST_HIDDEN_ROOM_SIZE,
+      TEST_HIDDEN_ROOM_SIZE_X,
       SECTOR_WALL_H,
-      0.5,
+      thick,
       cx,
       wallY,
-      cz + half + 0.25,
+      cz + halfZ - thick * 0.5,
       wallColor
     );
     addBox(
       parent,
-      TEST_HIDDEN_ROOM_SIZE,
+      thick,
+      SECTOR_WALL_H,
+      TEST_HIDDEN_ROOM_SIZE_Z,
+      cx + halfX - thick * 0.5,
+      wallY,
+      cz,
+      wallColor
+    );
+    addBox(
+      parent,
+      TEST_HIDDEN_ROOM_SIZE_X,
       0.15,
-      TEST_HIDDEN_ROOM_SIZE,
+      TEST_HIDDEN_ROOM_SIZE_Z,
       cx,
       SECTOR_WALL_H + 0.075,
       cz,
-      roofColor,
-      true
-    );
-
-    var backSpan = TEST_ROAD_WIDTH + 8;
-    var backX = cx - wallX - 1.0;
-    addBox(
-      parent,
-      0.5,
-      SECTOR_WALL_H,
-      backSpan,
-      backX,
-      wallY,
-      cz,
-      wallColor
+      roofColor
     );
   }
 
@@ -1256,6 +2698,20 @@ if (typeof window !== "undefined") {
       cur.y * (targetSize.y / (size.y || 1)),
       cur.z * (targetSize.z / (size.z || 1))
     );
+    object3D.updateMatrixWorld(true);
+  }
+
+  /** 等比缩放塞进占位框，避免 GLB 被拉长 */
+  function fitModelUniformToBox(object3D, targetSize) {
+    var box = new THREE.Box3().setFromObject(object3D);
+    var size = new THREE.Vector3();
+    box.getSize(size);
+    var sx = targetSize.x / (size.x || 1);
+    var sy = targetSize.y / (size.y || 1);
+    var sz = targetSize.z / (size.z || 1);
+    var s = Math.min(sx, sy, sz);
+    var cur = object3D.scale;
+    object3D.scale.set(cur.x * s, cur.y * s, cur.z * s);
     object3D.updateMatrixWorld(true);
   }
 
@@ -2430,6 +3886,15 @@ if (typeof window !== "undefined") {
     if (window.WorldLootBox && window.WorldLootBox.closeChestPanel) {
       window.WorldLootBox.closeChestPanel();
     }
+    if (window.HiddenLootBox && window.HiddenLootBox.closeChestPanel) {
+      window.HiddenLootBox.closeChestPanel();
+    }
+    if (window.WaitingHallLockbox && window.WaitingHallLockbox.closeChestPanel) {
+      window.WaitingHallLockbox.closeChestPanel();
+    }
+    if (window.CollectionRoomChest && window.CollectionRoomChest.closeChestPanel) {
+      window.CollectionRoomChest.closeChestPanel();
+    }
     if (window.LockpickingQTE && window.LockpickingQTE.close) {
       window.LockpickingQTE.close();
     }
@@ -2449,7 +3914,7 @@ if (typeof window !== "undefined") {
 
     playerDeathTimer = setTimeout(function () {
       playerDeathTimer = null;
-      exit();
+      exit({ clearLoadout: false });
       if (window.LobbyUI && window.LobbyUI.goHome) {
         window.LobbyUI.goHome();
       }
@@ -2569,7 +4034,7 @@ if (typeof window !== "undefined") {
     if (window.PlayerStatePersist && window.PlayerStatePersist.saveNow) {
       window.PlayerStatePersist.saveNow();
     }
-    exit();
+    exit({ clearLoadout: false });
     if (window.LobbyUI && window.LobbyUI.goHome) {
       window.LobbyUI.goHome();
     }
@@ -2583,6 +4048,7 @@ if (typeof window !== "undefined") {
       return;
     }
     removeDoorColliders();
+    securityDoorOpenCollider = null;
     ensureDoorColliders();
     if (securityDoorRoot && doorHomePosition) {
       securityDoorRoot.position.copy(doorHomePosition);
@@ -3185,21 +4651,25 @@ if (typeof window !== "undefined") {
     );
   }
 
-  function showDurabilityBanner(remaining, max) {
+  function showActionTopBanner(text, durationMs) {
     if (!durabilityBannerEl) return;
-    if (max == null && typeof remaining === "string") {
-      durabilityBannerEl.textContent = remaining;
-    } else {
-      durabilityBannerEl.textContent =
-        "房卡耐久 " + remaining + " / " + max;
-    }
+    durabilityBannerEl.textContent = text;
     durabilityBannerEl.hidden = false;
     if (durabilityBannerEl._hideTimer) {
       clearTimeout(durabilityBannerEl._hideTimer);
     }
     durabilityBannerEl._hideTimer = setTimeout(function () {
       durabilityBannerEl.hidden = true;
-    }, 2800);
+    }, durationMs == null ? 2000 : durationMs);
+  }
+
+  function showDurabilityBanner(remaining, max) {
+    if (!durabilityBannerEl) return;
+    if (max == null && typeof remaining === "string") {
+      showActionTopBanner(remaining, 2800);
+      return;
+    }
+    showActionTopBanner("房卡耐久 " + remaining + " / " + max, 2800);
   }
 
   function isNearSecurityDoor() {
@@ -3220,12 +4690,55 @@ if (typeof window !== "undefined") {
 
   function formatInteractHint(text) {
     if (!shouldUseDragLook()) return text;
-    return text.replace(/按 E\s*/g, "点此字条 ");
+    return text
+      .replace(/准星对准[^·]*·\s*/g, "")
+      .replace(/按\s*E\s*/g, "点词条");
   }
 
-  function tryInteract() {
+  function refreshInteractAim() {
+    if (!camera) return;
+    if (window.ActionWasteBin && window.ActionWasteBin.updateAim) {
+      window.ActionWasteBin.updateAim(pos.x, pos.z, camera);
+    }
+    if (window.HiddenLootBox && window.HiddenLootBox.updateAim) {
+      window.HiddenLootBox.updateAim(pos.x, pos.z, camera);
+    }
+    if (window.WaitingHallLockbox && window.WaitingHallLockbox.updateAim) {
+      window.WaitingHallLockbox.updateAim(pos.x, pos.z, camera);
+    }
+    if (window.CollectionRoomChest && window.CollectionRoomChest.updateAim) {
+      window.CollectionRoomChest.updateAim(pos.x, pos.z, camera);
+    }
+    if (window.WorldLootBox && window.WorldLootBox.updateAim) {
+      window.WorldLootBox.updateAim(pos.x, pos.z, camera);
+    }
+  }
+
+  function onInteractHintTap(e) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (!interactHintEl || interactHintEl.hidden || !running || isUiBlocking()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    refreshInteractAim();
+    tryInteract({ fromHint: true });
+  }
+
+  function tryInteract(opts) {
     if (!running || isUiBlocking()) return false;
+    var relaxAim = !!(opts && opts.fromHint && shouldUseDragLook());
     if (currentMapId === "test") {
+      if (tryOpenTestNorthIronGates()) {
+        return true;
+      }
+      if (window.ActionDropLoot && window.ActionDropLoot.tryPickup(pos.x, pos.z)) {
+        return true;
+      }
+      if (
+        window.CollectionRoomFloorLoot &&
+        window.CollectionRoomFloorLoot.tryPickup(pos.x, pos.z)
+      ) {
+        return true;
+      }
       if (window.ActionWasteBin) {
         if (camera && window.ActionWasteBin.updateAim) {
           window.ActionWasteBin.updateAim(pos.x, pos.z, camera);
@@ -3244,13 +4757,44 @@ if (typeof window !== "undefined") {
           return true;
         }
       }
+      if (window.WaitingHallLockbox) {
+        if (camera && window.WaitingHallLockbox.updateAim) {
+          window.WaitingHallLockbox.updateAim(pos.x, pos.z, camera);
+        }
+        if (
+          window.WaitingHallLockbox.tryInteract() ||
+          (relaxAim &&
+            window.WaitingHallLockbox.tryInteractNear &&
+            window.WaitingHallLockbox.tryInteractNear(pos.x, pos.z))
+        ) {
+          releasePointerForUi();
+          return true;
+        }
+      }
+      if (window.CollectionRoomChest) {
+        if (camera && window.CollectionRoomChest.updateAim) {
+          window.CollectionRoomChest.updateAim(pos.x, pos.z, camera);
+        }
+        if (window.CollectionRoomChest.tryStartLockpick()) {
+          releasePointerForUi();
+          return true;
+        }
+      }
       return false;
     }
-    if (doorUnlocked && window.WorldLootBox) {
+    if (window.ActionDropLoot && window.ActionDropLoot.tryPickup(pos.x, pos.z)) {
+      return true;
+    }
+    if (currentMapId === "tutorial" && window.WorldLootBox) {
       if (camera && window.WorldLootBox.updateAim) {
         window.WorldLootBox.updateAim(pos.x, pos.z, camera);
       }
-      if (window.WorldLootBox.tryStartLockpick()) {
+      if (
+        window.WorldLootBox.tryStartLockpick({ px: pos.x, pz: pos.z }) ||
+        (relaxAim &&
+          window.WorldLootBox.tryInteractNear &&
+          window.WorldLootBox.tryInteractNear(pos.x, pos.z))
+      ) {
         releasePointerForUi();
         return true;
       }
@@ -3259,14 +4803,24 @@ if (typeof window !== "undefined") {
     return true;
   }
 
+  /** 出生点已在搜刮间内时，视为门已刷开（避免门未解锁导致宝箱无法交互） */
+  function syncTutorialAccessForSpawn() {
+    if (currentMapId !== "tutorial") return;
+    if (TUTORIAL_SPAWN.z >= DOOR_Z + CORRIDOR_LEN - 0.5) {
+      unlockSecurityDoor();
+    }
+  }
+
   function unlockSecurityDoor() {
     if (doorUnlocked) return;
     doorUnlocked = true;
     removeDoorColliders();
+    securityDoorOpenCollider = null;
     if (securityDoorRoot && doorHomePosition) {
       setDoorGreen(securityDoorRoot);
       securityDoorRoot.position.copy(doorHomePosition);
       securityDoorRoot.position.x += DOOR_OPEN_OFFSET_X;
+      securityDoorOpenCollider = addColliderFromObject(securityDoorRoot, 0.06);
     }
     setInteractHintVisible(false);
   }
@@ -3337,6 +4891,59 @@ if (typeof window !== "undefined") {
           return;
         }
       }
+      if (camera && window.WaitingHallLockbox) {
+        window.WaitingHallLockbox.updateAim(pos.x, pos.z, camera);
+        if (window.WaitingHallLockbox.isAimedAtChest()) {
+          setInteractHintVisible(true);
+          if (interactHintEl) {
+            interactHintEl.textContent = formatInteractHint(
+              window.WaitingHallLockbox.isOpened()
+                ? "按 E 查看古董匣"
+                : "按 E 打开古董匣"
+            );
+          }
+          return;
+        }
+      }
+      if (
+        window.ActionDropLoot &&
+        window.ActionDropLoot.shouldShowPickupHint(pos.x, pos.z)
+      ) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = formatInteractHint("按 E 拾取丢下物");
+        }
+        return;
+      }
+      if (
+        window.CollectionRoomFloorLoot &&
+        window.CollectionRoomFloorLoot.shouldShowPickupHint(pos.x, pos.z)
+      ) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = formatInteractHint("按 E 拾取");
+        }
+        return;
+      }
+      if (camera && window.CollectionRoomChest) {
+        window.CollectionRoomChest.updateAim(pos.x, pos.z, camera);
+        if (window.CollectionRoomChest.isAimedAtChest()) {
+          setInteractHintVisible(true);
+          if (interactHintEl) {
+            interactHintEl.textContent = formatInteractHint("按 E 打开宝箱");
+          }
+          return;
+        }
+      }
+      if (isNearTestNorthIronGates()) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = formatInteractHint(
+            "靠近铁门 · 按 E 向内打开"
+          );
+        }
+        return;
+      }
       setInteractHintVisible(false);
       return;
     }
@@ -3346,24 +4953,45 @@ if (typeof window !== "undefined") {
       return;
     }
 
-    if (doorUnlocked && camera && canvas && window.WorldLootBox) {
+    if (
+      window.ActionDropLoot &&
+      window.ActionDropLoot.shouldShowPickupHint(pos.x, pos.z)
+    ) {
+      setInteractHintVisible(true);
+      if (interactHintEl) {
+        interactHintEl.textContent = formatInteractHint("按 E 拾取丢下物");
+      }
+      return;
+    }
+
+    if (camera && canvas && window.WorldLootBox) {
+      var relaxChestAim = shouldUseDragLook();
       window.WorldLootBox.updateAim(pos.x, pos.z, camera);
       if (
         !window.WorldLootBox.isOpened() &&
-        window.WorldLootBox.isAimed()
+        window.WorldLootBox.shouldShowLockpickHint(
+          pos.x,
+          pos.z,
+          relaxChestAim
+        )
       ) {
         setInteractHintVisible(true);
         if (interactHintEl) {
           interactHintEl.textContent = formatInteractHint(
-            "准星对准海盗宝箱 · 按 E 开锁"
+            relaxChestAim || window.WorldLootBox.isAimed()
+              ? "靠近海盗宝箱 · 按 E 开锁"
+              : "靠近宝箱 · 准星对准后按 E 开锁"
           );
         }
         return;
       }
       if (
         window.WorldLootBox.isOpened() &&
-        window.WorldLootBox.isAimed() &&
-        window.WorldLootBox.playerNear(pos.x, pos.z)
+        window.WorldLootBox.shouldShowLockpickHint(
+          pos.x,
+          pos.z,
+          relaxChestAim
+        )
       ) {
         setInteractHintVisible(true);
         if (interactHintEl) {
@@ -3437,6 +5065,9 @@ if (typeof window !== "undefined") {
   }
 
   function teardownWorld() {
+    if (window.WorldLootBox && window.WorldLootBox.destroyChest) {
+      window.WorldLootBox.destroyChest();
+    }
     if (worldRoot && scene) {
       scene.remove(worldRoot);
       disposeObject3D(worldRoot);
@@ -3452,6 +5083,12 @@ if (typeof window !== "undefined") {
     securityDoorRoot = null;
     doorHomePosition = null;
     doorUnlocked = false;
+    testNorthIronGates = null;
+    testWaitingHall = null;
+    testCollectionRoom = null;
+    testNorthRearHouse = null;
+    testNorthCatColliders = [];
+    securityDoorOpenCollider = null;
     loadedMapId = null;
   }
 
@@ -3459,9 +5096,10 @@ if (typeof window !== "undefined") {
     if (mapId === "test") {
       BOUNDS_X = 55;
       BOUNDS_Z_MIN = -55;
-      BOUNDS_Z_MAX = 115;
+      var rearHouseBounds = getTestNorthRearHouseLayout();
+      BOUNDS_Z_MAX = rearHouseBounds.centerZ + rearHouseBounds.halfD + 2.5;
       if (scene) {
-        scene.fog = new THREE.Fog(0x8ecfff, 50, 160);
+        scene.fog = new THREE.Fog(0x8ecfff, 50, 245);
       }
       return;
     }
@@ -3476,6 +5114,20 @@ if (typeof window !== "undefined") {
   function updateMapNameDisplay() {
     if (!mapNameEl) return;
     mapNameEl.textContent = currentMapId === "test" ? "测试" : "新手教程";
+  }
+
+  function setPosHudVisible(show) {
+    if (!posHudEl) return;
+    posHudEl.hidden = !show;
+  }
+
+  function updatePosHud() {
+    if (!posHudEl || !running) return;
+    posHudEl.textContent =
+      "X " +
+      pos.x.toFixed(2) +
+      " · Z " +
+      pos.z.toFixed(2);
   }
 
   function loadWorldMap(mapId) {
@@ -3497,6 +5149,14 @@ if (typeof window !== "undefined") {
     loadedMapId = mapId;
     currentMapId = mapId;
     updateMapNameDisplay();
+
+    if (window.ActionDropLoot && worldRoot) {
+      window.ActionDropLoot.bindWorld(worldRoot, {
+        loadGltfCached: loadGltfCached,
+        fitModelToBox: fitModelToBox,
+        fitModelUniformToBox: fitModelUniformToBox,
+      });
+    }
   }
 
   /** 测试地图 — S 形马路 + 沿路两侧包山 */
@@ -3532,11 +5192,29 @@ if (typeof window !== "undefined") {
       TEST_BRANCH_ROAD.to.z,
       30
     );
+    var northBranchSamples = sampleStraightRoad(
+      TEST_NORTH_BRANCH_ROAD.from.x,
+      TEST_NORTH_BRANCH_ROAD.from.z,
+      TEST_NORTH_BRANCH_ROAD.to.x,
+      TEST_NORTH_BRANCH_ROAD.to.z,
+      48
+    );
     registerTestRoadSamples(roadSamples);
     registerTestRoadSamples(branchSamples);
+    registerTestRoadSamples(northBranchSamples);
     buildTestMapMountains(root, roadSamples);
     buildTestMapRoad(root);
     buildTestMapStraightRoadBranch(root, branchSamples);
+    buildTestMapStraightRoadBranch(root, northBranchSamples, {
+      withMountains: false,
+    });
+    buildTestMapNorthEndGateWalls(root);
+    buildTestMapNorthEndVerticalWalls(root);
+    buildTestMapNorthEndIronGates(root);
+    buildTestMapNorthEndCatSculptures(root);
+    buildTestMapNorthWaitingHall(root);
+    buildTestMapNorthCollectionRoom(root);
+    buildTestMapNorthRearHouse(root);
     buildTestMapHiddenRoom(root);
     if (window.HiddenLootBox && window.HiddenLootBox.build) {
       window.HiddenLootBox.build(root, {
@@ -3558,7 +5236,7 @@ if (typeof window !== "undefined") {
     }
   }
 
-  /** 【新手教程】0 号模拟围区 — 与 Unity 生成器同规格 */
+  /** 【新手教程】 — 与 Unity 生成器同规格 */
   function buildSectorZero(parent) {
     colliders = [];
     var root = new THREE.Group();
@@ -3597,6 +5275,7 @@ if (typeof window !== "undefined") {
       window.WorldLootBox.build(root, {
         loadGltfCached: loadGltfCached,
         fitModelToBox: fitModelToBox,
+        fitModelUniformToBox: fitModelUniformToBox,
         registerCollider: registerCollider,
       });
     }
@@ -3866,8 +5545,17 @@ if (typeof window !== "undefined") {
     renderer.setSize(w, h, false);
   }
 
+  function wantsCrouchInput() {
+    if (keys.KeyC) return true;
+    return !!(
+      window.ActionJoystick &&
+      window.ActionJoystick.isCrouchHeld &&
+      window.ActionJoystick.isCrouchHeld()
+    );
+  }
+
   function updateCrouch(dt) {
-    var wantsCrouch = !!keys.KeyC;
+    var wantsCrouch = wantsCrouchInput();
     var targetH = wantsCrouch ? CROUCH_HEIGHT : STAND_HEIGHT;
     var t = Math.min(1, CROUCH_LERP * dt);
     bodyHeightCurrent += (targetH - bodyHeightCurrent) * t;
@@ -3895,6 +5583,113 @@ if (typeof window !== "undefined") {
   function clampPosition() {
     pos.x = Math.max(-BOUNDS_X, Math.min(BOUNDS_X, pos.x));
     pos.z = Math.max(BOUNDS_Z_MIN, Math.min(BOUNDS_Z_MAX, pos.z));
+  }
+
+  /** 仅当玩家身高与碰撞盒在 Y 上重叠时，才参与 XZ 阻挡（天花板不再当隐形墙） */
+  function colliderOverlapsPlayerY(c, feetY, headY, pad) {
+    pad = pad == null ? 0.04 : pad;
+    return headY + pad > c.minY && feetY - pad < c.maxY;
+  }
+
+  /** 薄顶棚只顶头，不参与 XZ 推开（否则贴墙跳跃会被横向挤出房间） */
+  function isCeilingOnlyCollider(c) {
+    return c.minY >= CEILING_COLLIDE_MIN_Y && c.maxY - c.minY < 0.3;
+  }
+
+  var LOS_FLOOR_SKIP_MAX_Y = 0.22;
+
+  /** 射线与轴对齐盒最近进入距离；无交返回 null */
+  function rayAabbHitDistance(ox, oy, oz, dx, dy, dz, box) {
+    var tmin = -Infinity;
+    var tmax = Infinity;
+    var t1;
+    var t2;
+    var tmp;
+
+    if (Math.abs(dx) < 1e-8) {
+      if (ox < box.minX || ox > box.maxX) return null;
+    } else {
+      t1 = (box.minX - ox) / dx;
+      t2 = (box.maxX - ox) / dx;
+      if (t1 > t2) {
+        tmp = t1;
+        t1 = t2;
+        t2 = tmp;
+      }
+      tmin = Math.max(tmin, t1);
+      tmax = Math.min(tmax, t2);
+    }
+
+    if (Math.abs(dy) < 1e-8) {
+      if (oy < box.minY || oy > box.maxY) return null;
+    } else {
+      t1 = (box.minY - oy) / dy;
+      t2 = (box.maxY - oy) / dy;
+      if (t1 > t2) {
+        tmp = t1;
+        t1 = t2;
+        t2 = tmp;
+      }
+      tmin = Math.max(tmin, t1);
+      tmax = Math.min(tmax, t2);
+    }
+
+    if (Math.abs(dz) < 1e-8) {
+      if (oz < box.minZ || oz > box.maxZ) return null;
+    } else {
+      t1 = (box.minZ - oz) / dz;
+      t2 = (box.maxZ - oz) / dz;
+      if (t1 > t2) {
+        tmp = t1;
+        t1 = t2;
+        t2 = tmp;
+      }
+      tmin = Math.max(tmin, t1);
+      tmax = Math.min(tmax, t2);
+    }
+
+    if (tmax < 0 || tmin > tmax) return null;
+    return Math.max(0, tmin);
+  }
+
+  /** 玩家视线到目标点是否被墙体/家具碰撞盒挡住（防穿墙交互） */
+  function hasLineOfSight(px, feetY, pz, tx, ty, tz, margin) {
+    margin = margin == null ? 0.42 : margin;
+    var eyeY = feetY + bodyHeightCurrent * EYE_RATIO;
+    var dx = tx - px;
+    var dy = ty - eyeY;
+    var dz = tz - pz;
+    var dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (dist < 0.08) return true;
+
+    dx /= dist;
+    dy /= dist;
+    dz /= dist;
+
+    var limit = dist - margin;
+    if (limit <= 0) return true;
+
+    var i;
+    var c;
+    var t;
+    var pad = 0.12;
+    for (i = 0; i < colliders.length; i++) {
+      c = colliders[i];
+      if (c.maxY < LOS_FLOOR_SKIP_MAX_Y) continue;
+      if (
+        tx >= c.minX - pad &&
+        tx <= c.maxX + pad &&
+        ty >= c.minY - pad &&
+        ty <= c.maxY + pad &&
+        tz >= c.minZ - pad &&
+        tz <= c.maxZ + pad
+      ) {
+        continue;
+      }
+      t = rayAabbHitDistance(px, eyeY, pz, dx, dy, dz, c);
+      if (t != null && t < limit) return false;
+    }
+    return true;
   }
 
   /** 圆柱体（XZ）与轴对齐盒分离 — 用于卡车 / 水泥墙 / 木箱 */
@@ -3933,10 +5728,40 @@ if (typeof window !== "undefined") {
     return { x: px, z: pz };
   }
 
+  function resolvePositionY() {
+    var radius = CAPSULE_RADIUS;
+    var px = pos.x;
+    var pz = pos.z;
+    var feetY = pos.y;
+    var headY = pos.y + bodyHeightCurrent;
+    var pad = 0.03;
+    var i;
+    var c;
+
+    for (i = 0; i < colliders.length; i++) {
+      c = colliders[i];
+      if (c.minY < CEILING_COLLIDE_MIN_Y) continue;
+      if (
+        px + radius < c.minX ||
+        px - radius > c.maxX ||
+        pz + radius < c.minZ ||
+        pz - radius > c.maxZ
+      ) {
+        continue;
+      }
+      if (headY <= c.minY + pad) continue;
+      if (feetY >= c.maxY) continue;
+      pos.y = c.minY - pad - bodyHeightCurrent;
+      if (velY > 0) velY = 0;
+    }
+  }
+
   function resolvePositionXZ() {
     var radius = CAPSULE_RADIUS;
     var px = pos.x;
     var pz = pos.z;
+    var feetY = pos.y;
+    var headY = pos.y + bodyHeightCurrent;
     var iter;
     var i;
     var c;
@@ -3945,7 +5770,7 @@ if (typeof window !== "undefined") {
 
     var nearPad = 10;
 
-    for (iter = 0; iter < 6; iter++) {
+    for (iter = 0; iter < 8; iter++) {
       moved = false;
       for (i = 0; i < colliders.length; i++) {
         c = colliders[i];
@@ -3957,6 +5782,9 @@ if (typeof window !== "undefined") {
         ) {
           continue;
         }
+        if (!colliderOverlapsPlayerY(c, feetY, headY)) continue;
+        if (isCeilingOnlyCollider(c)) continue;
+        if (c.maxY < LOS_FLOOR_SKIP_MAX_Y) continue;
         out = pushOutCircleAABB(px, pz, radius, c);
         if (out.x !== px || out.z !== pz) {
           px = out.x;
@@ -3987,7 +5815,7 @@ if (typeof window !== "undefined") {
   }
 
   function isActuallySprinting(moving) {
-    if (!moving || keys.KeyC || isCrouching()) return false;
+    if (!moving || wantsCrouchInput() || isCrouching()) return false;
     if (!wantsSprint()) return false;
     if (getStaminaSegments() <= 0) return false;
     return true;
@@ -4007,13 +5835,13 @@ if (typeof window !== "undefined") {
   }
 
   function getMoveSpeed(moving) {
-    if (keys.KeyC || isCrouching()) return CROUCH_SPEED;
+    if (wantsCrouchInput() || isCrouching()) return CROUCH_SPEED;
     if (moving && isActuallySprinting(moving)) return SPRINT_SPEED;
     return WALK_SPEED;
   }
 
   function tryJump() {
-    if (grounded && !isCrouching() && !keys.KeyC) {
+    if (grounded && !isCrouching() && !wantsCrouchInput()) {
       velY = JUMP_SPEED;
       grounded = false;
     }
@@ -4074,6 +5902,8 @@ if (typeof window !== "undefined") {
       (window.WorldLootBox && window.WorldLootBox.isPanelOpen()) ||
       (window.HiddenLootBox && window.HiddenLootBox.isPuzzleOpen()) ||
       (window.HiddenLootBox && window.HiddenLootBox.isPanelOpen()) ||
+      (window.WaitingHallLockbox && window.WaitingHallLockbox.isPanelOpen()) ||
+      (window.CollectionRoomChest && window.CollectionRoomChest.isPanelOpen()) ||
       (window.ActionWasteBin && window.ActionWasteBin.isOpen())
     );
   }
@@ -4123,6 +5953,10 @@ if (typeof window !== "undefined") {
     animId = requestAnimationFrame(tick);
     var dt = Math.min(clock.getDelta(), 0.05);
 
+    updateTestNorthIronGates(dt);
+    updateTestNorthSideRooms();
+    updateSecurityDoorOpenCollider();
+
     if (doorUnlocked) {
       updateEvacZone(dt);
     }
@@ -4164,6 +5998,8 @@ if (typeof window !== "undefined") {
     }
 
     updatePhysics(dt);
+    resolvePositionY();
+    resolvePositionXZ();
     updateCrouch(dt);
     updatePlayerTransform();
     updateHands(dt, moving);
@@ -4171,6 +6007,7 @@ if (typeof window !== "undefined") {
       updateClouds(dt, animTime);
     }
     updateInteractHints();
+    updatePosHud();
 
     if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
       window.LockpickingQTE.update(dt);
@@ -4203,15 +6040,16 @@ if (typeof window !== "undefined") {
     yaw = 0;
     pitch = -0.08;
     if (currentMapId === "test") {
-      pos.x = TEST_ROAD_START.x;
+      pos.x = TEST_SPAWN.x;
       pos.y = 0;
-      pos.z = TEST_ROAD_START.z;
+      pos.z = TEST_SPAWN.z;
       resolvePositionXZ();
       clampPosition();
     } else {
-      pos.x = 0;
-      pos.y = 0;
-      pos.z = 2;
+      pos.x = TUTORIAL_SPAWN.x;
+      pos.y = TUTORIAL_SPAWN.y;
+      pos.z = TUTORIAL_SPAWN.z;
+      syncTutorialAccessForSpawn();
     }
     velY = 0;
     grounded = true;
@@ -4234,6 +6072,8 @@ if (typeof window !== "undefined") {
   function startLoop() {
     if (!initScene()) return;
     running = true;
+    setPosHudVisible(true);
+    updatePosHud();
     clock.start();
     resize();
     tick();
@@ -4241,6 +6081,7 @@ if (typeof window !== "undefined") {
 
   function stopLoop() {
     running = false;
+    setPosHudVisible(false);
     if (animId) {
       cancelAnimationFrame(animId);
       animId = 0;
@@ -4264,7 +6105,16 @@ if (typeof window !== "undefined") {
     hideLoadError();
 
     actionRoot.hidden = false;
-    document.body.classList.remove("room-open", "stash-open", "tutorial-open", "map-open");
+    if (window.LobbyUI && window.LobbyUI.hidePanelsForAction) {
+      window.LobbyUI.hidePanelsForAction();
+    } else {
+      document.body.classList.remove(
+        "room-open",
+        "stash-open",
+        "tutorial-open",
+        "map-open"
+      );
+    }
     document.body.classList.add("action-open");
     document.body.classList.remove("hub-home");
 
@@ -4303,7 +6153,16 @@ if (typeof window !== "undefined") {
     }
   }
 
+  function isOfflinePlay() {
+    return !!(
+      window.LobbyNet &&
+      window.LobbyNet.isLoggedIn &&
+      !window.LobbyNet.isLoggedIn()
+    );
+  }
+
   function resolveDefaultMapId() {
+    if (isOfflinePlay()) return "tutorial";
     if (window.TutorialProgress && window.TutorialProgress.isComplete()) {
       if (window.LobbyUI && window.LobbyUI.getSelectedMapId) {
         return window.LobbyUI.getSelectedMapId();
@@ -4314,6 +6173,7 @@ if (typeof window !== "undefined") {
   }
 
   function normalizeMapId(mapId) {
+    if (isOfflinePlay()) return "tutorial";
     if (!window.TutorialProgress || !window.TutorialProgress.isComplete()) {
       return "tutorial";
     }
@@ -4331,11 +6191,23 @@ if (typeof window !== "undefined") {
   }
 
   function withPlayCheck(callback) {
-    if (window.LobbyNet && window.LobbyNet.assertCanPlay) {
-      window.LobbyNet.assertCanPlay(function (ok, msg) {
+    var net = window.LobbyNet;
+    if (net && net.isLoggedIn && !net.isLoggedIn()) {
+      if (net.canPlayOfflineTutorial && net.canPlayOfflineTutorial()) {
+        callback();
+        return;
+      }
+      if (net.handlePlayBlocked) {
+        net.handlePlayBlocked(net.getBlockMessage && net.getBlockMessage());
+      }
+      return;
+    }
+
+    if (net && net.assertCanPlay) {
+      net.assertCanPlay(function (ok, msg) {
         if (!ok) {
-          if (window.LobbyNet.handlePlayBlocked) {
-            window.LobbyNet.handlePlayBlocked(msg);
+          if (net.handlePlayBlocked) {
+            net.handlePlayBlocked(msg);
           } else if (window.LobbyUI) {
             if (msg) {
               var joinError = document.getElementById("joinError");
@@ -4363,11 +6235,22 @@ if (typeof window !== "undefined") {
   }
 
   function startEnter(mapId) {
-    if (window.LobbyNet && window.LobbyNet.canPlay && !window.LobbyNet.canPlay()) {
-      if (window.LobbyNet.handlePlayBlocked) {
-        window.LobbyNet.handlePlayBlocked(
-          window.LobbyNet.getBlockMessage && window.LobbyNet.getBlockMessage()
-        );
+    var net = window.LobbyNet;
+    if (net && net.isLoggedIn && !net.isLoggedIn()) {
+      if (net.canPlayOfflineTutorial && !net.canPlayOfflineTutorial()) {
+        if (net.handlePlayBlocked) {
+          net.handlePlayBlocked(net.getBlockMessage && net.getBlockMessage());
+        }
+        return;
+      }
+      currentMapId = "tutorial";
+      enterConfirmed();
+      return;
+    }
+
+    if (net && net.canPlay && !net.canPlay()) {
+      if (net.handlePlayBlocked) {
+        net.handlePlayBlocked(net.getBlockMessage && net.getBlockMessage());
       }
       return;
     }
@@ -4377,6 +6260,11 @@ if (typeof window !== "undefined") {
   }
 
   function enter() {
+    if (enterInProgress) {
+      if (loadScreenEl && !loadScreenEl.hidden) return;
+      enterInProgress = false;
+      hideEnterLoading();
+    }
     withPlayCheck(function () {
       startEnter(resolveDefaultMapId());
     });
@@ -4429,6 +6317,18 @@ if (typeof window !== "undefined") {
     ) {
       window.HiddenLootBox.resetForNewRun();
     }
+    if (window.WaitingHallLockbox && window.WaitingHallLockbox.resetForNewRun) {
+      window.WaitingHallLockbox.resetForNewRun();
+    }
+    if (window.CollectionRoomChest && window.CollectionRoomChest.resetForNewRun) {
+      window.CollectionRoomChest.resetForNewRun();
+    }
+    if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.resetForNewRun) {
+      window.CollectionRoomFloorLoot.resetForNewRun();
+    }
+    if (window.ActionDropLoot && window.ActionDropLoot.resetForNewRun) {
+      window.ActionDropLoot.resetForNewRun();
+    }
     if (window.ActionWasteBin && window.ActionWasteBin.resetForNewRun) {
       window.ActionWasteBin.resetForNewRun();
     }
@@ -4469,17 +6369,18 @@ if (typeof window !== "undefined") {
   function setWeaponHint() {
     if (!hintEl) return;
     if (shouldUseDragLook()) {
-      var mobileCtrl = " · 左下背包 · 摇杆上推过线疾跑 · 右下跳跃";
+      var mobileCtrl =
+        " · 左下背包 · 摇杆上推过线疾跑 · 右下蹲伏 · 右下跳跃";
       if (window.ActionWeapon && window.ActionWeapon.hasUziEquipped()) {
         hintEl.textContent =
           "拖动转视角 · 摇杆移动" +
           mobileCtrl +
-          " · E 交互 · B 背包 · Q 返回";
+          " · 点词条交互 · B 背包 · Q 返回";
       } else {
         hintEl.textContent =
           "拖动转视角 · 摇杆移动" +
           mobileCtrl +
-          " · E 交互 · B 背包 · Q 返回大厅";
+          " · 点词条交互 · B 背包 · Q 返回大厅";
       }
       return;
     }
@@ -4492,10 +6393,25 @@ if (typeof window !== "undefined") {
     }
   }
 
-  function exit() {
+  /**
+   * @param {{ clearLoadout?: boolean }} [options]
+   *   clearLoadout 默认 true：清空胸挂/背包/装备（保留安全箱）。撤离成功传 false。
+   */
+  function exit(options) {
+    options = options || {};
+    var clearLoadout = options.clearLoadout !== false;
+
     if (window.LobbyNet && window.LobbyNet.stopSessionProbe) {
       window.LobbyNet.stopSessionProbe();
     }
+
+    if (clearLoadout && window.PlayerLoadout && window.PlayerLoadout.applyDeathDrop) {
+      window.PlayerLoadout.applyDeathDrop();
+    }
+    if (window.ActionInventory && window.ActionInventory.refresh) {
+      window.ActionInventory.refresh();
+    }
+
     if (window.PlayerStatePersist && window.PlayerStatePersist.save) {
       window.PlayerStatePersist.save();
     }
@@ -4507,6 +6423,18 @@ if (typeof window !== "undefined") {
     }
     if (window.HiddenLootBox && window.HiddenLootBox.resetForNewRun) {
       window.HiddenLootBox.resetForNewRun();
+    }
+    if (window.WaitingHallLockbox && window.WaitingHallLockbox.resetForNewRun) {
+      window.WaitingHallLockbox.resetForNewRun();
+    }
+    if (window.CollectionRoomChest && window.CollectionRoomChest.resetForNewRun) {
+      window.CollectionRoomChest.resetForNewRun();
+    }
+    if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.resetForNewRun) {
+      window.CollectionRoomFloorLoot.resetForNewRun();
+    }
+    if (window.ActionDropLoot && window.ActionDropLoot.resetForNewRun) {
+      window.ActionDropLoot.resetForNewRun();
     }
     if (window.ActionWasteBin && window.ActionWasteBin.resetForNewRun) {
       window.ActionWasteBin.resetForNewRun();
@@ -4535,12 +6463,81 @@ if (typeof window !== "undefined") {
     setHintVisible(true);
   }
 
+  function closeActionUiOnEscape() {
+    if (
+      window.GridStashUI &&
+      window.GridStashUI.isPopoverOpen &&
+      window.GridStashUI.isPopoverOpen()
+    ) {
+      window.GridStashUI.hidePopover();
+      return true;
+    }
+    if (window.ActionWasteBin && window.ActionWasteBin.isOpen()) {
+      window.ActionWasteBin.close();
+      return true;
+    }
+    if (window.HiddenLootBox && window.HiddenLootBox.isPuzzleOpen()) {
+      window.HiddenLootBox.closePuzzle();
+      return true;
+    }
+    if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
+      window.LockpickingQTE.close();
+      return true;
+    }
+    if (window.HiddenLootBox && window.HiddenLootBox.isPanelOpen()) {
+      window.HiddenLootBox.closeChestPanel();
+      return true;
+    }
+    if (window.WaitingHallLockbox && window.WaitingHallLockbox.isPanelOpen()) {
+      window.WaitingHallLockbox.closeChestPanel();
+      return true;
+    }
+    if (window.CollectionRoomChest && window.CollectionRoomChest.isPanelOpen()) {
+      window.CollectionRoomChest.closeChestPanel();
+      return true;
+    }
+    if (window.WorldLootBox && window.WorldLootBox.isPanelOpen()) {
+      window.WorldLootBox.closeChestPanel();
+      return true;
+    }
+    if (isInventoryOpen() || document.body.classList.contains("inventory-open")) {
+      if (window.ActionInventory) window.ActionInventory.close();
+      return true;
+    }
+    return false;
+  }
+
+  function onEscapeKey(e) {
+    if (!running || e.code !== "Escape" || e.repeat) return;
+    if (e.defaultPrevented) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (closeActionUiOnEscape()) return;
+    exit();
+    if (window.LobbyUI && window.LobbyUI.goHome) {
+      window.LobbyUI.goHome();
+    }
+  }
+
   function onKeyDown(e) {
     if (!running) return;
 
     if (e.code === "KeyB" || e.code === "Tab") {
       e.preventDefault();
       if (!e.repeat) toggleInventory();
+      return;
+    }
+
+    if (e.code === "KeyG" && !e.repeat) {
+      if (
+        window.ActionInventory &&
+        window.ActionInventory.isOpen() &&
+        window.GridStashUI &&
+        window.GridStashUI.tryDropHoveredItem
+      ) {
+        e.preventDefault();
+        window.GridStashUI.tryDropHoveredItem();
+      }
       return;
     }
 
@@ -4553,39 +6550,6 @@ if (typeof window !== "undefined") {
     if (e.code === "KeyQ" && !e.repeat) {
       e.preventDefault();
       exit();
-      return;
-    }
-
-    if (e.code === "Escape") {
-      e.preventDefault();
-      if (window.ActionWasteBin && window.ActionWasteBin.isOpen()) {
-        window.ActionWasteBin.close();
-        return;
-      }
-      if (window.HiddenLootBox && window.HiddenLootBox.isPuzzleOpen()) {
-        window.HiddenLootBox.closePuzzle();
-        return;
-      }
-      if (window.LockpickingQTE && window.LockpickingQTE.isOpen()) {
-        window.LockpickingQTE.close();
-        return;
-      }
-      if (window.HiddenLootBox && window.HiddenLootBox.isPanelOpen()) {
-        window.HiddenLootBox.closeChestPanel();
-        return;
-      }
-      if (window.WorldLootBox && window.WorldLootBox.isPanelOpen()) {
-        window.WorldLootBox.closeChestPanel();
-        return;
-      }
-      if (isInventoryOpen()) {
-        window.ActionInventory.close();
-        return;
-      }
-      exit();
-      if (window.LobbyUI && window.LobbyUI.goHome) {
-        window.LobbyUI.goHome();
-      }
       return;
     }
 
@@ -4630,18 +6594,17 @@ if (typeof window !== "undefined") {
   }
 
   function bindUI() {
-    if (!btnAction || !actionRoot || !canvas) return;
+    if (!actionRoot || !canvas) return;
+
+    hideEnterLoading();
+    document.body.classList.remove("action-loading");
 
     mountLookLayer();
 
-    btnAction.addEventListener("click", enter);
     if (btnBack) btnBack.addEventListener("click", exit);
     if (interactHintEl) {
-      interactHintEl.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (interactHintEl.hidden) return;
-        tryInteract();
+      interactHintEl.addEventListener("pointerdown", onInteractHintTap, {
+        passive: false,
       });
     }
     canvas.addEventListener("click", function () {
@@ -4672,6 +6635,7 @@ if (typeof window !== "undefined") {
       });
     }
 
+    document.addEventListener("keydown", onEscapeKey, true);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
     document.addEventListener("mousemove", onMouseMove);
@@ -4679,31 +6643,46 @@ if (typeof window !== "undefined") {
     window.addEventListener("resize", resize);
     window.addEventListener("blur", clearInputKeys);
 
-    window.ActionScene = {
-      enter: enter,
-      enterMap: enterMap,
-      exit: exit,
-      onChestOpened: onChestOpened,
-      onPlayerDeath: onPlayerDeath,
-      resetExplosionState: resetExplosionState,
-      isActive: function () {
-        return running && actionRoot && !actionRoot.hidden;
-      },
-      ready: function () {
-        return ready;
-      },
-      onInventoryOpened: onInventoryOpened,
-      onInventoryClosed: onInventoryClosed,
-      showDurabilityBanner: showDurabilityBanner,
-      releaseUiPointer: releasePointerForUi,
-      tryJump: tryJump,
-      toggleInventory: toggleInventory,
-    };
-
     if (typeof THREE === "undefined") {
       console.warn("[ActionScene] Three.js 未就绪，请通过 HTTP 服务打开页面。");
     }
   }
+
+  window.ActionScene = {
+    enter: enter,
+    enterMap: enterMap,
+    exit: exit,
+    onChestOpened: onChestOpened,
+    onPlayerDeath: onPlayerDeath,
+    resetExplosionState: resetExplosionState,
+    isActive: function () {
+      return running && actionRoot && !actionRoot.hidden;
+    },
+    ready: function () {
+      return ready;
+    },
+    onInventoryOpened: onInventoryOpened,
+    onInventoryClosed: onInventoryClosed,
+    showDurabilityBanner: showDurabilityBanner,
+    releaseUiPointer: releasePointerForUi,
+    tryJump: tryJump,
+    toggleInventory: toggleInventory,
+    hasLineOfSight: function (px, pz, tx, ty, tz, margin) {
+      return hasLineOfSight(px, pos.y, pz, tx, ty, tz, margin);
+    },
+    isRunning: function () {
+      return running;
+    },
+    getDropPlacement: function () {
+      var dist = 0.9;
+      return {
+        x: pos.x + Math.sin(yaw) * dist,
+        z: pos.z + Math.cos(yaw) * dist,
+        floorY: 0,
+        yaw: yaw,
+      };
+    },
+  };
 
   bindUI();
 })();

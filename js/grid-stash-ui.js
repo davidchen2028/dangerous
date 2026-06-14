@@ -37,6 +37,7 @@
   var loadoutPending = null;
   var loadoutDragActive = false;
   var persistReady = false;
+  var hoveredItem = null;
 
   function catalogToItem(cat) {
     if (!cat || !window.ItemCatalog) return null;
@@ -165,12 +166,31 @@
     return null;
   }
 
+  /** 大厅仓库在行动场景中被 visibility:hidden，但 getBoundingClientRect 仍有效，须排除 */
+  function isBoardHostVisible(host) {
+    if (!host || !host.isConnected) return false;
+    var el = host;
+    while (el) {
+      var style = window.getComputedStyle(el);
+      if (
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        parseFloat(style.opacity) === 0
+      ) {
+        return false;
+      }
+      el = el.parentElement;
+    }
+    var rect = host.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
   function findBoardAt(clientX, clientY) {
     var list = allBoards();
     var i;
     for (i = list.length - 1; i >= 0; i--) {
       var b = list[i];
-      if (!b.el || b.disabled) continue;
+      if (!b.el || b.disabled || !isBoardHostVisible(b.host)) continue;
       var r = b.el.getBoundingClientRect();
       if (
         clientX >= r.left &&
@@ -381,6 +401,7 @@
 
   function hostGridClass(board) {
     if (board.id === "stash") return "stash-grid inv-grid-host";
+    if (board.id === "backpack") return "inv-grid-host inv-grid-host--scroll";
     return "inv-grid-host";
   }
 
@@ -463,6 +484,58 @@
     }
   }
 
+  function canHoverDropItem(board, inst) {
+    if (!board || !inst || !inst.itemData) return false;
+    if (!window.ActionScene || !window.ActionScene.isRunning || !window.ActionScene.isRunning()) {
+      return false;
+    }
+    if (!window.ActionDropLoot) return false;
+    return (
+      window.ActionDropLoot.isActionDropBoard(board.id) &&
+      window.ActionDropLoot.canDropItemData(inst.itemData)
+    );
+  }
+
+  function setItemHoverDrop(el, board, inst, on) {
+    if (!el) return;
+    el.classList.toggle("inv-item--hover-drop", on && canHoverDropItem(board, inst));
+  }
+
+  function clearHoveredItem(inst) {
+    if (hoveredItem && (!inst || hoveredItem.inst === inst)) {
+      if (hoveredItem.el) {
+        setItemHoverDrop(hoveredItem.el, hoveredItem.board, hoveredItem.inst, false);
+      }
+      hoveredItem = null;
+    }
+  }
+
+  function tryDropHoveredItem() {
+    if (!hoveredItem || !hoveredItem.board || !hoveredItem.inst) return false;
+
+    var board = hoveredItem.board;
+    var inst = hoveredItem.inst;
+
+    if (!window.ActionDropLoot) return false;
+    if (!window.ActionDropLoot.isActionDropBoard(board.id)) return false;
+
+    if (!window.ActionDropLoot.canDropItemData(inst.itemData)) {
+      if (window.ActionScene && window.ActionScene.showDurabilityBanner) {
+        window.ActionScene.showDurabilityBanner("该物品无法丢下");
+      }
+      return false;
+    }
+
+    if (!window.ActionDropLoot.dropFromBoard(board, inst)) return false;
+
+    clearHoveredItem();
+    renderAll();
+    if (window.ActionInventory && window.ActionInventory.refresh) {
+      window.ActionInventory.refresh();
+    }
+    return true;
+  }
+
   function renderItemElement(board, inst) {
     var el = document.createElement("div");
     el.className = "inv-item";
@@ -494,7 +567,18 @@
 
     el.title =
       inst.itemData.name +
-      " · 单击定价/回收 · 拖拽移动 · 双击装备（仓库内）";
+      (canHoverDropItem(board, inst)
+        ? " · 悬停后按 G 丢下"
+        : " · 单击定价/回收 · 拖拽移动 · 双击装备（仓库内）");
+
+    el.addEventListener("mouseenter", function () {
+      clearHoveredItem();
+      hoveredItem = { board: board, inst: inst, el: el };
+      setItemHoverDrop(el, board, inst, true);
+    });
+    el.addEventListener("mouseleave", function () {
+      clearHoveredItem(inst);
+    });
 
     el.addEventListener("pointerdown", function (e) {
       if (e.button !== 0 || board.disabled) return;
@@ -536,6 +620,7 @@
     el.removeEventListener("pointerup", onPointerUp);
     el.removeEventListener("pointercancel", onPointerUp);
     didDragThisGesture = true;
+    clearHoveredItem(inst);
     drag = {
       board: board,
       item: inst,
@@ -583,7 +668,9 @@
       if (
         !didDragThisGesture &&
         pointerDistFromStart(e, pending.startX, pending.startY) <
-          DRAG_THRESHOLD_PX
+          DRAG_THRESHOLD_PX &&
+        b.id !== "actionBp" &&
+        b.id !== "actionSecure"
       ) {
         showPopover(inst, b.id);
       }
@@ -648,6 +735,20 @@
       pending = null;
       renderAll();
       window.PlayerLoadout.renderLobby();
+      return;
+    }
+
+    if (
+      !findBoardAt(e.clientX, e.clientY) &&
+      window.ActionDropLoot &&
+      window.ActionDropLoot.dropFromBoard(source, inst)
+    ) {
+      drag = null;
+      pending = null;
+      renderAll();
+      if (window.ActionInventory && window.ActionInventory.refresh) {
+        window.ActionInventory.refresh();
+      }
       return;
     }
 
@@ -718,6 +819,8 @@
       rig_light: "riglt",
       bp_sport: "bpspt",
       bp_light: "bplgt",
+      bp_small: "bpsm4",
+      bp_test: "bptst",
       helm_basic: "helm1",
       armr_basic: "armr1",
       uzi_smg: "uzism",
@@ -865,83 +968,40 @@
     return n;
   }
 
-  var STARTER_KIT_STORAGE_KEY = "dangerous_starter_kit_granted";
-
-  function isStarterKitGranted() {
-    try {
-      if (localStorage.getItem(STARTER_KIT_STORAGE_KEY) === "1") return true;
-      if (localStorage.getItem("dangerous_starter_kit_v1") === "1") {
-        return true;
-      }
-      return false;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  function markStarterKitGranted() {
-    try {
-      localStorage.setItem(STARTER_KIT_STORAGE_KEY, "1");
-    } catch (e) {
-      /* ignore */
-    }
-  }
-
-  /** 仅首次进游戏：UZI ×1 + 黄铜子弹 60发 ×2（之后卖掉也不会再刷） */
-  function placeStarterKitOnce() {
+  /** 注册新账号：克里姆林包（装备）+ 极危荣誉章 ×2（仓库） */
+  function grantNewAccountKit() {
     if (!window.ItemCatalog) return false;
 
     var changed = false;
-    var bulletStacks = countStashItem("brass_bullet");
+    var loadout =
+      window.PlayerLoadout && window.PlayerLoadout.getLoadout
+        ? window.PlayerLoadout.getLoadout()
+        : null;
 
-    if (countStashItem("uzi_smg") < 1) {
-      var uzi = window.ItemCatalog.getItem("uzi_smg");
-      if (uzi) {
-        var uziData = catalogToItem(uzi);
-        if (uziData) {
-          var uziInst = G.createInventoryItem(uziData);
-          if (
-            stashManager.tryAutoPlace(uziInst) ||
-            stashManager.placeItem(uziInst, 0, 0)
-          ) {
-            changed = true;
-          } else {
-            console.warn("[GridStash] 新手 UZI 无法放入仓库，请整理格子");
-          }
-        }
+    if (
+      loadout &&
+      !loadout.backpack &&
+      window.PlayerLoadout.equipFromCatalogItemId
+    ) {
+      if (window.PlayerLoadout.equipFromCatalogItemId("bp_small")) {
+        changed = true;
       }
     }
 
-    var bullet = window.ItemCatalog.getItem("brass_bullet");
-    while (bulletStacks < 2 && bullet) {
-      var stack = Object.assign({}, bullet);
-      stack.stackSize = 60;
-      var bulletData = catalogToItem(stack);
-      if (!bulletData) break;
-      var bulletInst = G.createInventoryItem(bulletData);
-      if (
-        stashManager.tryAutoPlace(bulletInst) ||
-        stashManager.placeItem(bulletInst, 0, 3)
-      ) {
-        bulletStacks += 1;
+    var medal = window.ItemCatalog.getItem("collectible_3005");
+    var medalCount = countStashItem("collectible_3005");
+    while (medalCount < 2 && medal) {
+      if (tryAddToManager(stashManager, medal)) {
+        medalCount += 1;
         changed = true;
       } else {
+        console.warn("[GridStash] 新手荣誉章无法放入仓库，请整理格子");
         break;
       }
     }
 
-    return changed;
-  }
-
-  function seedStarterKit() {
-    if (seeded) return;
-    seeded = true;
-    if (isStarterKitGranted()) return;
-    if (!window.ItemCatalog) return;
-
-    var changed = placeStarterKitOnce();
-    markStarterKitGranted();
     if (changed) renderAll();
+    return changed;
   }
 
   function getEquippedFromSlot(slotKey, cardIndex) {
@@ -1157,8 +1217,8 @@
     if (window.PlayerLoadout && window.PlayerLoadout.renderLobby) {
       window.PlayerLoadout.renderLobby();
     }
-    var layout = document.querySelector(".hub-panel__box--stash > .stash-layout");
-    if (layout) layout.scrollTop = 0;
+    var body = document.querySelector(".hub-panel__box--stash > .stash-body");
+    if (body) body.scrollTop = 0;
   }
 
   function init() {
@@ -1198,7 +1258,7 @@
 
   window.GridStashUI = {
     init: init,
-    ensureSeeded: seedStarterKit,
+    grantNewAccountKit: grantNewAccountKit,
     markSeeded: function () {
       seeded = true;
     },
@@ -1222,6 +1282,11 @@
       return getBackpackManager();
     },
     mountExternalBoard: mountExternalBoard,
+    tryDropHoveredItem: tryDropHoveredItem,
+    hidePopover: hidePopover,
+    isPopoverOpen: function () {
+      return !!(popoverEl && !popoverEl.classList.contains("ui-hidden"));
+    },
   };
 
   init();

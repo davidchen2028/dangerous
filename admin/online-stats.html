@@ -596,7 +596,17 @@
             }
             statusEl.hidden = false;
             statusEl.className = "error";
-            statusEl.textContent = err.message || "加载失败";
+            var msg = err.message || "加载失败";
+            if (
+              msg === "Failed to fetch" ||
+              msg.indexOf("NetworkError") >= 0 ||
+              msg.indexOf("Load failed") >= 0
+            ) {
+              msg =
+                "无法连接服务器。请先在本机终端运行 ./run.sh（或 ./run-admin.sh），" +
+                "再用 http://127.0.0.1:8080 或 :8082 打开本页，不要双击 html 文件。";
+            }
+            statusEl.textContent = msg;
           });
       }
 

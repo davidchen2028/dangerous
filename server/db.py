@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 DB_PATH = Path(__file__).resolve().parent / "lobby.db"
 STASH_CELL_COUNT = 60
-DEFAULT_CREDITS = 50000
+DEFAULT_CREDITS = 30000
 PLAYER_STATE_VERSION = 1
 MAX_PLAYER_STATE_BYTES = 512_000
 
@@ -859,17 +859,26 @@ def _migrate_market_stock_table() -> None:
         )
 
 
+def _market_catalog():
+    """每次读取最新商品表，避免新增商品后必须重启进程。"""
+    import importlib
+    import market_catalog
+
+    importlib.reload(market_catalog)
+    return market_catalog
+
+
 def ensure_market_stock() -> None:
-    from market_catalog import MARKET_DEFAULT_STOCK, MARKET_PRODUCT_IDS
+    mc = _market_catalog()
 
     with connect() as conn:
-        for pid in MARKET_PRODUCT_IDS:
+        for pid in mc.MARKET_PRODUCT_IDS:
             conn.execute(
                 """
                 INSERT OR IGNORE INTO market_stock (product_id, quantity)
                 VALUES (?, ?)
                 """,
-                (pid, MARKET_DEFAULT_STOCK),
+                (pid, mc.MARKET_DEFAULT_STOCK),
             )
 
 
@@ -895,10 +904,10 @@ def get_market_stock_summary() -> Dict[str, Any]:
 
 
 def try_consume_market_stock(product_id: str) -> Tuple[bool, str]:
-    from market_catalog import MARKET_PRODUCT_IDS
+    mc = _market_catalog()
 
     pid = (product_id or "").strip()
-    if pid not in MARKET_PRODUCT_IDS:
+    if pid not in mc.MARKET_PRODUCT_IDS:
         return False, "商品不存在"
     ensure_market_stock()
     with connect() as conn:
@@ -922,13 +931,13 @@ def try_consume_market_stock(product_id: str) -> Tuple[bool, str]:
 
 
 def restock_market(amount: int) -> Dict[str, int]:
-    from market_catalog import MARKET_PRODUCT_IDS
+    mc = _market_catalog()
 
     if amount <= 0:
         return get_market_stock()
     ensure_market_stock()
     with connect() as conn:
-        for pid in MARKET_PRODUCT_IDS:
+        for pid in mc.MARKET_PRODUCT_IDS:
             conn.execute(
                 """
                 UPDATE market_stock
@@ -941,17 +950,17 @@ def restock_market(amount: int) -> Dict[str, int]:
 
 
 def reset_market_stock() -> Dict[str, int]:
-    from market_catalog import MARKET_DEFAULT_STOCK, MARKET_PRODUCT_IDS
+    mc = _market_catalog()
 
     ensure_market_stock()
     with connect() as conn:
-        for pid in MARKET_PRODUCT_IDS:
+        for pid in mc.MARKET_PRODUCT_IDS:
             conn.execute(
                 """
                 UPDATE market_stock
                 SET quantity = ?
                 WHERE product_id = ?
                 """,
-                (MARKET_DEFAULT_STOCK, pid),
+                (mc.MARKET_DEFAULT_STOCK, pid),
             )
     return get_market_stock()

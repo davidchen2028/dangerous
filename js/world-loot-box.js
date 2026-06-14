@@ -10,19 +10,33 @@
   var CHEST_Z = 77.5;
   /** 直立摆放碰撞盒（宽 × 高 × 深） */
   var CHEST_SIZE = { x: 1.05, y: 1.05, z: 0.85 };
-  /** GLB 贴地后的 yaw：正面朝走廊入口（-Z） */
-  var CHEST_YAW = Math.PI;
+  /**
+   * 调朝向只改下面 4 个常量；保存后必须 Cmd+Shift+R 硬刷新页面。
+   * 进教程后可在控制台：WorldLootBox.getChestOrientation()
+   * MODEL_* → ChestModelPivot；YAW → ChestYawPivot（与收藏室同款 Y=90 + yaw）
+   */
+  var CHEST_MODEL_ROT_X_DEG = 0;
+  var CHEST_MODEL_ROT_Y_DEG = 90;
+  var CHEST_MODEL_ROT_Z_DEG = 0;
+  /** 场景水平朝向（度）；180 = 正面朝玩家（教程出生点 -Z） */
+  var CHEST_YAW_DEG = 180;
+  /** true = 用旧版自动猜朝向；建模朝向已固定时保持 false */
+  var CHEST_USE_AUTO_ORIENT = false;
   var CHEST_COLS = 4;
   var CHEST_ROWS = 4;
   var INTERACT_DIST = 4.2;
   var AIM_MAX_DIST = 12;
-  var AIM_DOT_MIN = 0.88;
+  var PICK_MESH_SCALE = 0.78;
   var STORAGE_KEY = "dangerous_pirate_chest_opened";
   /** 新手教程首箱：若无紫色则强制塞一件史诗 */
   var firstChestGuarantee = false;
 
   var pickMesh = null;
   var chestRoot = null;
+  var chestModel = null;
+  var chestYawPivot = null;
+  var chestModelPivot = null;
+  var chestBuildGeneration = 0;
   var lidNode = null;
   var lidClosedRotation = null;
   var aimed = false;
@@ -41,7 +55,6 @@
 
   var _raycaster = null;
   var _ndc = null;
-  var _dir = null;
 
   function isOpenedPersisted() {
     try {
@@ -108,9 +121,173 @@
     return found;
   }
 
-  /** 正放贴地，锁扣朝向走廊入口（-Z） */
+  function degToRad(deg) {
+    return (deg * Math.PI) / 180;
+  }
+
+  function getChestYaw() {
+    return degToRad(CHEST_YAW_DEG);
+  }
+
+  function getChestModelNode(root) {
+    if (!root) return null;
+    var i;
+    for (i = 0; i < root.children.length; i++) {
+      if (root.children[i].name !== "ChestPickVolume") {
+        return root.children[i];
+      }
+    }
+    return null;
+  }
+
+  function resetGltfScenePose(model) {
+    if (!model) return;
+    model.position.set(0, 0, 0);
+    model.rotation.set(0, 0, 0);
+    model.scale.set(1, 1, 1);
+    model.updateMatrixWorld(true);
+  }
+
+  function applyChestModelPivotRotation() {
+    if (!chestModelPivot) return;
+    chestModelPivot.rotation.order = "XYZ";
+    chestModelPivot.rotation.set(
+      degToRad(CHEST_MODEL_ROT_X_DEG),
+      degToRad(CHEST_MODEL_ROT_Y_DEG),
+      degToRad(CHEST_MODEL_ROT_Z_DEG)
+    );
+    chestModelPivot.updateMatrixWorld(true);
+  }
+
+  function applyChestYawPivotRotation() {
+    if (!chestYawPivot) return;
+    chestYawPivot.rotation.set(0, getChestYaw(), 0);
+    chestYawPivot.updateMatrixWorld(true);
+  }
+
+  function applyChestRootYaw(root) {
+    if (!root) return;
+    root.rotation.set(0, getChestYaw(), 0);
+    root.updateMatrixWorld(true);
+  }
+
+  function destroyChest() {
+    chestBuildGeneration += 1;
+    chestRoot = null;
+    chestModel = null;
+    chestYawPivot = null;
+    chestModelPivot = null;
+    lidNode = null;
+    lidClosedRotation = null;
+    pickMesh = null;
+  }
+
+  function fitChestToTargetSize(root) {
+    if (!sceneHelpers || !root) return;
+    if (sceneHelpers.fitModelUniformToBox) {
+      sceneHelpers.fitModelUniformToBox(root, CHEST_SIZE);
+      return;
+    }
+    if (sceneHelpers.fitModelToBox) {
+      sceneHelpers.fitModelToBox(root, CHEST_SIZE);
+      sceneHelpers.fitModelToBox(root, CHEST_SIZE);
+    }
+  }
+
+  function isProceduralChestRoot(root) {
+    return !!(root && root.name === "PirateLootChest_Fallback");
+  }
+
+  /** 模型 pivot 扶正 → fit → yaw pivot（两步分开，改常量才能看出区别） */
+  function applyChestTransformAndFit(root) {
+    if (!root) return;
+
+    root.rotation.set(0, 0, 0);
+    root.scale.set(1, 1, 1);
+
+    if (isProceduralChestRoot(root)) {
+      applyChestRootYaw(root);
+      return;
+    }
+
+    if (!chestYawPivot || !chestModelPivot) return;
+
+    chestYawPivot.rotation.set(0, 0, 0);
+    chestModelPivot.rotation.set(0, 0, 0);
+    chestModelPivot.scale.set(1, 1, 1);
+    if (chestModel) resetGltfScenePose(chestModel);
+    if (CHEST_USE_AUTO_ORIENT && chestModel) {
+      orientChestModel(chestModel);
+    } else {
+      applyChestModelPivotRotation();
+    }
+    fitChestToTargetSize(root);
+    applyChestYawPivotRotation();
+  }
+
+  function snapChestToWorld(root) {
+    if (!window.THREE || !root) return;
+
+    var THREE = window.THREE;
+    var box = new THREE.Box3();
+    var center = new THREE.Vector3();
+
+    root.updateMatrixWorld(true);
+    box.setFromObject(root);
+    box.getCenter(center);
+    root.position.set(CHEST_X - center.x, -box.min.y, CHEST_Z - center.z);
+    root.updateMatrixWorld(true);
+  }
+
+  function syncChestPickVolume(root) {
+    if (!window.THREE || !root) return;
+
+    var THREE = window.THREE;
+    var box = new THREE.Box3();
+    var center = new THREE.Vector3();
+    var size = new THREE.Vector3();
+    var inv = new THREE.Matrix4();
+    var pick = root.getObjectByName("ChestPickVolume");
+
+    root.updateMatrixWorld(true);
+    box.setFromObject(root);
+    box.getSize(size);
+    box.getCenter(center);
+    inv.copy(root.matrixWorld).invert();
+    center.applyMatrix4(inv);
+
+    if (!pick) {
+      pick = new THREE.Mesh(
+        new THREE.BoxGeometry(
+          size.x * PICK_MESH_SCALE,
+          size.y * PICK_MESH_SCALE,
+          size.z * PICK_MESH_SCALE
+        ),
+        new THREE.MeshBasicMaterial({ visible: false, depthWrite: false })
+      );
+      pick.name = "ChestPickVolume";
+      pick.position.copy(center);
+      root.add(pick);
+      registerPickMesh(pick);
+      return;
+    }
+
+    pick.position.copy(center);
+    if (pick.geometry) pick.geometry.dispose();
+    pick.geometry = new THREE.BoxGeometry(
+      size.x * PICK_MESH_SCALE,
+      size.y * PICK_MESH_SCALE,
+      size.z * PICK_MESH_SCALE
+    );
+  }
+
+  /** 正放贴地；默认用手动度数，CHEST_USE_AUTO_ORIENT 时走旧启发式 */
   function orientChestModel(model) {
-    if (!window.THREE) return;
+    if (!window.THREE || !model) return;
+    if (!CHEST_USE_AUTO_ORIENT) {
+      applyChestModelPivotRotation();
+      return;
+    }
     var THREE = window.THREE;
     var presets = [
       { x: 0, y: 0, z: 0 },
@@ -160,7 +337,6 @@
     }
 
     model.rotation.z = 0;
-    model.rotation.y = CHEST_YAW;
     model.updateMatrixWorld(true);
   }
 
@@ -175,7 +351,11 @@
   }
 
   function resetChestPose() {
-    if (chestRoot) chestRoot.rotation.set(0, 0, 0);
+    if (chestRoot) {
+      applyChestTransformAndFit(chestRoot);
+      snapChestToWorld(chestRoot);
+      syncChestPickVolume(chestRoot);
+    }
     if (lidNode && lidClosedRotation) {
       lidNode.rotation.set(
         lidClosedRotation.x,
@@ -188,25 +368,13 @@
   function finalizeChestPlacement(root, binSize) {
     if (!window.THREE || !root) return;
 
-    var THREE = window.THREE;
-    root.updateMatrixWorld(true);
-    var box = new THREE.Box3().setFromObject(root);
-    var center = new THREE.Vector3();
-    box.getCenter(center);
-    root.position.set(CHEST_X - center.x, -box.min.y, CHEST_Z - center.z);
-    root.updateMatrixWorld(true);
+    applyChestTransformAndFit(root);
+    snapChestToWorld(root);
 
     lidNode = findLidNode(root);
     rememberLidPose();
 
-    var pick = new THREE.Mesh(
-      new THREE.BoxGeometry(binSize.x, binSize.y, binSize.z),
-      new THREE.MeshBasicMaterial({ visible: false, depthWrite: false })
-    );
-    pick.name = "ChestPickVolume";
-    pick.position.y = binSize.y * 0.5;
-    root.add(pick);
-    registerPickMesh(pick);
+    syncChestPickVolume(root);
 
     chestRoot = root;
 
@@ -259,9 +427,11 @@
     if (!sceneHelpers || !sceneHelpers.loadGltfCached) {
       return buildProceduralChest(parent);
     }
+    var buildGen = chestBuildGeneration;
     sceneHelpers.loadGltfCached(
       CHEST_GLB_URL,
       function (gltf) {
+        if (buildGen !== chestBuildGeneration) return;
         var THREE = window.THREE;
         if (!THREE) {
           buildProceduralChest(parent);
@@ -269,13 +439,18 @@
         }
         var model = gltf.scene.clone(true);
         var root = new THREE.Group();
+        var yawPivot = new THREE.Group();
+        var modelPivot = new THREE.Group();
         root.name = "PirateLootChest_GLB";
-        root.add(model);
-        orientChestModel(model);
-        if (sceneHelpers.fitModelToBox) {
-          sceneHelpers.fitModelToBox(root, CHEST_SIZE);
-          sceneHelpers.fitModelToBox(root, CHEST_SIZE);
-        }
+        yawPivot.name = "ChestYawPivot";
+        modelPivot.name = "ChestModelPivot";
+        chestModel = model;
+        chestYawPivot = yawPivot;
+        chestModelPivot = modelPivot;
+        resetGltfScenePose(model);
+        modelPivot.add(model);
+        yawPivot.add(modelPivot);
+        root.add(yawPivot);
         model.traverse(function (child) {
           if (!child.isMesh || !child.material) return;
           child.castShadow = true;
@@ -285,72 +460,80 @@
         finalizeChestPlacement(root, CHEST_SIZE);
       },
       function () {
+        if (buildGen !== chestBuildGeneration) return;
         buildProceduralChest(parent);
       }
     );
   }
 
+  function getChestOrientation() {
+    var radToDeg = function (rad) {
+      return (rad * 180) / Math.PI;
+    };
+    return {
+      config: {
+        CHEST_MODEL_ROT_X_DEG: CHEST_MODEL_ROT_X_DEG,
+        CHEST_MODEL_ROT_Y_DEG: CHEST_MODEL_ROT_Y_DEG,
+        CHEST_MODEL_ROT_Z_DEG: CHEST_MODEL_ROT_Z_DEG,
+        CHEST_YAW_DEG: CHEST_YAW_DEG,
+      },
+      chestRootName: chestRoot ? chestRoot.name : null,
+      modelPivotDeg: chestModelPivot
+        ? {
+            x: radToDeg(chestModelPivot.rotation.x),
+            y: radToDeg(chestModelPivot.rotation.y),
+            z: radToDeg(chestModelPivot.rotation.z),
+          }
+        : null,
+      yawPivotDeg: chestYawPivot
+        ? radToDeg(chestYawPivot.rotation.y)
+        : null,
+    };
+  }
+
+  function refreshChestOrientation() {
+    resetChestPose();
+    return getChestOrientation();
+  }
+
   function build(parent, helpers) {
     sceneHelpers = helpers || null;
     if (!parent) return null;
+    destroyChest();
     bindPanelDom();
     buildGlbChest(parent);
     return chestRoot;
   }
 
+  function canSeeChest(px, pz) {
+    if (window.ActionScene && window.ActionScene.hasLineOfSight) {
+      return window.ActionScene.hasLineOfSight(
+        px,
+        pz,
+        CHEST_X,
+        CHEST_SIZE.y * 0.55,
+        CHEST_Z
+      );
+    }
+    return true;
+  }
+
   function updateAim(px, pz, camera) {
     aimed = false;
-    if (!camera) return;
-    if (!playerNear(px, pz)) return;
+    if (!camera || !pickMesh) return;
+    if (!playerNear(px, pz) || !canSeeChest(px, pz)) return;
 
     var THREE = window.THREE;
     if (!THREE) return;
 
     if (!_raycaster) _raycaster = new THREE.Raycaster();
     if (!_ndc) _ndc = new THREE.Vector2(0, 0);
-    if (!_dir) _dir = new THREE.Vector3();
 
+    pickMesh.updateMatrixWorld(true);
     _raycaster.setFromCamera(_ndc, camera);
-
-    if (!opened && !isOpenedPersisted() && pickMesh) {
-      var hits = _raycaster.intersectObject(pickMesh, false);
-      if (hits.length > 0) {
-        aimed = true;
-        return;
-      }
-      _dir.set(
-        CHEST_X - _raycaster.ray.origin.x,
-        0.85 - _raycaster.ray.origin.y,
-        CHEST_Z - _raycaster.ray.origin.z
-      );
-      var dist = _dir.length();
-      if (dist <= AIM_MAX_DIST) {
-        _dir.multiplyScalar(1 / dist);
-        if (_raycaster.ray.direction.dot(_dir) >= AIM_DOT_MIN) {
-          aimed = true;
-        }
-      }
-      return;
-    }
-
-    if ((opened || isOpenedPersisted()) && pickMesh) {
-      var h2 = _raycaster.intersectObject(pickMesh, false);
-      if (h2.length > 0) {
-        aimed = true;
-        return;
-      }
-      _dir.set(
-        CHEST_X - _raycaster.ray.origin.x,
-        0.85 - _raycaster.ray.origin.y,
-        CHEST_Z - _raycaster.ray.origin.z
-      );
-      dist = _dir.length();
-      if (dist <= AIM_MAX_DIST) {
-        _dir.multiplyScalar(1 / dist);
-        if (_raycaster.ray.direction.dot(_dir) >= AIM_DOT_MIN) {
-          aimed = true;
-        }
-      }
+    var hits = _raycaster.intersectObject(pickMesh, false);
+    if (hits.length > 0) {
+      aimed = true;
     }
   }
 
@@ -362,6 +545,24 @@
     if (!aimed) return false;
     if (!opened && !isOpenedPersisted()) return true;
     return chestManager && chestManager.items.length > 0;
+  }
+
+  /** 是否显示开锁/查看提示；未开锁时靠近即显示，已开则须对准（手机可放宽） */
+  function shouldShowLockpickHint(px, pz, relaxAim) {
+    if (!playerNear(px, pz) || !canSeeChest(px, pz)) return false;
+    if (!opened && !isOpenedPersisted()) return true;
+    if (!aimed && !relaxAim) return false;
+    return !!(chestManager && chestManager.items.length > 0);
+  }
+
+  function canInteractWithChest(px, pz, relaxAim) {
+    if (relaxAim) {
+      if (px == null || pz == null) return false;
+      return shouldShowLockpickHint(px, pz, true);
+    }
+    if (!aimed) return false;
+    if (!opened && !isOpenedPersisted()) return true;
+    return !!(chestManager && chestManager.items.length > 0);
   }
 
   function clearRevealTimers() {
@@ -643,13 +844,18 @@
     }
   }
 
-  function tryStartLockpick() {
+  function tryStartLockpick(opts) {
+    opts = opts || {};
+    var px = opts.px;
+    var pz = opts.pz;
+    var relaxAim = !!opts.relaxAim;
+
+    if (!canInteractWithChest(px, pz, relaxAim)) return false;
+
     if (opened || isOpenedPersisted()) {
-      if (!aimed) return false;
       openChestPanel();
       return true;
     }
-    if (!aimed) return false;
     if (!window.LockpickingQTE) return false;
 
     if (document.pointerLockElement && document.exitPointerLock) {
@@ -667,6 +873,11 @@
     return true;
   }
 
+  /** 手机点词条：靠近且视线通畅即可开锁 */
+  function tryInteractNear(px, pz) {
+    return tryStartLockpick({ px: px, pz: pz, relaxAim: true });
+  }
+
   function resetForNewRun(options) {
     options = options || {};
     firstChestGuarantee = !!options.firstChestGuarantee;
@@ -676,7 +887,9 @@
     itemMeta = Object.create(null);
     chestManager = null;
     closeChestPanel();
-    resetChestPose();
+    if (chestRoot && chestRoot.parent) {
+      refreshChestOrientation();
+    }
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch (e) {
@@ -688,13 +901,23 @@
     CHEST_GLB_URL: CHEST_GLB_URL,
     CHEST_X: CHEST_X,
     CHEST_Z: CHEST_Z,
+    CHEST_MODEL_ROT_X_DEG: CHEST_MODEL_ROT_X_DEG,
+    CHEST_MODEL_ROT_Y_DEG: CHEST_MODEL_ROT_Y_DEG,
+    CHEST_MODEL_ROT_Z_DEG: CHEST_MODEL_ROT_Z_DEG,
+    CHEST_YAW_DEG: CHEST_YAW_DEG,
+    getChestOrientation: getChestOrientation,
+    refreshChestOrientation: refreshChestOrientation,
+    destroyChest: destroyChest,
     build: build,
     registerPickMesh: registerPickMesh,
     updateAim: updateAim,
     isAimed: isAimed,
     isAimedAtChest: isAimedAtChest,
+    shouldShowLockpickHint: shouldShowLockpickHint,
     playerNear: playerNear,
+    canSeeChest: canSeeChest,
     tryStartLockpick: tryStartLockpick,
+    tryInteractNear: tryInteractNear,
     onQTESuccess: onQTESuccess,
     isOpened: function () {
       return opened || isOpenedPersisted();

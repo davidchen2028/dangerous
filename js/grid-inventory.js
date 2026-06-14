@@ -349,7 +349,9 @@
       if (entry.instanceId >= _instanceSeq) {
         _instanceSeq = entry.instanceId + 1;
       }
-      self.placeItem(inst, entry.x, entry.y);
+      if (!self.placeItem(inst, entry.x, entry.y)) {
+        self.tryAutoPlace(inst);
+      }
     });
   };
 

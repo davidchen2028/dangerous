@@ -12,6 +12,7 @@
       w: 1,
       h: 2,
       image: null,
+      model3d: "models/antique-lockbox.glb",
     },
     bolt: {
       id: "bolt",
@@ -19,6 +20,7 @@
       type: "loot",
       w: 1,
       h: 2,
+      model3d: "models/brass-bullet.glb",
     },
     truck_part: {
       id: "truck_part",
@@ -26,6 +28,7 @@
       type: "loot",
       w: 2,
       h: 2,
+      model3d: "models/futuristic-device.glb",
     },
     circuit: {
       id: "circuit",
@@ -33,10 +36,11 @@
       type: "loot",
       w: 1,
       h: 1,
+      model3d: "models/futuristic-device.glb",
     },
     sealed_motor_oil: {
       id: "sealed_motor_oil",
-      name: "密封的特种机油",
+      name: "特种机油",
       type: "loot",
       w: 1,
       h: 2,
@@ -50,6 +54,7 @@
       flavor:
         "重型工业垃圾。背包实在没东西装时，才会勉强带走的垫底物资。",
       image: "img/market/sealed-motor-oil.png?v=3",
+      model3d: "models/futuristic-device.glb",
     },
     heavy_industrial_drill: {
       id: "heavy_industrial_drill",
@@ -67,6 +72,7 @@
       flavor:
         "高价值工业品。极其占格子——带一枚大钻头，还是带六块小电路板？",
       image: "img/market/heavy-industrial-drill.svg",
+      model3d: "models/ornamental-orrery.glb",
     },
     helm_basic: {
       id: "helm_basic",
@@ -75,6 +81,7 @@
       w: 1,
       h: 1,
       image: "img/market/helmet.svg",
+      model3d: "models/vintage-optical-sight.glb",
     },
     armr_basic: {
       id: "armr_basic",
@@ -83,6 +90,7 @@
       w: 1,
       h: 1,
       image: "img/market/armor.svg",
+      model3d: "models/historical-lockbox.glb",
     },
     rig_light: {
       id: "rig_light",
@@ -92,26 +100,66 @@
       h: 1,
       rigSlots: 6,
       image: "img/market/rig-light.svg",
+      model3d: "models/antique-lockbox.glb",
     },
     bp_sport: {
       id: "bp_sport",
-      name: "运动背包",
+      name: "蝰蛇轻型包",
       type: "backpack",
       w: 1,
       h: 1,
       cols: 2,
       rows: 4,
+      minMarketPrice: 4500,
+      maxMarketPrice: 6000,
       image: "img/market/backpack-sport.svg",
+      model3d: "models/historical-lockbox.glb",
+      flavor:
+        "VIPER LIGHT PACK — 极其贴身，几乎不影响体力和奔跑速度。摸井盖、放弹匣和止痛药的入门首选。储物 2×4。",
     },
     bp_light: {
       id: "bp_light",
-      name: "轻型背包",
+      name: "铁骑巡逻包",
       type: "backpack",
       w: 1,
       h: 1,
       cols: 3,
       rows: 4,
+      minMarketPrice: 18000,
+      maxMarketPrice: 22000,
       image: "img/market/backpack-light.svg",
+      model3d: "models/historical-lockbox.glb",
+      flavor:
+        "IRON CAVALRY PATROL PACK — 标准军规面料，横向拓展到 3 格。略微增加体力消耗，但足够塞下大部分高价值武器和中型护甲。储物 3×4。",
+    },
+    bp_small: {
+      id: "bp_small",
+      name: "克里姆林包",
+      type: "backpack",
+      w: 1,
+      h: 1,
+      cols: 4,
+      rows: 4,
+      minMarketPrice: 65000,
+      maxMarketPrice: 78000,
+      image: "img/market/backpack-light.svg",
+      model3d: "models/historical-lockbox.glb",
+      flavor:
+        "KREMLIN SQUARE PACK — 终极纯正方形空间。极其沉重（背上后无法使用快速撤离点），但只有它能装下等候厅最顶级的整枪和笨重的六角密匣。储物 4×4。",
+    },
+    bp_test: {
+      id: "bp_test",
+      name: "测试",
+      type: "backpack",
+      w: 1,
+      h: 1,
+      cols: 8,
+      rows: 8,
+      minMarketPrice: 0,
+      maxMarketPrice: 0,
+      image: "img/market/backpack-light.svg",
+      model3d: "models/historical-lockbox.glb",
+      flavor: "TEST PACK — 8×8 调试背包，仅供测试。",
     },
     brass_bullet: {
       id: "brass_bullet",
@@ -131,7 +179,7 @@
     },
     uzi_smg: {
       id: "uzi_smg",
-      name: "UZI 冲锋枪",
+      name: "UZI冲锋枪",
       type: "weapon_primary",
       w: 3,
       h: 2,
@@ -146,7 +194,7 @@
     },
     pirate_1001: {
       id: "pirate_1001",
-      name: "废弃的军用电路板",
+      name: "军用电路板",
       type: "loot",
       w: 1,
       h: 1,
@@ -157,10 +205,11 @@
       minMarketPrice: 1000,
       maxMarketPrice: 1000,
       category: "collectible",
+      model3d: "models/futuristic-device.glb",
     },
     pirate_1002: {
       id: "pirate_1002",
-      name: "完整的无人机镜头",
+      name: "无人机镜头",
       type: "loot",
       w: 2,
       h: 2,
@@ -171,6 +220,7 @@
       minMarketPrice: 100000,
       maxMarketPrice: 100000,
       category: "collectible",
+      model3d: "models/vintage-optical-sight.glb",
     },
     pirate_1003: {
       id: "pirate_1003",
@@ -185,10 +235,11 @@
       minMarketPrice: 87000,
       maxMarketPrice: 87000,
       category: "collectible",
+      model3d: "models/historical-lockbox.glb",
     },
     collectible_3001: {
       id: "collectible_3001",
-      name: "前线指挥官的合金火机",
+      name: "合金打火机",
       type: "loot",
       w: 1,
       h: 1,
@@ -202,10 +253,11 @@
       flavor:
         "FRONT-LINE COMMANDER'S ALLOY LIGHTER — 战痕合金打火机，鹰徽与「FOR THE BRAVE」刻字。宝箱约 3.5% 产出。",
       image: "img/market/commander-alloy-lighter.png?v=2",
+      model3d: "models/metallic-lighter.glb",
     },
     collectible_3002: {
       id: "collectible_3002",
-      name: "复古废土手摇八音盒",
+      name: "废土八音盒",
       type: "loot",
       w: 1,
       h: 1,
@@ -219,6 +271,7 @@
       flavor:
         "OLD WORLD MELODIES — 废土手摇八音盒，黄铜机芯与星图顶盖，侧面刻有旧世旋律卷轴。宝箱约 4% 产出。",
       image: "img/market/wasteland-music-box.png",
+      model3d: "models/steampunk-music-box.glb",
     },
     collectible_3003: {
       id: "collectible_3003",
@@ -236,10 +289,11 @@
       flavor:
         "HOLOGRAPHIC TACTICAL SANDBOX — 金框战术推演台，投射紫青全息地形与单位标绘，用于战前沙盘推演。",
       image: "img/market/holographic-sand-table.png?v=1",
+      model3d: "models/interactive-map-table.glb",
     },
     collectible_3004: {
       id: "collectible_3004",
-      name: "已停产的初代微光观测镜",
+      name: "微光观测镜",
       type: "loot",
       w: 1,
       h: 2,
@@ -253,10 +307,11 @@
       flavor:
         "MODEL-1 NIGHTSIGHT — 黄铜镜筒与铭牌上的 61-85M 序列号，初代微光夜视观测镜，宝箱史诗档产出。",
       image: "img/market/micro-light-scope.png?v=1",
+      model3d: "models/vintage-optical-sight.glb",
     },
     collectible_3005: {
       id: "collectible_3005",
-      name: "极危行动初代荣誉勋章",
+      name: "极危荣誉章",
       type: "loot",
       w: 1,
       h: 1,
@@ -270,10 +325,11 @@
       flavor:
         "DANGEROUS — 极危行动初代荣誉勋章，铜质罗盘星章与狮鹫盾徽，宝箱稀有档常见产出。",
       image: "img/market/honor-medal-gen1.png?v=1",
+      model3d: "models/dangerous-badge.glb",
     },
     collectible_3006: {
       id: "collectible_3006",
-      name: "「红莲审判」时间晶体指挥仪",
+      name: "红莲指挥仪",
       type: "loot",
       w: 3,
       h: 3,
@@ -287,10 +343,11 @@
       flavor:
         "CRIMSON LOTUS JUDGEMENT TIME CRYSTAL DIRECTOR — 殿堂级动态艺术藏品，红莲时间晶体与星轨矩阵，终极战略密钥。宝箱 0.5% 产出。",
       image: "img/market/crimson-lotus-director.png?v=1",
+      model3d: "models/crimson-lotus-director.glb",
     },
     collectible_3007: {
       id: "collectible_3007",
-      name: "「永夜极光」黑曜石星象仪",
+      name: "永夜星象仪",
       type: "loot",
       w: 4,
       h: 4,
@@ -304,10 +361,11 @@
       flavor:
         "EVERNIGHT AURORA OBSIDIAN STAR CHART — 黑曜石镜面与黑金浑天仪，底座微雕冷光封存永夜极光，纪念极危行动全面胜利的限量首席战略家藏品。宝箱 0.05% 产出。",
       image: "img/market/evernight-aurora-star-chart.png?v=1",
+      model3d: "models/evernight-aurora-star-chart.glb",
     },
     collectible_3008: {
       id: "collectible_3008",
-      name: "「微缩新星」坍缩黑金单晶",
+      name: "微缩新星",
       type: "loot",
       w: 1,
       h: 1,
@@ -321,10 +379,11 @@
       flavor:
         "MINIATURE NOVA SINGULARITY BLACK-GOLD MONOCrystal — 坍缩黑金多面体，纳米金丝微雕，仅 1 格孤品。维持战术世界的能源奇点，提炼技术已失传，宝箱不产出。",
       image: "img/market/mini-nova-singularity-crystal.png?v=1",
+      model3d: "models/mini-nova-singularity-crystal.glb",
     },
     pirate_1004: {
       id: "pirate_1004",
-      name: "纯金战术指挥鹰雕像",
+      name: "战术指挥鹰",
       type: "loot",
       w: 2,
       h: 2,
@@ -338,10 +397,11 @@
       flavor:
         "AQUILA TACTICA — 纯金铸造的战术指挥鹰，胸挂弹匣、头戴夜视，立于地球仪之上。海盗宝箱极低概率产出，黑市标价五十万。",
       image: "img/market/aquila-tactica-eagle.png?v=2",
+      model3d: "models/tactical-command-eagle-statue.glb",
     },
     pirate_1005: {
       id: "pirate_1005",
-      name: "未知生物血清样本",
+      name: "未知血清",
       type: "loot",
       w: 1,
       h: 1,
@@ -352,10 +412,11 @@
       minMarketPrice: 450000,
       maxMarketPrice: 450000,
       category: "collectible",
+      model3d: "models/mini-nova-singularity-crystal.glb",
     },
     pirate_1006: {
       id: "pirate_1006",
-      name: "军用加密对讲机",
+      name: "军用对讲机",
       type: "loot",
       w: 1,
       h: 1,
@@ -366,15 +427,17 @@
       minMarketPrice: 10000,
       maxMarketPrice: 10000,
       category: "collectible",
+      model3d: "models/futuristic-device.glb",
     },
     pirate_1007: {
       id: "pirate_1007",
-      name: "高清特工夜视仪(损坏)",
+      name: "损坏夜视仪",
       type: "loot",
       w: 1,
       h: 2,
       reclaimMin: 9000,
       category: "collectible",
+      model3d: "models/vintage-optical-sight.glb",
     },
   };
 
@@ -387,6 +450,8 @@
     riglt: "rig_light",
     bpspt: "bp_sport",
     bplgt: "bp_light",
+    bpsm4: "bp_small",
+    bptst: "bp_test",
     brslv: "brass_bullet",
     uzism: "uzi_smg",
     p1001: "pirate_1001",
@@ -435,11 +500,37 @@
     return false;
   }
 
+  function getModel3d(id) {
+    var item = ITEMS[id];
+    return item && item.model3d ? item.model3d : null;
+  }
+
+  function canDropAsWorldModel(id) {
+    return !!getModel3d(id);
+  }
+
+  function getAllModel3dUrls() {
+    var urls = [];
+    var seen = Object.create(null);
+    var key;
+    for (key in ITEMS) {
+      if (!Object.prototype.hasOwnProperty.call(ITEMS, key)) continue;
+      var url = ITEMS[key].model3d;
+      if (!url || seen[url]) continue;
+      seen[url] = true;
+      urls.push(url);
+    }
+    return urls;
+  }
+
   window.ItemCatalog = {
     ITEMS: ITEMS,
     STASH_TO_ITEM: STASH_TO_ITEM,
     getItem: getItem,
     fromStashId: fromStashId,
     acceptsSlot: acceptsSlot,
+    getModel3d: getModel3d,
+    canDropAsWorldModel: canDropAsWorldModel,
+    getAllModel3dUrls: getAllModel3dUrls,
   };
 })();

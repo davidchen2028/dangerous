@@ -106,6 +106,20 @@
     return true;
   }
 
+  function isLoggedIn() {
+    return canPlay();
+  }
+
+  function canPlayOfflineTutorial() {
+    return !ipBanActive && !sessionBlocked;
+  }
+
+  function syncHubModeUi() {
+    if (window.LobbyUI && window.LobbyUI.syncHubMode) {
+      window.LobbyUI.syncHubMode();
+    }
+  }
+
   function getBlockMessage() {
     if (ipBanActive) return "IP 已被封禁，无法连接服务器";
     if (sessionBlocked && sessionBlockMessage) return sessionBlockMessage;
@@ -346,6 +360,46 @@
     netStatus.classList.toggle("net-status--off", !online);
   }
 
+  function hasValidToken() {
+    return !!getToken() && !sessionBlocked && !ipBanActive;
+  }
+
+  function canUseMarket() {
+    return hasValidToken();
+  }
+
+  /** 根据 Socket / 登录态刷新顶栏文案（断线重连时保留已登录） */
+  function updateConnectionStatus() {
+    if (ipBanActive) {
+      setStatus("IP 已被封禁", false);
+      return;
+    }
+    if (sessionBlocked) {
+      setStatus(sessionBlockMessage || "请重新登录", false);
+      return;
+    }
+    if (ready && socketConnected) {
+      setStatus("已登录 · " + myNickname, true);
+      return;
+    }
+    if (ready && !socketConnected) {
+      setStatus("已登录 · 重连中…", false);
+      return;
+    }
+    if (socketConnected) {
+      setStatus(
+        getToken() ? "已连接 · 登录中…" : "已连接 · 请登录或注册",
+        false
+      );
+      return;
+    }
+    if (hasValidToken()) {
+      setStatus("网络波动 · 重连中…", false);
+      return;
+    }
+    setStatus("未连接服务器", false);
+  }
+
   function showNotice(text, isError) {
     if (!friendNotice) return;
     friendNotice.hidden = !text;
@@ -393,6 +447,7 @@
     if (accountMeta) {
       accountMeta.textContent = on ? "已登录 · " + myNickname : "未登录";
     }
+    syncHubModeUi();
     if (window.LobbyStash && window.LobbyStash.onPanelOpen) {
       window.LobbyStash.onPanelOpen();
     }
@@ -664,12 +719,8 @@
   }
 
   function consumeMarketStock(productId, cb) {
-    if (!ready) {
-      if (cb) cb(false, "请先登录", null);
-      return;
-    }
     var token = getToken();
-    if (!token) {
+    if (!token || sessionBlocked || ipBanActive) {
       if (cb) cb(false, "请先登录", null);
       return;
     }
@@ -768,8 +819,11 @@
 
     socket = io(window.location.origin, {
       transports: ["polling", "websocket"],
-      timeout: 20000,
-      reconnectionAttempts: 5,
+      timeout: 25000,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 800,
+      reconnectionDelayMax: 10000,
     });
 
     socket.on("connect", function () {
@@ -779,25 +833,20 @@
         const p = pendingAuth;
         pendingAuth = null;
         socket.emit(p.event, p.payload);
-        setStatus("已连接 · 登录中…", false);
+        updateConnectionStatus();
         return;
       }
-      if (ready) {
-        setStatus("已登录 · " + myNickname, true);
-      } else {
-        setStatus("已连接 · 登录中…", false);
+      if (!ready) {
         tryResume();
-        if (!getToken()) {
-          setStatus("已连接 · 请登录或注册", false);
-        }
       }
+      updateConnectionStatus();
       if (
         window.ActionScene &&
         window.ActionScene.isActive &&
         window.ActionScene.isActive()
       ) {
         startSessionProbe();
-      } else if (ready) {
+      } else if (ready || hasValidToken()) {
         startSessionProbe();
       }
     });
@@ -805,10 +854,16 @@
     socket.on("connect_error", function () {
       if (ipBanActive) return;
       socketConnected = false;
-      setStatus("连接失败", false);
-      joinError.textContent = connectionHelpText();
       if (btnAuthSubmit) btnAuthSubmit.disabled = false;
-      setLoggedInUI(false);
+      if (!ready && !hasValidToken()) {
+        joinError.textContent = connectionHelpText();
+        setLoggedInUI(false);
+      } else if (ready || hasValidToken()) {
+        if (joinError) joinError.textContent = "";
+      } else {
+        joinError.textContent = connectionHelpText();
+      }
+      updateConnectionStatus();
     });
 
     socket.on("ip_banned", function (data) {
@@ -925,17 +980,10 @@
       }
     });
 
-    socket.on("disconnect", function (reason) {
+    socket.on("disconnect", function () {
       socketConnected = false;
-      const wasReady = ready;
-      ready = false;
       if (btnAuthSubmit) btnAuthSubmit.disabled = false;
-      const hint = reason === "io server disconnect" ? " · 服务器断开" : "";
-      if (wasReady) {
-        setStatus("连接断开" + hint + " · 重连中…", false);
-      } else {
-        setStatus("未连接" + hint, false);
-      }
+      updateConnectionStatus();
     });
   }
 
@@ -997,7 +1045,11 @@
     isReady: function () {
       return ready;
     },
+    hasValidToken: hasValidToken,
+    canUseMarket: canUseMarket,
     canPlay: canPlay,
+    isLoggedIn: isLoggedIn,
+    canPlayOfflineTutorial: canPlayOfflineTutorial,
     getBlockMessage: getBlockMessage,
     assertCanPlay: assertCanPlay,
     handlePlayBlocked: handlePlayBlocked,
@@ -1043,6 +1095,7 @@
   updateNicknameDeviceMark();
   renderFriendList();
   renderIncomingRequests();
+  syncHubModeUi();
   setStatus("连接中…", false);
   connectSocket();
 

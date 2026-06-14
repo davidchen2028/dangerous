@@ -85,13 +85,13 @@ public static class ItemDatabase
         {
             // —— 藏品类（宝箱核心池 · ID 3001–3005）——
             ["3001"] = new ItemRecord(
-                "前线指挥官的合金火机",
+                "合金打火机",
                 ItemCategory.Collectible,
                 ItemRarity.Legendary,
                 350_000,
                 210_000),
             ["3002"] = new ItemRecord(
-                "复古废土手摇八音盒",
+                "废土八音盒",
                 ItemCategory.Collectible,
                 ItemRarity.Legendary,
                 260_000,
@@ -103,37 +103,37 @@ public static class ItemDatabase
                 95_000,
                 60_000),
             ["3004"] = new ItemRecord(
-                "已停产的初代微光观测镜",
+                "微光观测镜",
                 ItemCategory.Collectible,
                 ItemRarity.Epic,
                 75_000,
                 48_000),
             ["3005"] = new ItemRecord(
-                "极危行动初代荣誉勋章",
+                "极危荣誉章",
                 ItemCategory.Collectible,
                 ItemRarity.Rare,
                 38_000,
                 24_000),
             ["3006"] = new ItemRecord(
-                "「红莲审判」时间晶体指挥仪",
+                "红莲指挥仪",
                 ItemCategory.Collectible,
                 ItemRarity.Mythic,
                 1_500_000,
                 1_300_000),
             ["3007"] = new ItemRecord(
-                "「永夜极光」黑曜石星象仪",
+                "永夜星象仪",
                 ItemCategory.Collectible,
                 ItemRarity.Ultimate,
                 7_000_000,
                 6_300_000),
             ["3008"] = new ItemRecord(
-                "「微缩新星」坍缩黑金单晶",
+                "微缩新星",
                 ItemCategory.Collectible,
                 ItemRarity.Ultimate,
                 12_000_000,
                 11_000_000),
             ["1004"] = new ItemRecord(
-                "纯金战术指挥鹰雕像",
+                "战术指挥鹰",
                 ItemCategory.Collectible,
                 ItemRarity.Legendary,
                 500_000,
@@ -141,7 +141,7 @@ public static class ItemDatabase
 
             // —— 藏品类（仅黑市，不进宝箱池）——
             ["1005"] = new ItemRecord(
-                "未知生物血清样本",
+                "未知血清",
                 ItemCategory.Collectible,
                 ItemRarity.None,
                 500_000,
@@ -149,13 +149,13 @@ public static class ItemDatabase
 
             // —— 军用电子与情报 ——
             ["1001"] = new ItemRecord(
-                "废弃的军用电路板",
+                "军用电路板",
                 ItemCategory.Electronics,
                 ItemRarity.None,
                 500,
                 300),
             ["1002"] = new ItemRecord(
-                "完整的无人机镜头",
+                "无人机镜头",
                 ItemCategory.Electronics,
                 ItemRarity.None,
                 45_000,
@@ -167,13 +167,13 @@ public static class ItemDatabase
                 60_000,
                 38_000),
             ["1006"] = new ItemRecord(
-                "军用加密对讲机",
+                "军用对讲机",
                 ItemCategory.Electronics,
                 ItemRarity.None,
                 8_500,
                 5_200),
             ["1007"] = new ItemRecord(
-                "高清特工夜视仪(损坏)",
+                "损坏夜视仪",
                 ItemCategory.Electronics,
                 ItemRarity.None,
                 15_000,
@@ -181,7 +181,7 @@ public static class ItemDatabase
 
             // —— 工业物资 ——
             ["1008"] = new ItemRecord(
-                "密封的特种机油",
+                "特种机油",
                 ItemCategory.Industrial,
                 ItemRarity.None,
                 1_200,

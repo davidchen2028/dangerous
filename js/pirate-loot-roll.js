@@ -131,8 +131,17 @@
     return ids;
   }
 
+  /** 单格宝箱：随机 1 件（与海盗箱同池） */
+  function rollSingleChestItem() {
+    var ids = rollPirateChest();
+    if (ids.length > 0) return ids[0];
+    var fallback = pirateIdToCatalog(rollWeighted(CHEST_ITEM_POOL));
+    return fallback ? fallback.id : null;
+  }
+
   window.PirateLootRoll = {
     rollPirateChest: rollPirateChest,
+    rollSingleChestItem: rollSingleChestItem,
     catalogIdIsPurpleOrBetter: catalogIdIsPurpleOrBetter,
     rollLootItemCount: rollLootItemCount,
     pirateIdToCatalog: pirateIdToCatalog,

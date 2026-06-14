@@ -120,12 +120,52 @@
     revealTimers = [];
   }
 
+  function normalizeInstanceId(id) {
+    var n = Number(id);
+    return isFinite(n) ? n : id;
+  }
+
   function findQueueEntry(bin, instanceId) {
+    var want = normalizeInstanceId(instanceId);
     var i;
     for (i = 0; i < bin.loot.queue.length; i++) {
-      if (bin.loot.queue[i].instanceId === instanceId) return bin.loot.queue[i];
+      if (bin.loot.queue[i].instanceId === want) return bin.loot.queue[i];
     }
     return null;
+  }
+
+  /** 从桶内网格移除物品（须传入完整 InventoryItem） */
+  function removeBinGridItem(mgr, instanceId) {
+    var id = normalizeInstanceId(instanceId);
+    var inst = mgr.findByInstanceId(id);
+    if (!inst) {
+      var j;
+      for (j = 0; j < mgr.items.length; j++) {
+        if (mgr.items[j].instanceId === id) {
+          inst = mgr.items[j];
+          break;
+        }
+      }
+    }
+    if (!inst) return false;
+    if (inst.x >= 0 && inst.y >= 0) {
+      mgr.removeItem(inst);
+    } else {
+      var idx = mgr.items.indexOf(inst);
+      if (idx >= 0) mgr.items.splice(idx, 1);
+    }
+    return true;
+  }
+
+  function removeBinItemDom(instanceId) {
+    if (!gridHostEl) return;
+    var id = normalizeInstanceId(instanceId);
+    var el = gridHostEl.querySelector(
+      '[data-instance-id="' + id + '"]'
+    );
+    if (el && el.parentNode) {
+      el.parentNode.removeChild(el);
+    }
   }
 
   function buildGridDom(bin) {
@@ -158,7 +198,10 @@
     gridHostEl.appendChild(wrap);
 
     for (i = 0; i < mgr.items.length; i++) {
-      itemsLayer.appendChild(renderBinItemElement(bin, mgr.items[i], itemMeta));
+      var inst = mgr.items[i];
+      var entry = findQueueEntry(bin, inst.instanceId);
+      if (entry && entry.taken) continue;
+      itemsLayer.appendChild(renderBinItemElement(bin, inst, itemMeta));
     }
   }
 
@@ -185,7 +228,7 @@
       el.style.backgroundImage = "url(" + inst.itemData.icon + ")";
     }
 
-    el.title = inst.itemData.name + " · 双击：先安全箱，放不下再试背包";
+    el.title = inst.itemData.name + " · 单击或双击拾取（先安全箱，再背包）";
 
     el.addEventListener("dblclick", function (e) {
       e.preventDefault();
@@ -221,57 +264,81 @@
       (function (entry) {
         var timer = setTimeout(function () {
           revealEntry(bin, entry.instanceId);
-          if (statusEl) {
-            statusEl.textContent = "双击：先安全箱，再背包";
-          }
+          setBinStatus("格子亮起后可单击/双击拾取 · 先安全箱再背包");
         }, entry.revealAt);
         revealTimers.push(timer);
       })(bin.loot.queue[i]);
     }
   }
 
+  function setBinStatus(text) {
+    if (statusEl) statusEl.textContent = text;
+  }
+
   function takeOne(bin, instanceId) {
+    instanceId = normalizeInstanceId(instanceId);
     var entry = findQueueEntry(bin, instanceId);
-    if (!entry || entry.taken || !entry.revealed) return;
+    if (!entry || entry.taken) return;
 
-    if (!window.PlayerLoadout || !window.ItemCatalog) return;
-    var cat = window.ItemCatalog.getItem(entry.catalogId);
-    if (!cat) return;
-
-    if (
-      !window.PlayerLoadout ||
-      !window.PlayerLoadout.tryPlaceLootInSecureThenBackpack
-    ) {
+    if (!entry.revealed) {
+      setBinStatus("还在翻找中，请等格子亮起后再拾取");
       return;
     }
 
-    if (!window.PlayerLoadout.tryPlaceLootInSecureThenBackpack(cat)) {
+    if (!window.PlayerLoadout || !window.ItemCatalog) {
+      setBinStatus("装备系统未就绪，请刷新页面后重试");
+      return;
+    }
+
+    var cat = window.ItemCatalog.getItem(entry.catalogId);
+    if (!cat) {
+      setBinStatus("未知物品，无法拾取");
+      return;
+    }
+
+    if (!window.PlayerLoadout.tryPlaceLootInSecureThenBackpack) {
+      setBinStatus("拾取功能未就绪，请刷新页面后重试");
+      return;
+    }
+
+    var dest = window.PlayerLoadout.tryPlaceLootInSecureThenBackpack(cat);
+    if (!dest) {
       if (!window.PlayerLoadout.getLoadout().backpack) {
-        if (statusEl) {
-          statusEl.textContent =
-            "「" + cat.name + "」安全箱已满，且未装备背包 · 仍留在桶内";
-        }
+        setBinStatus(
+          "「" +
+            cat.name +
+            "」放不下：未装备背包（大厅仓库左侧先穿背包），安全箱也塞不下大件"
+        );
       } else {
-        if (statusEl) {
-          statusEl.textContent =
-            "「" + cat.name + "」安全箱与背包均无空位 · 仍留在桶内";
-        }
+        setBinStatus(
+          "「" + cat.name + "」安全箱与背包均无空位 · 仍留在桶内（可先整理 B 背包）"
+        );
       }
       return;
     }
 
     entry.taken = true;
-    bin.loot.manager.removeItem({ instanceId: instanceId });
+    removeBinGridItem(bin.loot.manager, instanceId);
     delete bin.loot.itemMeta[instanceId];
+    removeBinItemDom(instanceId);
     buildGridDom(bin);
+
+    if (window.GridStashUI && window.GridStashUI.render) {
+      window.GridStashUI.render();
+    }
+    if (window.ActionInventory && window.ActionInventory.refresh) {
+      window.ActionInventory.refresh();
+    }
+
+    if (dest === "secure") {
+      setBinStatus("已放入安全箱：「" + cat.name + "」");
+    } else {
+      setBinStatus("安全箱已满，已放入背包：「" + cat.name + "」");
+    }
 
     if (allTaken(bin)) {
       bin.loot.emptied = true;
-      if (statusEl) statusEl.textContent = "桶内已空";
-    }
-
-    if (window.ActionInventory && window.ActionInventory.isOpen()) {
-      window.ActionInventory.refresh();
+      setBinStatus("桶内已搬空");
     }
   }
 
@@ -322,9 +389,7 @@
           revealEntry(bin, bin.loot.queue[i].instanceId);
         }
       }
-      if (statusEl) {
-        statusEl.textContent = "双击：先安全箱，再背包";
-      }
+      setBinStatus("格子亮起后可单击/双击拾取 · 先安全箱再背包");
     }
   }
 
@@ -373,6 +438,15 @@
     binPickMeshes[index] = mesh;
   }
 
+  function canSeeBin(px, pz, bin) {
+    if (!bin) return false;
+    var aimY = bin.aimY != null ? bin.aimY : 0.95;
+    if (window.ActionScene && window.ActionScene.hasLineOfSight) {
+      return window.ActionScene.hasLineOfSight(px, pz, bin.x, aimY, bin.z);
+    }
+    return true;
+  }
+
   function aimFallbackAngular(px, pz, camera) {
     if (!_raycaster) _raycaster = new window.THREE.Raycaster();
     if (!_ndc) _ndc = new window.THREE.Vector2(0, 0);
@@ -388,7 +462,7 @@
 
     for (i = 0; i < bins.length; i++) {
       var b = bins[i];
-      if (!playerNearBin(b, px, pz)) continue;
+      if (!playerNearBin(b, px, pz) || !canSeeBin(px, pz, b)) continue;
 
       var aimY = b.aimY != null ? b.aimY : 0.95;
       _dirToBin.set(b.x - origin.x, aimY - origin.y, b.z - origin.z);
@@ -432,7 +506,11 @@
       if (hits.length > 0) {
         var mesh = hits[0].object;
         for (i = 0; i < binPickMeshes.length; i++) {
-          if (binPickMeshes[i] === mesh && playerNearBin(bins[i], px, pz)) {
+          if (
+            binPickMeshes[i] === mesh &&
+            playerNearBin(bins[i], px, pz) &&
+            canSeeBin(px, pz, bins[i])
+          ) {
             aimedBinId = bins[i].id;
             return;
           }

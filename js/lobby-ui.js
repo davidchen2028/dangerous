@@ -25,9 +25,23 @@
   const mapBackdrop = document.getElementById("mapBackdrop");
 
   var selectedMapId = "test";
+  var hubModeBadge = document.getElementById("hubModeBadge");
+  var OFFLINE_ONLY_MSG = "单机模式仅可游玩新手教程，请先登录账号";
+
+  function isLoggedIn() {
+    return !!(window.LobbyNet && window.LobbyNet.isLoggedIn && window.LobbyNet.isLoggedIn());
+  }
 
   function isTutorialComplete() {
     return window.TutorialProgress && window.TutorialProgress.isComplete();
+  }
+
+  function syncHubMode() {
+    var loggedIn = isLoggedIn();
+    document.body.classList.toggle("hub-logged-in", loggedIn);
+    if (hubModeBadge) hubModeBadge.hidden = loggedIn;
+    syncActionHubButton();
+    syncMapHubButton();
   }
 
   function hideAllPanels() {
@@ -48,16 +62,20 @@
 
   function syncMapHubButton() {
     if (!btnMap) return;
-    var locked = !isTutorialComplete();
+    var locked = !isLoggedIn() || !isTutorialComplete();
     btnMap.classList.toggle("btn-hub--locked", locked);
     btnMap.setAttribute("aria-disabled", locked ? "true" : "false");
   }
 
   function syncActionHubButton() {
     if (!btnAction) return;
-    btnAction.innerHTML = isTutorialComplete()
-      ? "开始<br>行动"
-      : "新手<br>教程";
+    if (!isLoggedIn()) {
+      btnAction.innerHTML = "新手<br>教程";
+    } else {
+      btnAction.innerHTML = isTutorialComplete()
+        ? "开始<br>行动"
+        : "新手<br>教程";
+    }
     syncMapHubButton();
   }
 
@@ -80,6 +98,45 @@
     setTimeout(function () {
       btnMap.classList.remove("btn-hub--shake");
     }, 400);
+  }
+
+  function shakeActionBtn() {
+    if (!btnAction) return;
+    btnAction.classList.add("btn-hub--shake");
+    setTimeout(function () {
+      btnAction.classList.remove("btn-hub--shake");
+    }, 400);
+  }
+
+  function handleActionClick(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (mapPanel && !mapPanel.hidden) {
+      goHome();
+    }
+    tryEnterAction(0);
+  }
+
+  function tryEnterAction(attempt) {
+    if (window.ActionScene && typeof window.ActionScene.enter === "function") {
+      window.ActionScene.enter();
+      return;
+    }
+    if (attempt < 40) {
+      setTimeout(function () {
+        tryEnterAction(attempt + 1);
+      }, 100);
+      return;
+    }
+    shakeActionBtn();
+    var joinError = document.getElementById("joinError");
+    if (joinError) {
+      joinError.textContent =
+        "3D 场景未加载成功。请用 ./run.sh 打开 http://127.0.0.1:8080，Ctrl+F5 强刷；F12 Console 若有红色报错请截图。";
+    }
+    openRoom();
   }
 
   function goHome(e) {
@@ -107,16 +164,14 @@
   }
 
   function requireLogin(message) {
-    if (window.LobbyNet && window.LobbyNet.canPlay && window.LobbyNet.canPlay()) {
-      return true;
-    }
+    if (isLoggedIn()) return true;
     var joinError = document.getElementById("joinError");
     var blockMsg =
       window.LobbyNet && window.LobbyNet.getBlockMessage
         ? window.LobbyNet.getBlockMessage()
         : "";
     if (joinError) {
-      joinError.textContent = blockMsg || message || "未注册不能玩";
+      joinError.textContent = message || blockMsg || OFFLINE_ONLY_MSG;
     }
     openRoom();
     shakeRoomBtn();
@@ -137,6 +192,7 @@
   }
 
   function openStash() {
+    if (!requireLogin(OFFLINE_ONLY_MSG)) return;
     hideAllPanels();
     document.body.classList.remove(
       "hub-home",
@@ -153,7 +209,6 @@
   }
 
   function openTutorial() {
-    if (!requireLogin("未注册不能玩")) return;
     hideAllPanels();
     document.body.classList.remove(
       "hub-home",
@@ -167,7 +222,7 @@
   }
 
   function openMap() {
-    if (!requireLogin("未注册不能玩")) return;
+    if (!requireLogin(OFFLINE_ONLY_MSG)) return;
     if (!isTutorialComplete()) {
       shakeMapBtn();
       return;
@@ -186,6 +241,7 @@
   }
 
   function openMarket() {
+    if (!requireLogin(OFFLINE_ONLY_MSG)) return;
     hideAllPanels();
     document.body.classList.remove(
       "hub-home",
@@ -214,6 +270,13 @@
     }
   }
 
+  if (btnAction) {
+    btnAction.addEventListener("click", handleActionClick);
+    btnAction.addEventListener("touchend", function (e) {
+      e.preventDefault();
+      handleActionClick(e);
+    });
+  }
   if (btnRoom) btnRoom.addEventListener("click", openRoom);
   if (btnStash) btnStash.addEventListener("click", openStash);
   if (btnTutorial) btnTutorial.addEventListener("click", openTutorial);
@@ -234,6 +297,9 @@
 
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
+    if (window.ActionScene && window.ActionScene.isActive && window.ActionScene.isActive()) {
+      return;
+    }
     if (
       !roomPanel.hidden ||
       !stashPanel.hidden ||
@@ -245,11 +311,23 @@
     }
   });
 
-  syncActionHubButton();
+  syncHubMode();
   syncMapSelectionUi();
+
+  function hidePanelsForAction() {
+    hideAllPanels();
+    document.body.classList.remove(
+      "room-open",
+      "stash-open",
+      "tutorial-open",
+      "map-open",
+      "market-open"
+    );
+  }
 
   window.LobbyUI = {
     goHome: goHome,
+    hidePanelsForAction: hidePanelsForAction,
     openRoom: openRoom,
     openStash: openStash,
     openTutorial: openTutorial,
@@ -257,7 +335,9 @@
     openMarket: openMarket,
     requireLogin: requireLogin,
     shakeRoomBtn: shakeRoomBtn,
+    syncHubMode: syncHubMode,
     syncActionHubButton: syncActionHubButton,
+    isLoggedIn: isLoggedIn,
     getSelectedMapId: getSelectedMapId,
     selectMap: selectMap,
   };

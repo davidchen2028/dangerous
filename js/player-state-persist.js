@@ -5,7 +5,7 @@
   "use strict";
 
   var STORAGE_KEY = "dangerous_player_state_v1";
-  var DEFAULT_CREDITS = 50000;
+  var DEFAULT_CREDITS = 30000;
   var saveTimer = null;
   var serverSaveTimer = null;
   var SAVE_DELAY_MS = 450;
@@ -275,33 +275,72 @@
     return merged;
   }
 
+  function countPersistedItems(state) {
+    if (!state) return 0;
+    var n = 0;
+    var grids = state.grids;
+    if (grids) {
+      if (Array.isArray(grids.stash)) n += grids.stash.length;
+      if (Array.isArray(grids.secure)) n += grids.secure.length;
+    }
+    var loadout = state.loadout;
+    if (loadout) {
+      if (Array.isArray(loadout.rigItems)) n += loadout.rigItems.length;
+      if (Array.isArray(loadout.backpackItems)) n += loadout.backpackItems.length;
+    }
+    return n;
+  }
+
+  /** 登录恢复：本地存档常比服务端新，避免用旧档覆盖背包内物品 */
+  function pickAuthImportState(serverState) {
+    var server = serverState || makeEmptyState(DEFAULT_CREDITS);
+    var local = readLocalStateRaw();
+    if (!local || local.v !== 1) {
+      return { state: server, pushServer: false };
+    }
+    var localItems = countPersistedItems(local);
+    var serverItems = countPersistedItems(server);
+    if (localItems > serverItems) {
+      return { state: local, pushServer: true };
+    }
+    if (serverItems > localItems) {
+      return { state: server, pushServer: false };
+    }
+    if (local.savedAt) {
+      return { state: local, pushServer: true };
+    }
+    return { state: server, pushServer: false };
+  }
+
   function onAuthOk(serverState, options) {
     options = options || {};
     serverSyncEnabled = true;
+    var pushServer = false;
     var state = serverState || makeEmptyState(DEFAULT_CREDITS);
     var migratedLegacy = false;
 
-    if (
-      !state.tutorialComplete &&
-      window.TutorialProgress &&
-      window.TutorialProgress.consumeLegacyIfNeeded &&
-      window.TutorialProgress.consumeLegacyIfNeeded()
-    ) {
-      state = Object.assign({}, state, { tutorialComplete: true });
-      migratedLegacy = true;
-    }
-
-    state = mergeLocalMapProgress(state);
-
     if (options.isRegister) {
       applyGuestState(DEFAULT_CREDITS);
-      flushSaveToServer();
-    } else if (serverHasProgress(state)) {
-      importState(state);
-      if (window.GridStashUI.markSeeded) {
-        window.GridStashUI.markSeeded();
+      if (window.GridStashUI.grantNewAccountKit) {
+        window.GridStashUI.grantNewAccountKit();
       }
+      flushSaveToServer();
     } else {
+      var picked = pickAuthImportState(state);
+      state = picked.state;
+      pushServer = picked.pushServer;
+
+      if (
+        !state.tutorialComplete &&
+        window.TutorialProgress &&
+        window.TutorialProgress.consumeLegacyIfNeeded &&
+        window.TutorialProgress.consumeLegacyIfNeeded()
+      ) {
+        state = Object.assign({}, state, { tutorialComplete: true });
+        migratedLegacy = true;
+      }
+
+      state = mergeLocalMapProgress(state);
       importState(state);
       if (window.GridStashUI.markSeeded) {
         window.GridStashUI.markSeeded();
@@ -313,7 +352,7 @@
       window.GridStashUI.enablePersist();
     }
     saveLocal();
-    if (migratedLegacy || state.tutorialComplete) {
+    if (pushServer || migratedLegacy || state.tutorialComplete) {
       flushSaveToServer();
     }
   }
@@ -364,8 +403,8 @@
       }
     } else {
       applyGuestState(0);
-      if (window.GridStashUI.ensureSeeded) {
-        window.GridStashUI.ensureSeeded();
+      if (window.GridStashUI.markSeeded) {
+        window.GridStashUI.markSeeded();
       }
     }
 
