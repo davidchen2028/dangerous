@@ -1,0 +1,216 @@
+/* 后室 — 四大核心生存状态 HUD（叠加于 Three.js 画布之上） */
+
+.br-survival {
+  position: fixed;
+  left: 16px;
+  bottom: 18px;
+  z-index: 4;
+  width: min(240px, 42vw);
+  pointer-events: none;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.br-survival__row {
+  margin-bottom: 8px;
+}
+
+.br-survival__row--stamina {
+  margin-bottom: 10px;
+}
+
+.br-survival__label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.82;
+}
+
+.br-survival__value {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.95;
+}
+
+.br-survival__track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.br-survival__track--stamina {
+  height: 6px;
+}
+
+.br-survival__fill {
+  height: 100%;
+  width: 100%;
+  border-radius: inherit;
+  transform-origin: left center;
+  transition: width 0.12s linear;
+}
+
+.br-survival__fill--hp {
+  background: linear-gradient(90deg, #e05656, #ff7675);
+  box-shadow: 0 0 10px rgba(255, 118, 117, 0.35);
+}
+
+.br-survival__fill--sanity {
+  background: linear-gradient(90deg, #6c5ce7, #a29bfe);
+  box-shadow: 0 0 10px rgba(162, 155, 254, 0.28);
+}
+
+.br-survival__fill--stamina {
+  background: linear-gradient(90deg, #fdcb6e, #ffeaa7);
+  box-shadow: 0 0 8px rgba(255, 234, 167, 0.22);
+}
+
+.br-survival__inv {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.br-survival__inv strong {
+  font-weight: 600;
+}
+
+body.backrooms-sanity-break #backroomsCanvas {
+  filter: grayscale(1) contrast(1.15) brightness(0.72);
+  transition: filter 0.35s ease;
+}
+
+body.backrooms-dead #backroomsCanvas {
+  filter: grayscale(0.85) brightness(0.45);
+}
+
+.br-survival__death {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 6, 4, 0.72);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.br-survival__death--show {
+  opacity: 1;
+}
+
+.br-survival__death-inner {
+  margin: 0;
+  padding: 18px 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.55);
+  text-align: center;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+
+/* 后室独立背包 — 4×5 格，无胸挂 */
+
+.br-pack {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 24px;
+  pointer-events: none;
+}
+
+.br-pack[hidden] {
+  display: none !important;
+}
+
+.br-pack__panel {
+  pointer-events: auto;
+  width: min(228px, 78vw);
+  padding: 14px 16px 12px;
+  border-radius: 10px;
+  background: rgba(8, 10, 14, 0.9);
+  border: 1px solid rgba(255, 198, 120, 0.24);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.58);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.br-pack__title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.88;
+}
+
+.br-pack__grid {
+  display: grid;
+  grid-template-columns: repeat(var(--br-cols, 4), 1fr);
+  gap: 6px;
+  margin: 10px 0 12px;
+}
+
+.br-pack__cell {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: default;
+  user-select: none;
+}
+
+.br-pack__cell--filled {
+  border-color: rgba(116, 185, 255, 0.45);
+  background: rgba(52, 98, 140, 0.42);
+  color: rgba(162, 210, 255, 0.95);
+  cursor: pointer;
+}
+
+.br-pack__cell--filled:hover {
+  background: rgba(72, 128, 175, 0.52);
+}
+
+.br-pack__icon {
+  width: 88%;
+  height: 88%;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.br-pack__foot {
+  margin: 0;
+  font-size: 11px;
+  opacity: 0.72;
+  line-height: 1.45;
+}
+
+body.backrooms-pack-open #backroomsCanvas,
+body.backrooms-pack-open .backrooms-input {
+  pointer-events: none;
+}
+
+body.backrooms-pack-open .br-pack {
+  pointer-events: auto;
+}

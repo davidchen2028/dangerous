@@ -1,0 +1,543 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #1a1810;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #e8e0c8;
+}
+
+#backroomsCanvas {
+  display: block;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.backrooms-input {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.backrooms-input--drag {
+  cursor: grab;
+}
+
+.backrooms-input--drag:active {
+  cursor: grabbing;
+}
+
+body.backrooms-pointer-locked,
+body.backrooms-pointer-locked .backrooms-input {
+  cursor: none;
+}
+
+.backrooms-hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+}
+
+.backrooms-hud__title {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.backrooms-hud__hint {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  line-height: 1.45;
+  width: max-content;
+  max-width: min(520px, calc(100vw - 32px));
+  text-align: center;
+  white-space: normal;
+  box-sizing: border-box;
+}
+
+@media (max-width: 720px) {
+  .backrooms-hud__hint {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    bottom: calc(118px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100vw - 24px);
+  }
+}
+
+.backrooms-hud__hint kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  text-align: center;
+}
+
+.backrooms-hud__error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 8, 4, 0.92);
+  text-align: center;
+  line-height: 1.6;
+}
+
+.backrooms-hud__error[hidden] {
+  display: none;
+}
+
+.backrooms-hud__error a {
+  color: #f0d878;
+}
+
+.backrooms-hud__clip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 12px 20px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 220, 120, 0.35);
+  background: rgba(0, 0, 0, 0.72);
+  font-size: 15px;
+  color: #ffe9a8;
+  animation: backrooms-clip-pulse 1.2s ease-in-out infinite;
+}
+
+.backrooms-hud__clip[hidden] {
+  display: none;
+}
+
+.backrooms-level1 .backrooms-hud__title--l1 {
+  color: #b8d4d8;
+}
+
+.backrooms-hud__supplies {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.42);
+  font-size: 13px;
+  color: #c8e6ff;
+}
+
+.backrooms-hud__search {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 12px 20px;
+  border-radius: 8px;
+  border: 1px solid rgba(180, 220, 255, 0.35);
+  background: rgba(0, 0, 0, 0.72);
+  font-size: 15px;
+  color: #d8ecff;
+}
+
+.backrooms-hud__search[hidden],
+.backrooms-hud__loot[hidden] {
+  display: none;
+}
+
+.backrooms-hud__loot {
+  position: absolute;
+  top: 22%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(140, 210, 255, 0.4);
+  background: rgba(8, 20, 32, 0.82);
+  font-size: 14px;
+  color: #a8dcff;
+  pointer-events: none;
+}
+
+@keyframes backrooms-clip-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+/* 右上角 — 温度 + 积分点 */
+.backrooms-nav__row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.backrooms-overheat {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(48, 12, 10, 0.88);
+  border: 1px solid rgba(255, 120, 90, 0.55);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #ffb4a0;
+  white-space: nowrap;
+  align-self: center;
+  box-shadow: 0 0 12px rgba(214, 48, 49, 0.35);
+  animation: backrooms-overheat-pulse 1.1s ease-in-out infinite;
+}
+
+.backrooms-overheat[hidden] {
+  display: none;
+}
+
+@keyframes backrooms-overheat-pulse {
+  0%, 100% { opacity: 0.88; }
+  50% { opacity: 1; }
+}
+
+.backrooms-temp {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(8, 14, 22, 0.72);
+  border: 1px solid rgba(120, 190, 255, 0.28);
+  font-size: 13px;
+  color: #c8e6ff;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.backrooms-temp__label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
+
+.backrooms-temp__meter {
+  width: 52px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.backrooms-temp__fill {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #74b9ff, #81ecec);
+  transition: width 0.18s linear, background 0.25s ease;
+}
+
+.backrooms-temp--warm .backrooms-temp__fill {
+  background: linear-gradient(90deg, #fdcb6e, #e17055);
+}
+
+.backrooms-temp--hot .backrooms-temp__fill {
+  background: linear-gradient(90deg, #e17055, #d63031);
+  box-shadow: 0 0 8px rgba(214, 48, 49, 0.45);
+}
+
+.backrooms-temp--cool .backrooms-temp__fill {
+  background: linear-gradient(90deg, #6c5ce7, #74b9ff);
+}
+
+.backrooms-temp__value {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ffe8a8;
+  min-width: 3.6em;
+  text-align: right;
+}
+
+/* 右上角 — 积分点 */
+.backrooms-points {
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(8, 14, 22, 0.72);
+  border: 1px solid rgba(120, 190, 255, 0.28);
+  font-size: 13px;
+  color: #c8e6ff;
+  white-space: nowrap;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.backrooms-points__label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
+
+.backrooms-points__value {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ffe8a8;
+  min-width: 1ch;
+  text-align: right;
+}
+
+/* Level 1 准星 */
+.backrooms-crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0.88;
+}
+
+.backrooms-crosshair::before,
+.backrooms-crosshair::after {
+  content: "";
+  position: absolute;
+  background: rgba(220, 235, 245, 0.92);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.65);
+}
+
+.backrooms-crosshair::before {
+  left: 50%;
+  top: 2px;
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+}
+
+.backrooms-crosshair::after {
+  top: 50%;
+  left: 2px;
+  width: 14px;
+  height: 2px;
+  margin-top: -1px;
+}
+
+.backrooms-crosshair--hidden {
+  display: none;
+}
+
+.backrooms-crosshair--interact::before,
+.backrooms-crosshair--interact::after {
+  background: rgba(255, 210, 120, 0.95);
+}
+
+body.backrooms-pack-open .backrooms-crosshair {
+  display: none;
+}
+
+/* 右上角 — 指南针 + 区块坐标 */
+.backrooms-nav {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top, 0px));
+  right: max(14px, env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.backrooms-compass {
+  position: relative;
+  width: 72px;
+  height: 72px;
+}
+
+.backrooms-compass__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(8, 14, 22, 0.72);
+  border: 1px solid rgba(180, 210, 230, 0.28);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.backrooms-compass__rose {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  transition: transform 0.08s linear;
+}
+
+.backrooms-compass__dir {
+  position: absolute;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(210, 228, 240, 0.88);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.backrooms-compass__dir--n {
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #ff8a80;
+}
+
+.backrooms-compass__dir--e {
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.backrooms-compass__dir--s {
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.backrooms-compass__dir--w {
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.backrooms-compass__heading {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  margin-left: -5px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 10px solid rgba(255, 210, 120, 0.95);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.65));
+  z-index: 2;
+}
+
+.backrooms-nav__chunk {
+  margin: 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.48);
+  border: 1px solid rgba(180, 210, 230, 0.2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: #c8e6ff;
+  white-space: nowrap;
+}
+
+.backrooms-hud__talk {
+  position: absolute;
+  top: 58%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 190, 255, 0.35);
+  background: rgba(0, 0, 0, 0.72);
+  font-size: 14px;
+  color: #b8dcff;
+}
+
+.backrooms-hud__talk[hidden] {
+  display: none;
+}
+
+.backrooms-dialogue {
+  position: absolute;
+  left: 50%;
+  bottom: 22%;
+  transform: translateX(-50%);
+  width: min(92vw, 420px);
+  padding: 14px 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 190, 255, 0.35);
+  background: rgba(6, 12, 20, 0.88);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.backrooms-dialogue[hidden] {
+  display: none;
+}
+
+.backrooms-dialogue__speaker {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7eb8e8;
+}
+
+.backrooms-dialogue__text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #e8f4ff;
+}
+
+.backrooms-dialogue__choices {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #a8cce8;
+}
+
+.backrooms-dialogue__choices kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 1px 6px;
+  margin: 0 2px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  text-align: center;
+}
+
+body.backrooms-dialogue-open .backrooms-crosshair,
+body.backrooms-dialogue-open .backrooms-hud__hint,
+body.backrooms-dialogue-open .backrooms-hud__talk {
+  opacity: 0;
+  pointer-events: none;
+}

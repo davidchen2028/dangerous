@@ -3,6 +3,11 @@
  */
 import * as THREE from "three";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
+import { createBackroomsHorrorSystem } from "./backrooms-horror.js";
+import {
+  buildBackroomsLevel1World,
+  WAREHOUSE_HEIGHT as BACKROOMS_L1_HEIGHT,
+} from "./backrooms-level1-world.js";
 
 if (typeof window !== "undefined") {
   window.THREE = THREE;
@@ -55,6 +60,20 @@ if (typeof window !== "undefined") {
   var JUMP_SPEED = 9;
   var BOUNDS_X = 5.5;
   var BOUNDS_Z_MIN = 1.2;
+  /** 24×24 m 后室迷宫 — 边界包抄（±12 对穿） */
+  var WORLD_WRAP_HALF = 12;
+  var worldWrapEnabled = false;
+  /** 后室 Level 1 — 全场暴盲掷骰概率（每 40~60 秒窗口） */
+  var BLACKOUT_CHANCE = 0;
+  /** @type {ReturnType<createBackroomsHorrorSystem> | null} */
+  var backroomsHorror = null;
+  /** @type {Array<{ light: THREE.PointLight, panelMat: THREE.Material, baseIntensity: number, baseEmissive: number }>} */
+  var backroomsL1Lights = [];
+  var backroomsL1FlickerAt = 0;
+  var backroomsL1FlickerUntil = 0;
+  var backroomsSpawn = { x: 0, z: 0 };
+  /** @type {ReturnType<buildBackroomsLevel1World> | null} */
+  var backroomsL1Stream = null;
   var clouds = [];
   /** @type {{ minX: number, maxX: number, minY: number, maxY: number, minZ: number, maxZ: number }[]} */
   var colliders = [];
@@ -5068,6 +5087,15 @@ if (typeof window !== "undefined") {
     if (window.WorldLootBox && window.WorldLootBox.destroyChest) {
       window.WorldLootBox.destroyChest();
     }
+    if (backroomsHorror) {
+      backroomsHorror.dispose();
+      backroomsHorror = null;
+    }
+    if (backroomsL1Stream) {
+      backroomsL1Stream.dispose();
+      backroomsL1Stream = null;
+    }
+    backroomsL1Lights = [];
     if (worldRoot && scene) {
       scene.remove(worldRoot);
       disposeObject3D(worldRoot);
@@ -5093,6 +5121,7 @@ if (typeof window !== "undefined") {
   }
 
   function applyMapBounds(mapId) {
+    worldWrapEnabled = false;
     if (mapId === "test") {
       BOUNDS_X = 55;
       BOUNDS_Z_MIN = -55;
@@ -5100,6 +5129,15 @@ if (typeof window !== "undefined") {
       BOUNDS_Z_MAX = rearHouseBounds.centerZ + rearHouseBounds.halfD + 2.5;
       if (scene) {
         scene.fog = new THREE.Fog(0x8ecfff, 50, 245);
+      }
+      return;
+    }
+    if (mapId === "backrooms") {
+      BOUNDS_X = 1e9;
+      BOUNDS_Z_MIN = -1e9;
+      BOUNDS_Z_MAX = 1e9;
+      if (scene) {
+        scene.fog = new THREE.Fog(0x1a252f, 6, 42);
       }
       return;
     }
@@ -5113,7 +5151,81 @@ if (typeof window !== "undefined") {
 
   function updateMapNameDisplay() {
     if (!mapNameEl) return;
+    if (currentMapId === "backrooms") {
+      mapNameEl.textContent = "后室 Level 1";
+      return;
+    }
     mapNameEl.textContent = currentMapId === "test" ? "测试" : "新手教程";
+  }
+
+  /** 后室工业灯 — 非暴盲时段的日常微闪烁 */
+  function runBackroomsL1MicroFlicker(now) {
+    if (now >= backroomsL1FlickerAt) {
+      backroomsL1FlickerUntil = now + 200;
+      backroomsL1FlickerAt = now + 10000 + Math.random() * 20000;
+    }
+    var flickering = now < backroomsL1FlickerUntil;
+    var i;
+    for (i = 0; i < backroomsL1Lights.length; i++) {
+      var f = backroomsL1Lights[i];
+      var mul = flickering ? 0.08 + Math.random() * 0.35 : 1;
+      f.light.intensity = f.baseIntensity * mul;
+      f.panelMat.emissiveIntensity = f.baseEmissive * mul;
+    }
+  }
+
+  /** 后室 Level 1 — 暴盲 + 量子宝箱（每帧在 tick 中调用） */
+  function updateBackroomsHorrorSystems(nowMs) {
+    if (!backroomsHorror || currentMapId !== "backrooms") {
+      return { blackout: false };
+    }
+    return backroomsHorror.update(nowMs, pos.x, pos.z);
+  }
+
+  /** 构建后室 Level 1 工业仓库（原生 Box + 量子海盗宝箱） */
+  function buildBackroomsLevel1(parent) {
+    colliders = [];
+    backroomsHorror = createBackroomsHorrorSystem({
+      blackoutChance: BLACKOUT_CHANCE,
+    });
+    backroomsHorror.setFlickerHandler(runBackroomsL1MicroFlicker);
+
+    var built = buildBackroomsLevel1World(parent, {
+      horror: backroomsHorror,
+      loadGltf: loadGltfCached,
+      onWallCollider: function (c) {
+        colliders.push({
+          minX: c.minX,
+          maxX: c.maxX,
+          minY: 0,
+          maxY: BACKROOMS_L1_HEIGHT,
+          minZ: c.minZ,
+          maxZ: c.maxZ,
+        });
+      },
+      onWallColliderRemove: function (c) {
+        var i;
+        for (i = colliders.length - 1; i >= 0; i--) {
+          var ci = colliders[i];
+          if (
+            ci.minX === c.minX &&
+            ci.maxX === c.maxX &&
+            ci.minZ === c.minZ &&
+            ci.maxZ === c.maxZ
+          ) {
+            colliders.splice(i, 1);
+            break;
+          }
+        }
+      },
+    });
+
+    backroomsL1Stream = built;
+    backroomsL1Lights = built.industrialLights;
+    backroomsSpawn.x = built.spawnX;
+    backroomsSpawn.z = built.spawnZ;
+    backroomsHorror.resetSchedule(performance.now());
+    backroomsL1FlickerAt = performance.now() + 8000;
   }
 
   function setPosHudVisible(show) {
@@ -5142,6 +5254,8 @@ if (typeof window !== "undefined") {
 
     if (mapId === "test") {
       buildTestMap(worldRoot);
+    } else if (mapId === "backrooms") {
+      buildBackroomsLevel1(worldRoot);
     } else {
       buildSectorZero(worldRoot);
     }
@@ -5580,7 +5694,21 @@ if (typeof window !== "undefined") {
     camera.rotation.x = pitch;
   }
 
+  /** 24×24 迷宫边界包抄 — 同一帧内瞬移 pos，再统一 updatePlayerTransform，避免摄像机抖动 */
+  function applyWorldWrap() {
+    if (!worldWrapEnabled) return;
+    if (pos.x > WORLD_WRAP_HALF) pos.x = -WORLD_WRAP_HALF;
+    else if (pos.x < -WORLD_WRAP_HALF) pos.x = WORLD_WRAP_HALF;
+    if (pos.z > WORLD_WRAP_HALF) pos.z = -WORLD_WRAP_HALF;
+    else if (pos.z < -WORLD_WRAP_HALF) pos.z = WORLD_WRAP_HALF;
+  }
+
   function clampPosition() {
+    if (currentMapId === "backrooms") return;
+    if (worldWrapEnabled) {
+      applyWorldWrap();
+      return;
+    }
     pos.x = Math.max(-BOUNDS_X, Math.min(BOUNDS_X, pos.x));
     pos.z = Math.max(BOUNDS_Z_MIN, Math.min(BOUNDS_Z_MAX, pos.z));
   }
@@ -5994,12 +6122,16 @@ if (typeof window !== "undefined") {
       pos.x += (cosY * strafe - sinY * forward) * speed * dt;
       pos.z += (-cosY * forward - sinY * strafe) * speed * dt;
       resolvePositionXZ();
-      clampPosition();
     }
 
     updatePhysics(dt);
     resolvePositionY();
     resolvePositionXZ();
+    clampPosition();
+    if (currentMapId === "backrooms") {
+      if (backroomsL1Stream) backroomsL1Stream.update(pos.x, pos.z);
+      updateBackroomsHorrorSystems(performance.now());
+    }
     updateCrouch(dt);
     updatePlayerTransform();
     updateHands(dt, moving);
@@ -6043,6 +6175,12 @@ if (typeof window !== "undefined") {
       pos.x = TEST_SPAWN.x;
       pos.y = 0;
       pos.z = TEST_SPAWN.z;
+      resolvePositionXZ();
+      clampPosition();
+    } else if (currentMapId === "backrooms") {
+      pos.x = backroomsSpawn.x;
+      pos.y = 0;
+      pos.z = backroomsSpawn.z;
       resolvePositionXZ();
       clampPosition();
     } else {

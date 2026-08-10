@@ -14,6 +14,23 @@
       image: null,
       model3d: "models/antique-lockbox.glb",
     },
+    almond_water: {
+      id: "almond_water",
+      name: "杏仁水",
+      type: "consumable",
+      w: 1,
+      h: 1,
+      stackSize: 4,
+      rarity: "common",
+      rarityLabel: "普通",
+      rarityIcon: "🟢",
+      category: "backrooms",
+      reclaimMin: 80,
+      flavor:
+        "后室最常见的补给。淡杏仁味，能缓解口渴与理智流失。",
+      image: "img/backrooms/almond-water.png",
+      model3d: "models/futuristic-device.glb",
+    },
     bolt: {
       id: "bolt",
       name: "螺栓组",
