@@ -32,6 +32,8 @@ const LEVEL_PROFILE = {
   3: { min: 10, max: 16, base: 13, swing: 2.4 },
   /** Level 283 — 诡谲恒温 */
   283: { min: 19, max: 23, base: 21, swing: 1.8 },
+  /** Level 4 — 明亮办公区（稳定日光灯，无 L0 式电流噪） */
+  4: { min: 20, max: 24, base: 22, swing: 1.2 },
 };
 
 let levelIndex = 0;

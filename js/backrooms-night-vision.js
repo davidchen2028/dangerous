@@ -6,6 +6,7 @@ import { countItem, removeFirstItem } from "./backrooms-inventory.js";
 export const NIGHT_VISION_DURATION_MS = 5 * 60 * 1000;
 const STORAGE_UNTIL = "backrooms_night_vision_until";
 export const MEG_NV_POTION_GIVEN_KEY = "backrooms_meg_nv_potion_given";
+export const MEG_NV_ALMOND_GIVEN_KEY = "backrooms_meg_nv_almond_given";
 
 function readUntil() {
   try {

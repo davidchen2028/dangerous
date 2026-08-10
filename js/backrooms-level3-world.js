@@ -92,6 +92,9 @@ export function generateLevel3Maze(seed) {
   carveRoom(Math.floor(w * 0.45), Math.floor(h * 0.38), 4, 4);
   carveRoom(6, h - 18, 5, 5);
 
+  var mid = Math.floor(w * 0.5) - 2;
+  carveRoom(mid, mid, 4, 4);
+
   return { grid: grid, seed: seed, spawnCell: { x: 1, z: 1 } };
 }
 
@@ -162,6 +165,7 @@ function cellAabb(cx, cz) {
   var wpos = cellToWorld(cx, cz);
   var h = CELL * 0.5;
   return {
+    kind: "wall",
     minX: wpos.x - h,
     maxX: wpos.x + h,
     minZ: wpos.z - h,
@@ -197,10 +201,20 @@ export function resolveCircleAgainstLevel3Maze(px, pz, radius, grid) {
 }
 
 var PIPE_SPECS = [
-  { r: 0.2, y: 0.95 },
-  { r: 0.14, y: 1.55 },
-  { r: 0.22, y: 2.12 },
+  { r: 0.18, y: 0.95, xOff: 0.02 },
+  { r: 0.12, y: 1.52, xOff: 0.02 },
+  { r: 0.2, y: 2.08, xOff: 0.02 },
 ];
+
+const PIPE_WALL_INSET = 0.06;
+
+function pickPrimaryWallSide(grid, x, z) {
+  if (x + 1 < MAZE_W && grid[z][x + 1] === 1) return "e";
+  if (x - 1 >= 0 && grid[z][x - 1] === 1) return "w";
+  if (z + 1 < MAZE_H && grid[z + 1][x] === 1) return "n";
+  if (z - 1 >= 0 && grid[z - 1][x] === 1) return "s";
+  return null;
+}
 
 function wallSides(grid, x, z) {
   var sides = [];
@@ -211,52 +225,116 @@ function wallSides(grid, x, z) {
   return sides;
 }
 
-function addWallMountedPipes(group, grid, x, z, wpos, rng, pipeMat, pipeHazardSlots) {
-  if (rng() > 0.24) return;
-  var sides = wallSides(grid, x, z);
-  if (!sides.length) return;
-  var side = sides[Math.floor(rng() * sides.length)];
+function pushPipeCollider(colliders, side, wpos, spec, pipeLen) {
+  var pad = 0.05;
   var half = CELL * 0.5;
-  var pipeLen = CELL * 0.9;
-  var spec = PIPE_SPECS[1];
-  var pipe = new THREE.Mesh(
-    new THREE.CylinderGeometry(spec.r, spec.r, pipeLen, 6, 1, false),
-    pipeMat
-  );
-  var hx = wpos.x;
-  var hz = wpos.z;
+  var halfLen = pipeLen * 0.5;
   if (side === "e") {
-    pipe.rotation.x = Math.PI * 0.5;
-    hx = wpos.x + half - spec.r - 0.08;
+    var cx = wpos.x + half - spec.r - PIPE_WALL_INSET;
+    colliders.push({
+      kind: "wall",
+      minX: cx - spec.r - pad,
+      maxX: cx + spec.r + pad,
+      minZ: wpos.z - halfLen,
+      maxZ: wpos.z + halfLen,
+    });
   } else if (side === "w") {
-    pipe.rotation.x = Math.PI * 0.5;
-    hx = wpos.x - half + spec.r + 0.08;
+    cx = wpos.x - half + spec.r + PIPE_WALL_INSET;
+    colliders.push({
+      kind: "wall",
+      minX: cx - spec.r - pad,
+      maxX: cx + spec.r + pad,
+      minZ: wpos.z - halfLen,
+      maxZ: wpos.z + halfLen,
+    });
   } else if (side === "n") {
-    pipe.rotation.z = Math.PI * 0.5;
-    hz = wpos.z + half - spec.r - 0.08;
+    var cz = wpos.z + half - spec.r - PIPE_WALL_INSET;
+    colliders.push({
+      kind: "wall",
+      minX: wpos.x - halfLen,
+      maxX: wpos.x + halfLen,
+      minZ: cz - spec.r - pad,
+      maxZ: cz + spec.r + pad,
+    });
   } else {
-    pipe.rotation.z = Math.PI * 0.5;
-    hz = wpos.z - half + spec.r + 0.08;
-  }
-  pipe.position.set(hx, spec.y, hz);
-  group.add(pipe);
-
-  if (rng() < 0.42) {
-    var inset = 0.55;
-    var sx = wpos.x;
-    var sz = wpos.z;
-    if (side === "e") sx = wpos.x + half - inset;
-    else if (side === "w") sx = wpos.x - half + inset;
-    else if (side === "n") sz = wpos.z + half - inset;
-    else sz = wpos.z - half + inset;
-    pipeHazardSlots.push({ x: sx, z: sz, y: spec.y - 0.08, side: side });
+    cz = wpos.z - half + spec.r + PIPE_WALL_INSET;
+    colliders.push({
+      kind: "wall",
+      minX: wpos.x - halfLen,
+      maxX: wpos.x + halfLen,
+      minZ: cz - spec.r - pad,
+      maxZ: cz + spec.r + pad,
+    });
   }
 }
 
-function addWallLamp(group, grid, x, z, wpos, rng, lampMat, flickerLights, decorPointLights) {
+function addWallMountedPipes(group, colliders, grid, x, z, wpos, rng, pipeMat, pipeHazardSlots, pipeSide) {
+  if (!pipeSide) return;
+  var half = CELL * 0.5;
+  var pipeLen = CELL * 0.86;
+  var pi;
+  var bracketMat = pipeMat;
+
+  for (pi = 0; pi < PIPE_SPECS.length; pi++) {
+    var spec = PIPE_SPECS[pi];
+    var pipe = new THREE.Mesh(
+      new THREE.CylinderGeometry(spec.r, spec.r, pipeLen, 8, 1, false),
+      pipeMat
+    );
+    var hx = wpos.x;
+    var hz = wpos.z;
+    if (pipeSide === "e") {
+      pipe.rotation.x = Math.PI * 0.5;
+      hx = wpos.x + half - spec.r - PIPE_WALL_INSET;
+    } else if (pipeSide === "w") {
+      pipe.rotation.x = Math.PI * 0.5;
+      hx = wpos.x - half + spec.r + PIPE_WALL_INSET;
+    } else if (pipeSide === "n") {
+      pipe.rotation.z = Math.PI * 0.5;
+      hz = wpos.z + half - spec.r - PIPE_WALL_INSET;
+    } else {
+      pipe.rotation.z = Math.PI * 0.5;
+      hz = wpos.z - half + spec.r + PIPE_WALL_INSET;
+    }
+    pipe.position.set(hx, spec.y, hz);
+    group.add(pipe);
+    pushPipeCollider(colliders, pipeSide, wpos, spec, pipeLen);
+
+    var bracket = new THREE.Mesh(
+      new THREE.BoxGeometry(spec.r * 2.4, 0.08, spec.r * 2.4),
+      bracketMat
+    );
+    bracket.position.set(hx, spec.y, hz);
+    group.add(bracket);
+  }
+
+  if (rng() < 0.38) {
+    var mid = PIPE_SPECS[1];
+    var inset = 0.62;
+    var sx = wpos.x;
+    var sz = wpos.z;
+    if (pipeSide === "e") sx = wpos.x + half - inset;
+    else if (pipeSide === "w") sx = wpos.x - half + inset;
+    else if (pipeSide === "n") sz = wpos.z + half - inset;
+    else sz = wpos.z - half + inset;
+    pipeHazardSlots.push({
+      x: sx,
+      z: sz,
+      y: mid.y - 0.05,
+      side: pipeSide,
+    });
+  }
+}
+
+function addWallLamp(group, grid, x, z, wpos, rng, lampMat, flickerLights, decorPointLights, avoidSide) {
   if (decorPointLights.length >= 48) return;
   if (rng() > 0.065) return;
   var sides = wallSides(grid, x, z);
+  if (avoidSide) {
+    sides = sides.filter(function (s) {
+      return s !== avoidSide;
+    });
+  }
   if (!sides.length) return;
   var side = sides[Math.floor(rng() * sides.length)];
   var half = CELL * 0.5;
@@ -269,7 +347,7 @@ function addWallLamp(group, grid, x, z, wpos, rng, lampMat, flickerLights, decor
   var lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 10), lampMat);
   lamp.position.set(lx, 1.62, lz);
   group.add(lamp);
-  var pl = new THREE.PointLight(0xffe8b8, 0.72, 5.5, 1.5);
+  var pl = new THREE.PointLight(0xffe8b8, 0.95, 5.5, 1.5);
   pl.position.set(lx, 1.62, lz);
   group.add(pl);
   decorPointLights.push(pl);
@@ -327,11 +405,12 @@ export function buildLevel3World(mazeData) {
   var lampMat = new THREE.MeshStandardMaterial({
     color: 0xfff0d0,
     emissive: 0xffcc66,
-    emissiveIntensity: 1.1,
+    emissiveIntensity: 1.28,
     roughness: 0.4,
     metalness: 0,
   });
 
+  var wallColliders = [];
   var wallGeo = new THREE.BoxGeometry(CELL, WALL_H, CELL);
   var floorGeo = new THREE.BoxGeometry(CELL, 0.11, CELL);
   var wallCount = 0;
@@ -358,13 +437,39 @@ export function buildLevel3World(mazeData) {
         pos.set(wpos.x, WALL_H * 0.5, wpos.z);
         mat4.makeTranslation(pos.x, pos.y, pos.z);
         wallMesh.setMatrixAt(wi++, mat4);
+        wallColliders.push(cellAabb(x, z));
       } else {
         pos.set(wpos.x, 0.055, wpos.z);
         mat4.makeTranslation(pos.x, pos.y, pos.z);
         floorMesh.setMatrixAt(fi++, mat4);
 
-        if (rng() < 0.24) addWallMountedPipes(group, grid, x, z, wpos, rng, pipeMat, pipeHazardSlots);
-        addWallLamp(group, grid, x, z, wpos, rng, lampMat, flickerLights, decorPointLights);
+        var pipeSide = pickPrimaryWallSide(grid, x, z);
+        if (pipeSide && rng() < 0.22) {
+          addWallMountedPipes(
+            group,
+            wallColliders,
+            grid,
+            x,
+            z,
+            wpos,
+            rng,
+            pipeMat,
+            pipeHazardSlots,
+            pipeSide
+          );
+        }
+        addWallLamp(
+          group,
+          grid,
+          x,
+          z,
+          wpos,
+          rng,
+          lampMat,
+          flickerLights,
+          decorPointLights,
+          pipeSide
+        );
 
         if (rng() < 0.07) {
           var cable = new THREE.Mesh(
@@ -385,6 +490,7 @@ export function buildLevel3World(mazeData) {
 
   return {
     group: group,
+    colliders: wallColliders,
     flickerLights: flickerLights,
     pipeHazardSlots: pipeHazardSlots,
     decorPointLights: decorPointLights,

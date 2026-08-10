@@ -4,6 +4,10 @@
 
 let ctx = null;
 let humGain = null;
+/** @type {OscillatorNode[]} */
+let oscillators = [];
+/** @type {GainNode[]} */
+let extraGains = [];
 let started = false;
 
 function ensureCtx() {
@@ -28,7 +32,9 @@ export function startLevel3Hum() {
   osc1.type = "sine";
   osc1.frequency.value = 58;
   osc1.connect(humGain);
+  oscillators.push(osc1);
 
+  // osc2 旁路 humGain：LFO 只调制主嗡鸣，辅音保持恒定底噪
   var osc2 = ac.createOscillator();
   osc2.type = "sine";
   osc2.frequency.value = 116;
@@ -36,7 +42,8 @@ export function startLevel3Hum() {
   g2.gain.value = 0.012;
   osc2.connect(g2);
   g2.connect(ac.destination);
-  osc2.start();
+  extraGains.push(g2);
+  oscillators.push(osc2);
 
   var lfo = ac.createOscillator();
   lfo.frequency.value = 0.35;
@@ -44,10 +51,51 @@ export function startLevel3Hum() {
   lfoGain.gain.value = 0.012;
   lfo.connect(lfoGain);
   lfoGain.connect(humGain.gain);
-  lfo.start();
+  oscillators.push(lfo);
 
   osc1.start();
+  osc2.start();
+  lfo.start();
   started = true;
+}
+
+export function stopLevel3Hum() {
+  if (!started) return;
+  var i;
+  for (i = 0; i < oscillators.length; i++) {
+    try {
+      oscillators[i].stop();
+      oscillators[i].disconnect();
+    } catch (err) {
+      /* ignore */
+    }
+  }
+  for (i = 0; i < extraGains.length; i++) {
+    try {
+      extraGains[i].disconnect();
+    } catch (err2) {
+      /* ignore */
+    }
+  }
+  if (humGain) {
+    try {
+      humGain.disconnect();
+    } catch (err3) {
+      /* ignore */
+    }
+  }
+  oscillators.length = 0;
+  extraGains.length = 0;
+  humGain = null;
+  started = false;
+  if (ctx) {
+    try {
+      ctx.close();
+    } catch (err4) {
+      /* ignore */
+    }
+    ctx = null;
+  }
 }
 
 export function bindLevel3HumOnGesture() {

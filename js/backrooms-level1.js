@@ -19,10 +19,12 @@ import {
 } from "./backrooms-inventory.js";
 import {
   MEG_NV_POTION_GIVEN_KEY,
+  MEG_NV_ALMOND_GIVEN_KEY,
   useNightVisionPotionFromBackpack,
 } from "./backrooms-night-vision.js";
 import {
   addMegPoints,
+  getMegPoints,
   updateMegPointsDisplay,
 } from "./backrooms-meg-points.js";
 import {
@@ -43,6 +45,18 @@ import {
   pickCrosshairInteract,
   getCameraAimRay,
 } from "./backrooms-interact-aim.js";
+import {
+  defaultMegBaseSpawn,
+  saveMegBaseCheckpoint,
+  getMegSpawnFromCheckpoint,
+  installMegCheckpointDeathHooks,
+  mountMegSaveStatus,
+  flashMegSaving,
+  updateMegBaseAutoSave,
+  consumeMegRespawnRedirectFlag,
+  applyMegDeathState,
+  MEG_RESPAWN_FLAG,
+} from "./backrooms-meg-checkpoint.js";
 
 const CHEST_LOOT_DISTANCE = 2.6;
 const AIM_INTERACT_MAX = 4.5;
@@ -119,7 +133,7 @@ let grounded = true;
 /** @type {{ x: number, z: number, talkRadius: number } | null} */
 let megGuideNpc = null;
 let megDialogueOpen = false;
-/** @type {"guide" | "trade" | "backdoor" | null} */
+/** @type {"guide" | "trade" | "backdoor" | "rations" | null} */
 let megDialogueKind = null;
 /** @type {{ data: object, distance: number } | null} */
 let currentAimPick = null;
@@ -184,7 +198,34 @@ function isSprintHeld() {
   return !!(keys.ShiftLeft || keys.ShiftRight);
 }
 
+function respawnAtMegBase() {
+  var sp = getMegSpawnFromCheckpoint();
+  if (!sp && level1World && level1World.ensureMegBase) {
+    sp = defaultMegBaseSpawn(level1World.ensureMegBase());
+  }
+  if (!sp) {
+    player.x = spawnPoint.x;
+    player.z = spawnPoint.z;
+    yaw = 0;
+  } else {
+    player.x = sp.x;
+    player.z = sp.z;
+    yaw = sp.yaw != null ? sp.yaw : -Math.PI * 0.5;
+  }
+  feetY = 0;
+  velY = 0;
+  pitch = 0;
+  roll = 0;
+  depenetratePlayer(16);
+  if (level1World) level1World.update(player.x, player.z);
+}
+
 function respawnAtSafePoint() {
+  if (survival && survival._respawnAtMegBase) {
+    survival._respawnAtMegBase = false;
+    respawnAtMegBase();
+    return;
+  }
   player.x = spawnPoint.x;
   player.z = spawnPoint.z;
   feetY = 0;
@@ -196,13 +237,39 @@ function respawnAtSafePoint() {
 }
 
 function initSurvivalHud() {
+  var megDeathReturn = false;
+  try {
+    megDeathReturn = sessionStorage.getItem(MEG_RESPAWN_FLAG) === "1";
+  } catch (err) {
+    megDeathReturn = false;
+  }
+
   survival = new BackroomsSurvival({
     onRespawn: respawnAtSafePoint,
   });
   var hudHost = document.querySelector(".backrooms-hud") || document.body;
   survival.mountHud(hudHost);
-  loadBackroomsSurvival(survival);
+  mountMegSaveStatus(survival);
+  if (!megDeathReturn) {
+    loadBackroomsSurvival(survival);
+  }
   registerBackroomsSurvivalPersist(survival);
+  installMegCheckpointDeathHooks(survival, function () {
+    return {
+      level: 1,
+      isInMegBase: function () {
+        return (
+          !!level1World &&
+          !!level1World.isInsideMegBaseInterior &&
+          level1World.isInsideMegBaseInterior(player.x, player.z)
+        );
+      },
+      getMegSpawn: function () {
+        if (!level1World || !level1World.ensureMegBase) return null;
+        return defaultMegBaseSpawn(level1World.ensureMegBase());
+      },
+    };
+  });
   setInventoryOpenHandler(function (open) {
     if (open && document.pointerLockElement && document.exitPointerLock) {
       document.exitPointerLock();
@@ -216,6 +283,9 @@ function initSurvivalHud() {
       if (useNightVisionPotionFromBackpack()) {
         showLootToast("夜视药水 · 5 分钟夜视");
       }
+    },
+    onRoyalRationsUsed: function () {
+      showLootToast("皇家口粮 · 10 分钟强化 · 150 血 / 200 体");
     },
   });
 }
@@ -338,6 +408,10 @@ function isNearMegBackDoorStaff() {
   return isAimKind("meg_npc", "backdoor");
 }
 
+function isNearMegRationsVendor() {
+  return isAimKind("meg_npc", "rations");
+}
+
 function setDialogueChoicesGuide() {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
@@ -388,6 +462,51 @@ function openMegTradeDialogue() {
   }
 }
 
+function openMegRationsDialogue() {
+  if (!dialogueEl || !dialogueTextEl) return;
+  megDialogueOpen = true;
+  megDialogueKind = "rations";
+  document.body.classList.add("backrooms-dialogue-open");
+  dialogueEl.hidden = false;
+  if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "M.E.G 补给员";
+  dialogueTextEl.textContent =
+    "最小剂量皇家口粮，10 积分点。使用后 10 分钟内血量上限 150、体力上限 200，并回满血量。要购买吗？";
+  setDialogueChoicesTrade();
+  if (interiorTalkHintEl) interiorTalkHintEl.hidden = true;
+  if (document.pointerLockElement && document.exitPointerLock) {
+    document.exitPointerLock();
+  }
+}
+
+function tryBuyRoyalRations() {
+  if (getMegPoints() < 10) {
+    if (dialogueTextEl) {
+      dialogueTextEl.textContent = "积分不足，需要 10 积分点。";
+    }
+    if (dialogueChoicesEl) dialogueChoicesEl.hidden = true;
+    window.setTimeout(closeMegDialogue, 1600);
+    return;
+  }
+  if (
+    !addItem({
+      id: "royal_rations",
+      name: "皇家口粮",
+    })
+  ) {
+    if (dialogueTextEl) {
+      dialogueTextEl.textContent = "背包已满，无法购买。";
+    }
+    if (dialogueChoicesEl) dialogueChoicesEl.hidden = true;
+    window.setTimeout(closeMegDialogue, 1600);
+    return;
+  }
+  addMegPoints(-10);
+  updateMegPointsDisplay(megPointsEl);
+  if (survival) survival.refreshHud();
+  closeMegDialogue();
+  showLootToast("购入皇家口粮 · −10 积分");
+}
+
 function openMegBackDoorStaffDialogue() {
   if (!dialogueEl || !dialogueTextEl) return;
   megDialogueOpen = true;
@@ -403,9 +522,11 @@ function openMegBackDoorStaffDialogue() {
     alreadyGave = false;
   }
   if (gavePotion) {
+    tryGiveMegBackDoorAlmondWater();
     dialogueTextEl.textContent =
       "可以打开后门然后进去。这瓶夜视药水你拿着，在背包里双击使用，大约 5 分钟内能看清暗处。";
   } else if (alreadyGave) {
+    tryGiveMegBackDoorAlmondWater();
     dialogueTextEl.textContent =
       "可以打开后门然后进去。夜视药水在背包里，双击即可使用。";
   } else {
@@ -443,6 +564,27 @@ function tryGiveMegBackDoorNightVisionPotion() {
   return true;
 }
 
+function tryGiveMegBackDoorAlmondWater() {
+  try {
+    if (sessionStorage.getItem(MEG_NV_ALMOND_GIVEN_KEY) === "1") return false;
+  } catch (err) {
+    /* ignore */
+  }
+  if (!survival) return false;
+  var added = survival.addAlmondWater(2);
+  if (added <= 0) {
+    showLootToast("背包已满，无法领取杏仁水");
+    return false;
+  }
+  try {
+    sessionStorage.setItem(MEG_NV_ALMOND_GIVEN_KEY, "1");
+  } catch (err2) {
+    /* ignore */
+  }
+  showLootToast("获得杏仁水 ×" + added);
+  return true;
+}
+
 function closeMegDialogue() {
   megDialogueOpen = false;
   megDialogueKind = null;
@@ -477,6 +619,8 @@ function teleportToMegBase() {
   pitch = 0.1;
   feetY = 0;
   velY = 0;
+  saveMegBaseCheckpoint(defaultMegBaseSpawn(center));
+  flashMegSaving();
   depenetratePlayer(20);
   if (level1World) level1World.update(player.x, player.z);
 }
@@ -489,6 +633,11 @@ function megDialogueChoose(wantYes) {
   }
   if (megDialogueKind === "trade") {
     if (wantYes) tryAlmondWaterTrade();
+    else closeMegDialogue();
+    return;
+  }
+  if (megDialogueKind === "rations") {
+    if (wantYes) tryBuyRoyalRations();
     else closeMegDialogue();
     return;
   }
@@ -508,6 +657,10 @@ function tryMegQAction() {
   }
   if (isNearMegBackDoorStaff()) {
     openMegBackDoorStaffDialogue();
+    return;
+  }
+  if (isNearMegRationsVendor()) {
+    openMegRationsDialogue();
     return;
   }
   if (isNearMegInteriorStaff()) {
@@ -559,7 +712,7 @@ function updateMegDoorHint() {
     doorHintEl.hidden = true;
     return;
   }
-  if (isNearMegGuide() || isNearMegInteriorStaff() || isNearMegBackDoorStaff()) {
+  if (isNearMegGuide() || isNearMegInteriorStaff() || isNearMegBackDoorStaff() || isNearMegRationsVendor()) {
     doorHintEl.hidden = true;
     return;
   }
@@ -597,7 +750,7 @@ function updateMegInteriorTalkHint() {
     return;
   }
   interiorTalkHintEl.hidden =
-    !(isNearMegInteriorStaff() || isNearMegBackDoorStaff());
+    !(isNearMegInteriorStaff() || isNearMegBackDoorStaff() || isNearMegRationsVendor());
 }
 
 function updatePointsHud() {
@@ -938,6 +1091,9 @@ function enforceLevel1EntryOrRedirect() {
     return false;
   }
   try {
+    if (sessionStorage.getItem(MEG_RESPAWN_FLAG) === "1") {
+      return true;
+    }
     if (sessionStorage.getItem("backrooms_clip_pass") !== "1") {
       window.location.replace("backrooms-level0.html");
       return false;
@@ -990,6 +1146,11 @@ function init() {
   nextFlickerAt = performance.now() + 8000;
 
   initSurvivalHud();
+  if (consumeMegRespawnRedirectFlag()) {
+    applyMegDeathState(survival);
+    if (level1World && level1World.ensureMegBase) level1World.ensureMegBase();
+    respawnAtMegBase();
+  }
   initBackroomsTemperature(1, {
     rootEl: tempRootEl,
     fillEl: tempFillEl,
@@ -1043,6 +1204,9 @@ function startLoop() {
       level1World.update(player.x, player.z);
       level1World.updateMegDoor(dt);
       level1World.updateMegCorridorVisibility(player.x, player.z);
+    }
+    if (survival && level1World) {
+      updateMegBaseAutoSave(survival, level1World, player.x, player.z);
     }
     camera.position.set(player.x, feetY + EYE_HEIGHT, player.z);
     camera.rotation.order = "YXZ";

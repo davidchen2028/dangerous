@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-  <title>后室 Level 283</title>
+  <title>后室 Level 4 — 办公层</title>
   <link rel="stylesheet" href="css/backrooms-level0.css?v=16">
   <link rel="stylesheet" href="css/backrooms-survival.css?v=3">
 </head>
-<body class="backrooms-level1 backrooms-level2 backrooms-level283">
-  <canvas id="backroomsCanvas" aria-label="后室 Level 283"></canvas>
+<body class="backrooms-level1 backrooms-level2">
+  <canvas id="backroomsCanvas" aria-label="后室 Level 4"></canvas>
   <div id="backroomsInput" class="backrooms-input" aria-hidden="true"></div>
   <div class="backrooms-crosshair" id="backroomsCrosshair" aria-hidden="true"></div>
   <div class="backrooms-hud">
-    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level 283</p>
+    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level 4 · 办公层</p>
     <div class="backrooms-nav" aria-label="状态">
       <div class="backrooms-nav__row">
         <p class="backrooms-temp" id="backroomsTemp">
@@ -29,6 +29,10 @@
       </div>
     </div>
     <p class="backrooms-hud__hint" id="backroomsHint">加载中…</p>
+    <p class="backrooms-hud__hint backrooms-hud__hint--sub" id="backroomsWaterHint" hidden>
+      按 <kbd>Q</kbd> 接水
+    </p>
+    <p class="backrooms-hud__loot" id="backroomsLootToast" hidden></p>
     <div class="backrooms-hud__error" id="backroomsError" hidden></div>
   </div>
   <script type="importmap">
@@ -38,6 +42,6 @@
     }
   }
   </script>
-  <script type="module" src="js/backrooms-level283.js?v=2"></script>
+  <script type="module" src="js/backrooms-level4.js?v=3"></script>
 </body>
 </html>

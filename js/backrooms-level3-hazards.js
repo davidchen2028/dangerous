@@ -80,8 +80,9 @@ export function updateLevel3PipeHazards(survival, hazards, px, pz, now) {
     var active = now < h.activeUntil;
     if (h.vfx) h.vfx.visible = active;
     if (!active) continue;
-    var dist = Math.hypot(px - h.x, pz - h.z);
-    if (dist > BURST_RADIUS) continue;
+    var dx = px - h.x;
+    var dz = pz - h.z;
+    if (dx * dx + dz * dz > BURST_RADIUS * BURST_RADIUS) continue;
     if (h.hitThisBurst || !survival || survival.dead) continue;
     survival.takeDamage(PIPE_HAZARD_DAMAGE);
     h.hitThisBurst = true;

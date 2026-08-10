@@ -8,6 +8,7 @@ import {
   registerBackroomsSurvivalPersist,
   saveBackroomsSurvival,
 } from "./backrooms-survival-persist.js";
+import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
 import {
   toggleBackpack,
   isInventoryOpen,
@@ -34,6 +35,7 @@ import {
   tryOpenLevel2Door,
   getLevel2DoorTransition,
 } from "./backrooms-level2-doors.js";
+import { createLevel2Xiaoye } from "./backrooms-level2-xiaoye.js";
 import {
   isNightVisionActive,
   formatNightVisionRemaining,
@@ -99,6 +101,8 @@ let lastNvHintSec = -1;
 
 let level2Doors = null;
 let interactRoots = [];
+/** @type {ReturnType<createLevel2Xiaoye> | null} */
+let level2Xiaoye = null;
 /** @type {{ data: object, distance: number } | null} */
 let currentAimPick = null;
 let transitionLock = false;
@@ -160,6 +164,12 @@ function initSurvivalHud() {
         syncLookUi();
       }
     },
+    onRoyalRationsUsed: function () {
+      showLootToast("皇家口粮 · 10 分钟强化 · 150 血 / 200 体");
+    },
+  });
+  installMegCheckpointDeathHooks(survival, function () {
+    return { level: 2 };
   });
 }
 
@@ -218,7 +228,7 @@ function tryDoorQAction() {
     return;
   }
   if (tryOpenLevel2Door(level2Doors, id)) {
-    showLootToast("Level 3 门已打开 · 穿过进入");
+    showLootToast("未上锁的门已打开 · 穿过进入");
   }
 }
 
@@ -236,7 +246,7 @@ function updateDoorHint() {
   if (id === "l283") {
     doorHintEl.innerHTML = '彩色门 · 按 <kbd>Q</kbd>（未开放）';
   } else {
-    doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开未上锁的门 · 通往 Level 3';
+    doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开未上锁的门 · 通往深处';
   }
   doorHintEl.hidden = false;
 }
@@ -247,8 +257,12 @@ function tryLevelTransition() {
   if (!dest) return;
   transitionLock = true;
   try {
-    if (dest === "l3") {
-      saveBackroomsSurvival(survival);
+    saveBackroomsSurvival(survival);
+    if (dest === "l4") {
+      sessionStorage.setItem("backrooms_l4_pass", "1");
+      sessionStorage.setItem("backrooms_l4_yaw", String(yaw));
+      window.location.href = "backrooms-level4.html";
+    } else if (dest === "l3") {
       sessionStorage.setItem("backrooms_l3_pass", "1");
       sessionStorage.setItem("backrooms_l3_yaw", String(yaw));
       window.location.href = "backrooms-level3.html";
@@ -506,6 +520,7 @@ function init() {
   level2Lighting = built.lighting;
   level2Doors = built.doors;
   interactRoots = built.interactRoots || [];
+  level2Xiaoye = createLevel2Xiaoye(root);
   applyLevel2NightVisionLighting(isNightVisionActive());
 
   initSurvivalHud();
@@ -550,6 +565,9 @@ function startLoop() {
     updateAimPick();
     updateDoorHint();
     updateLevel2Doors(level2Doors, dt);
+    if (level2Xiaoye && survival && !survival.dead) {
+      level2Xiaoye.update(dt, player.x, player.z, survival, showLootToast);
+    }
 
     if (crosshairEl) {
       var hide = isInventoryOpen() || !survival || survival.dead;

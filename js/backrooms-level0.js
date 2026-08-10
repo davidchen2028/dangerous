@@ -4,6 +4,7 @@
  */
 import * as THREE from "three";
 import { BackroomsSurvival, resetBackroomsRun, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
+import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
 import {
   loadBackroomsSurvival,
   registerBackroomsSurvivalPersist,
@@ -34,8 +35,10 @@ const MAP_COLS = 12; // 迷宫地图列数
 // =============================================================================
 // 材质与氛围
 // =============================================================================
-const WALL_COLOR = 0xc2b280; // 经典后室泛黄壁纸
+const WALL_COLOR = 0xc2b280; // 无 Canvas 时的兜底色
 const WALL_ROUGHNESS = 0.8;
+/** 壁纸图案在世界里大约多少米重复一次 */
+const WALLPAPER_METERS_PER_TILE = 1.0;
 /** 特殊墙块 [row, col] — 深黄色 */
 const SPECIAL_WALL_CELL = { row: 9, col: 11 };
 const SPECIAL_WALL_COLOR = 0x7a5a12;
@@ -185,12 +188,97 @@ function validateMatrix() {
 // =============================================================================
 // 材质
 // =============================================================================
-function createWallMaterial(color) {
-  return new THREE.MeshStandardMaterial({
-    color: color || WALL_COLOR,
+/** 经典 Level 0 壁纸 — Canvas 绘制（竖向短划沿菱形边排列） */
+function createLevel0WallPaperTexture() {
+  var colW = 38;
+  var rowH = 41;
+  var cw = colW * 2;
+  var ch = rowH * 2;
+  var canvas = document.createElement("canvas");
+  canvas.width = cw;
+  canvas.height = ch;
+  var ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.fillStyle = "#b8ba62";
+  ctx.fillRect(0, 0, cw, ch);
+
+  var n;
+  for (n = 0; n < cw * ch * 0.08; n++) {
+    ctx.fillStyle =
+      "rgba(0,0,0," + (0.012 + Math.random() * 0.022).toFixed(3) + ")";
+    ctx.fillRect(Math.random() * cw, Math.random() * ch, 1, 1);
+  }
+  for (n = 0; n < cw * ch * 0.04; n++) {
+    ctx.fillStyle =
+      "rgba(255,255,210," + (0.018 + Math.random() * 0.028).toFixed(3) + ")";
+    ctx.fillRect(Math.random() * cw, Math.random() * ch, 1, 1);
+  }
+
+  var ink = "#2c2820";
+
+  function verticalDashesAlong(x0, y0, x1, y1, dashLen, step) {
+    var len = Math.hypot(x1 - x0, y1 - y0);
+    if (len < 0.001) return;
+    var count = Math.max(1, Math.floor(len / step));
+    var i;
+    for (i = 0; i <= count; i++) {
+      var t = i / count;
+      var px = x0 + (x1 - x0) * t;
+      var py = y0 + (y1 - y0) * t;
+      ctx.fillStyle = ink;
+      ctx.fillRect(Math.floor(px), Math.floor(py - dashLen * 0.5), 1, dashLen);
+    }
+  }
+
+  function drawDiamond(cx, cy, rx, ry) {
+    var top = [cx, cy - ry];
+    var right = [cx + rx, cy];
+    var bottom = [cx, cy + ry];
+    var left = [cx - rx, cy];
+    var dash = 3.2;
+    var step = 3.4;
+    verticalDashesAlong(top[0], top[1], right[0], right[1], dash, step);
+    verticalDashesAlong(right[0], right[1], bottom[0], bottom[1], dash, step);
+    verticalDashesAlong(bottom[0], bottom[1], left[0], left[1], dash, step);
+    verticalDashesAlong(left[0], left[1], top[0], top[1], dash, step);
+  }
+
+  var col;
+  var row;
+  for (col = 0; col < 2; col++) {
+    var xBase = col * colW + colW * 0.5;
+    var yShift = col & 1 ? rowH * 0.5 : 0;
+    for (row = -1; row < 3; row++) {
+      var cy = row * rowH + yShift;
+      drawDiamond(xBase, cy, 7.5, 9.5);
+    }
+  }
+
+  var tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(
+    GRID_SIZE / WALLPAPER_METERS_PER_TILE,
+    WALL_HEIGHT / WALLPAPER_METERS_PER_TILE
+  );
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function createWallMaterial() {
+  var mat = new THREE.MeshStandardMaterial({
+    color: WALL_COLOR,
     roughness: WALL_ROUGHNESS,
     metalness: 0,
   });
+  var tex = createLevel0WallPaperTexture();
+  if (tex) {
+    mat.map = tex;
+    mat.color.setHex(0xffffff);
+  }
+  return mat;
 }
 
 function isSpecialWallCell(row, col) {
@@ -509,6 +597,9 @@ function initSurvivalHud() {
     }
   });
   registerBackroomsInventoryUseHandlers(survival);
+  installMegCheckpointDeathHooks(survival, function () {
+    return { level: 0 };
+  });
 }
 
 // =============================================================================
@@ -1034,7 +1125,6 @@ function startLoop() {
     }
     updateClipPrompt();
     updateCrosshairL0();
-    updateMegPointsDisplay(megPointsEl);
     updateBackroomsTemperature(dt, performance.now());
     updateBackroomsHeatDamage(survival, performance.now());
     if (renderer && scene && camera) {

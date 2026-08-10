@@ -3,6 +3,8 @@
  */
 import * as THREE from "three";
 
+var _doorBoxScratch = new THREE.Box3();
+
 const STORAGE_KEY = "backrooms_l2_doors_v2";
 const DOOR_W = 1.05;
 const DOOR_H = 2.45;
@@ -41,7 +43,17 @@ export function getOrCreateLevel2DoorLayout(halfLen, hubEdge) {
     var raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw) {
       var parsed = JSON.parse(raw);
-      if (parsed && parsed.l3 && parsed.l283) return parsed;
+      if (parsed && parsed.l3 && parsed.l283) {
+      if (!parsed.l3Dest) {
+        parsed.l3Dest = mulberry32((parsed.seed | 0) + 7919)() < 0.3 ? "l4" : "l3";
+        try {
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        } catch (err0) {
+          /* ignore */
+        }
+      }
+      return parsed;
+    }
     }
   } catch (err) {
     /* ignore */
@@ -52,6 +64,7 @@ export function getOrCreateLevel2DoorLayout(halfLen, hubEdge) {
   var pair = pickDistinctArms(rng);
   var layout = {
     seed: seed,
+    l3Dest: rng() < 0.3 ? "l4" : "l3",
     l3: { arm: pair.a, pos: armPosition(rng, halfLen, hubEdge) },
     l283: { arm: pair.b, pos: armPosition(rng, halfLen, hubEdge) },
   };
@@ -292,21 +305,21 @@ function refreshDoorWorldCollider(doorRoot, collider, panelPivot, ghost) {
     return;
   }
   panelPivot.updateMatrixWorld(true);
-  var box = new THREE.Box3().setFromObject(panelPivot);
-  collider.minX = box.min.x - 0.04;
-  collider.maxX = box.max.x + 0.04;
-  collider.minZ = box.min.z - 0.06;
-  collider.maxZ = box.max.z + 0.06;
+  _doorBoxScratch.setFromObject(panelPivot);
+  collider.minX = _doorBoxScratch.min.x - 0.04;
+  collider.maxX = _doorBoxScratch.max.x + 0.04;
+  collider.minZ = _doorBoxScratch.min.z - 0.06;
+  collider.maxZ = _doorBoxScratch.max.z + 0.06;
   collider.ghost = false;
 }
 
 function refreshDoorPassage(doorRoot, passage) {
   doorRoot.updateMatrixWorld(true);
-  var frameBox = new THREE.Box3().setFromObject(doorRoot);
-  passage.minX = frameBox.min.x + 0.08;
-  passage.maxX = frameBox.max.x - 0.08;
-  passage.minZ = frameBox.min.z + 0.05;
-  passage.maxZ = frameBox.max.z + 0.55;
+  _doorBoxScratch.setFromObject(doorRoot);
+  passage.minX = _doorBoxScratch.min.x + 0.08;
+  passage.maxX = _doorBoxScratch.max.x - 0.08;
+  passage.minZ = _doorBoxScratch.min.z + 0.05;
+  passage.maxZ = _doorBoxScratch.max.z + 0.55;
 }
 
 export function buildLevel2Doors(group, colliders, halfW, halfLen, hubEdge) {
@@ -329,6 +342,7 @@ export function buildLevel2Doors(group, colliders, halfW, halfLen, hubEdge) {
   });
 
   var l3 = buildWallDoor(group, colliders, layout.l3, halfW, halfLen, hubEdge, "l3", plainMat, rainbowMat);
+  l3.l3Dest = layout.l3Dest === "l4" ? "l4" : "l3";
   var l283 = buildWallDoor(
     group,
     colliders,
@@ -383,7 +397,7 @@ export function updateLevel2Doors(doors, dt) {
 export function getLevel2DoorTransition(doors, px, pz) {
   if (!doors) return null;
   if (doors.l3 && doors.l3.open && pointInPassage(doors.l3.passage, px, pz)) {
-    return "l3";
+    return doors.l3.l3Dest === "l4" ? "l4" : "l3";
   }
   if (doors.l283 && doors.l283.open && pointInPassage(doors.l283.passage, px, pz)) {
     return "l283";

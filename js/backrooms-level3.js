@@ -6,7 +6,9 @@ import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./back
 import {
   loadBackroomsSurvival,
   registerBackroomsSurvivalPersist,
+  saveBackroomsSurvival,
 } from "./backrooms-survival-persist.js";
+import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
 import { toggleBackpack, isInventoryOpen, setInventoryOpenHandler } from "./backrooms-inventory.js";
 import { updateMegPointsDisplay } from "./backrooms-meg-points.js";
 import {
@@ -24,15 +26,20 @@ import {
   generateLevel3Maze,
   buildLevel3World,
   getLevel3SpawnWorld,
-  resolveCircleAgainstLevel3Maze,
   updateLevel3FlickerLights,
   WALL_H,
 } from "./backrooms-level3-world.js";
+import { resolveCircleAgainstColliders } from "./backrooms-collide.js";
 import {
   createLevel3PipeHazards,
   updateLevel3PipeHazards,
 } from "./backrooms-level3-hazards.js";
-import { bindLevel3HumOnGesture, startLevel3Hum } from "./backrooms-level3-audio.js";
+import { bindLevel3HumOnGesture, startLevel3Hum, stopLevel3Hum } from "./backrooms-level3-audio.js";
+import { attachMobileDragLook } from "./backrooms-fps-look.js";
+import {
+  buildLevel3ElevatorShaft,
+  isNearLevel3Elevator,
+} from "./backrooms-level3-elevator.js";
 
 const MAZE_SEED_KEY = "backrooms_l3_maze_v2";
 const FOG_COLOR = 0x14141c;
@@ -52,6 +59,7 @@ const megPointsEl = document.getElementById("backroomsMegPoints");
 const tempRootEl = document.getElementById("backroomsTemp");
 const tempFillEl = document.getElementById("backroomsTempFill");
 const tempValueEl = document.getElementById("backroomsTempValue");
+const elevatorHintEl = document.getElementById("backroomsElevatorHint");
 
 const LOOK_SENS = 0.0022;
 const GRAVITY = 32;
@@ -64,6 +72,7 @@ let camera = null;
 let scene = null;
 let survival = null;
 let mazeData = null;
+const wallColliders = [];
 let flickerLights = [];
 let pipeHazards = [];
 let hazardVfxGroup = null;
@@ -82,12 +91,21 @@ const move = { forward: false, back: false, left: false, right: false };
 let yaw = 0;
 let pitch = 0;
 let pointerLocked = false;
+/** @type {ReturnType<attachMobileDragLook> | null} */
+let mobileLook = null;
 const player = { x: 0, z: 0, radius: 0.32, speed: 4.05 };
 let feetY = 0;
 let velY = 0;
 let grounded = true;
 let spawnX = 0;
 let spawnZ = 0;
+/** @type {ReturnType<buildLevel3ElevatorShaft> | null} */
+let level3Elevator = null;
+let elevatorRising = false;
+let elevatorRiseT = 0;
+const ELEVATOR_RISE_DURATION = 3.6;
+const ELEVATOR_RISE_HEIGHT = 88;
+let elevatorStartPitch = 0;
 
 function showError(msg) {
   if (!errorEl) return;
@@ -149,15 +167,15 @@ function applyLevel3Vision(nv) {
     scene.fog.near = FOG_NEAR;
     scene.fog.far = FOG_FAR;
     if (ambientLight) {
-      ambientLight.color.setHex(0x2a2a38);
-      ambientLight.intensity = 0.58;
+      ambientLight.color.setHex(0x3a3a48);
+      ambientLight.intensity = 0.82;
     }
     if (fillLight) {
-      fillLight.color.setHex(0x3a3a50);
-      fillLight.groundColor.setHex(0x0a0a10);
-      fillLight.intensity = 0.28;
+      fillLight.color.setHex(0x4a4a62);
+      fillLight.groundColor.setHex(0x141418);
+      fillLight.intensity = 0.45;
     }
-    renderer.toneMappingExposure = 0.85;
+    renderer.toneMappingExposure = 0.98;
     if (wall) {
       wall.color.setHex(0x3a3a44);
       wall.emissive.setHex(0x181820);
@@ -173,8 +191,8 @@ function applyLevel3Vision(nv) {
       pipe.emissive.setHex(0x141418);
     }
     if (lamp) lamp.emissiveIntensity = 1.1;
-    for (i = 0; i < decorPointLights.length; i++) decorPointLights[i].intensity = 0.72;
-    flickerIntensityScale = 0.78;
+    for (i = 0; i < decorPointLights.length; i++) decorPointLights[i].intensity = 0.98;
+    flickerIntensityScale = 0.95;
   }
 }
 
@@ -241,11 +259,12 @@ function movePlayer(dt, speedMul) {
   var worldX = dx * cosY + dz * sinY;
   var worldZ = -dx * sinY + dz * cosY;
   var step = player.speed * speedMul * dt;
-  var out = resolveCircleAgainstLevel3Maze(
+  var out = resolveCircleAgainstColliders(
     player.x + worldX * step,
     player.z + worldZ * step,
     player.radius,
-    mazeData.grid
+    wallColliders,
+    14
   );
   player.x = out.x;
   player.z = out.z;
@@ -269,12 +288,83 @@ function syncLookUi() {
   if (!hintEl) return;
   var nv = isNightVisionActive() ? " · 夜视 <strong>" + formatNightVisionRemaining() + "</strong>" : "";
   hintEl.innerHTML =
-    "发电站 · <kbd>WASD</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>Space</kbd> 跳 · <kbd>B</kbd> 背包" +
+    "发电站 · 迷宫<strong>中央</strong>有电梯 → Level 4 · <kbd>WASD</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>Space</kbd> 跳 · <kbd>B</kbd> 背包" +
     nv;
+}
+
+function updateElevatorHint() {
+  if (!elevatorHintEl) return;
+  if (elevatorRising || isInventoryOpen() || !survival || survival.dead) {
+    elevatorHintEl.hidden = true;
+    return;
+  }
+  elevatorHintEl.hidden = !isNearLevel3Elevator(player.x, player.z, level3Elevator);
+}
+
+function tryStartElevator() {
+  if (elevatorRising || isInventoryOpen() || !survival || survival.dead) return;
+  if (!isNearLevel3Elevator(player.x, player.z, level3Elevator)) return;
+  elevatorRising = true;
+  elevatorRiseT = 0;
+  elevatorStartPitch = pitch;
+  move.forward = false;
+  move.back = false;
+  move.left = false;
+  move.right = false;
+  if (elevatorHintEl) elevatorHintEl.hidden = true;
+  showLootToast("电梯上升…");
+  if (document.exitPointerLock) document.exitPointerLock();
+}
+
+function updateElevatorRise(dt) {
+  if (!elevatorRising) return false;
+  elevatorRiseT += dt;
+  var p = Math.min(1, elevatorRiseT / ELEVATOR_RISE_DURATION);
+  var ease = p * p * (3 - 2 * p);
+  feetY = ease * ELEVATOR_RISE_HEIGHT;
+  pitch = elevatorStartPitch + (-0.42 - elevatorStartPitch) * ease;
+  if (p >= 1) {
+    try {
+      saveBackroomsSurvival(survival);
+      sessionStorage.setItem("backrooms_l4_pass", "1");
+      sessionStorage.setItem("backrooms_l4_yaw", String(yaw));
+    } catch (err) {
+      /* ignore */
+    }
+    stopLevel3Hum();
+    window.location.href = "backrooms-level4.html";
+  }
+  return true;
 }
 
 function bindControls() {
   bindLevel3HumOnGesture();
+  var cap = inputEl || canvas;
+  if (cap) {
+    mobileLook = attachMobileDragLook({
+      captureEl: cap,
+      inputEl: inputEl,
+      lookSens: LOOK_SENS,
+      getPointerLocked: function () {
+        return pointerLocked;
+      },
+      getYaw: function () {
+        return yaw;
+      },
+      setYaw: function (v) {
+        yaw = v;
+      },
+      getPitch: function () {
+        return pitch;
+      },
+      setPitch: function (v) {
+        pitch = v;
+      },
+      shouldBlockPointerLock: function () {
+        return isInventoryOpen();
+      },
+    });
+  }
   window.addEventListener("keydown", function (e) {
     keys[e.code] = true;
     if (e.code === "KeyW") move.forward = true;
@@ -289,6 +379,10 @@ function bindControls() {
     if (e.code === "KeyB" && !e.repeat) {
       e.preventDefault();
       toggleBackpack();
+    }
+    if (e.code === "KeyQ" && !e.repeat) {
+      e.preventDefault();
+      tryStartElevator();
     }
   });
   window.addEventListener("keyup", function (e) {
@@ -307,15 +401,19 @@ function bindControls() {
   document.addEventListener("pointerlockchange", function () {
     pointerLocked = document.pointerLockElement === inputEl || document.pointerLockElement === canvas;
     if (pointerLocked) startLevel3Hum();
+    if (mobileLook) mobileLook.syncInputDragClass(pointerLocked);
   });
-  var cap = inputEl || canvas;
   if (cap) {
     cap.addEventListener("pointerdown", function (e) {
+      if (mobileLook && mobileLook.isDragLook()) return;
       if (!isInventoryOpen() && e.button === 0 && !pointerLocked && cap.requestPointerLock) {
         cap.requestPointerLock();
       }
     });
   }
+  window.addEventListener("pagehide", function () {
+    stopLevel3Hum();
+  });
   window.addEventListener("resize", function () {
     if (!renderer || !camera) return;
     renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -343,13 +441,18 @@ function init() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.85;
+  renderer.toneMappingExposure = 0.98;
 
   var root = new THREE.Group();
   scene.add(root);
 
   var built = buildLevel3World(mazeData);
   root.add(built.group);
+  wallColliders.length = 0;
+  var ci;
+  for (ci = 0; ci < built.colliders.length; ci++) {
+    wallColliders.push(built.colliders[ci]);
+  }
   flickerLights = built.flickerLights;
   decorPointLights = built.decorPointLights || [];
   level3Materials = built.materials;
@@ -359,9 +462,11 @@ function init() {
   root.add(hazardVfxGroup);
   pipeHazards = createLevel3PipeHazards(built.pipeHazardSlots, hazardVfxGroup);
 
-  ambientLight = new THREE.AmbientLight(0x2a2a38, 0.58);
+  level3Elevator = buildLevel3ElevatorShaft(root);
+
+  ambientLight = new THREE.AmbientLight(0x3a3a48, 0.82);
   scene.add(ambientLight);
-  fillLight = new THREE.HemisphereLight(0x3a3a50, 0x0a0a10, 0.28);
+  fillLight = new THREE.HemisphereLight(0x4a4a62, 0x141418, 0.45);
   scene.add(fillLight);
 
   survival = new BackroomsSurvival({
@@ -391,6 +496,12 @@ function init() {
         syncLookUi();
       }
     },
+    onRoyalRationsUsed: function () {
+      showLootToast("皇家口粮 · 10 分钟强化 · 150 血 / 200 体");
+    },
+  });
+  installMegCheckpointDeathHooks(survival, function () {
+    return { level: 3 };
   });
 
   initBackroomsTemperature(3, { rootEl: tempRootEl, fillEl: tempFillEl, valueEl: tempValueEl });
@@ -413,11 +524,17 @@ function init() {
 
     var moving = move.forward || move.back || move.left || move.right;
     var sprinting = !!(keys.ShiftLeft || keys.ShiftRight) && moving;
-    if (survival && !survival.dead) survival.update(dt, { sprinting: sprinting });
-    updatePlayerPhysics(dt);
-    if ((!survival || !survival.dead) && !isInventoryOpen()) {
-      var mul = survival && sprinting ? survival.getSprintSpeedMul(player.speed, sprinting, moving) : 1;
-      movePlayer(dt, mul);
+    if (survival && !survival.dead) survival.update(dt, { sprinting: sprinting && !elevatorRising });
+    if (elevatorRising) {
+      updateElevatorRise(dt);
+      velY = 0;
+      grounded = false;
+    } else {
+      updatePlayerPhysics(dt);
+      if ((!survival || !survival.dead) && !isInventoryOpen()) {
+        var mul = survival && sprinting ? survival.getSprintSpeedMul(player.speed, sprinting, moving) : 1;
+        movePlayer(dt, mul);
+      }
     }
 
     var hazardMsg = updateLevel3PipeHazards(survival, pipeHazards, player.x, player.z, now);
@@ -452,6 +569,7 @@ function init() {
 
     updateBackroomsTemperature(dt, now);
     updateBackroomsHeatDamage(survival, now);
+    updateElevatorHint();
     renderer.render(scene, camera);
   }
   frame();

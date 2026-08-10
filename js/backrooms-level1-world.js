@@ -483,6 +483,20 @@ function tryOpenMegDoor(px, pz) {
 var _megInteriorNpc = null;
 /** @type {{ x: number, z: number, talkRadius: number } | null} 后门引导员 */
 var _megBackDoorStaffNpc = null;
+/** @type {{ x: number, z: number, talkRadius: number, group: THREE.Object3D } | null} */
+var _megRationsVendorNpc = null;
+
+function resetMegModuleState() {
+  _megBaseCenter = null;
+  _megBaseOccluderGroup = null;
+  _megDoorState = null;
+  _megBackDoorState = null;
+  _megCorridorFootprint = null;
+  _megCorridorState = null;
+  _megInteriorNpc = null;
+  _megBackDoorStaffNpc = null;
+  _megRationsVendorNpc = null;
+}
 
 /** 出生区块 M.E.G 引导员 */
 function buildMegStaffFigure(root, wx, wz, name, interactRole) {
@@ -831,6 +845,20 @@ function buildMegAlphaBase(root, ctx) {
     group: interior.group,
   };
 
+  var rationsVendor = buildMegStaffFigure(
+    root,
+    center.x - hx + 2.15,
+    center.z - 1.35,
+    "MegRationsVendor",
+    "rations"
+  );
+  _megRationsVendorNpc = {
+    x: rationsVendor.x,
+    z: rationsVendor.z,
+    talkRadius: 2.8,
+    group: rationsVendor.group,
+  };
+
   root.add(group);
   _megBaseOccluderGroup = group;
   _megCorridorFootprint = megCorridorFootprintBounds(center, hx, doorW, wallT);
@@ -886,10 +914,86 @@ function shouldSpawnChest(gCol, gRow) {
   );
 }
 
+function createLevel1PillarConcreteTexture() {
+  var cw = 128;
+  var ch = 144;
+  var canvas = document.createElement("canvas");
+  canvas.width = cw;
+  canvas.height = ch;
+  var ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.fillStyle = "#8a9098";
+  ctx.fillRect(0, 0, cw, ch);
+
+  var n;
+  for (n = 0; n < 2800; n++) {
+    var g = 118 + Math.floor(Math.random() * 28);
+    ctx.fillStyle = "rgb(" + g + "," + g + "," + (g + 4) + ")";
+    ctx.fillRect(Math.random() * cw, Math.random() * ch, 1, 1);
+  }
+
+  var grimeGrad = ctx.createLinearGradient(0, ch * 0.35, 0, ch);
+  grimeGrad.addColorStop(0, "rgba(40,38,36,0)");
+  grimeGrad.addColorStop(0.55, "rgba(35,33,30,0.35)");
+  grimeGrad.addColorStop(1, "rgba(22,20,18,0.72)");
+  ctx.fillStyle = grimeGrad;
+  ctx.fillRect(0, 0, cw, ch);
+
+  for (n = 0; n < 18; n++) {
+    var bx = Math.random() * cw;
+    var by = ch - Math.random() * ch * 0.55;
+    var bw = 8 + Math.random() * 28;
+    var bh = 6 + Math.random() * 22;
+    ctx.fillStyle = "rgba(28,26,24," + (0.15 + Math.random() * 0.35).toFixed(2) + ")";
+    ctx.beginPath();
+    ctx.ellipse(bx, by, bw, bh, Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = "rgba(45,42,38,0.22)";
+  ctx.lineWidth = 1;
+  for (n = 0; n < 7; n++) {
+    var sx = Math.random() * cw;
+    ctx.beginPath();
+    ctx.moveTo(sx, ch * 0.2);
+    ctx.lineTo(sx + (Math.random() - 0.5) * 6, ch);
+    ctx.stroke();
+  }
+
+  var woodH = ch * 0.28;
+  var woodW = 5;
+  ctx.fillStyle = "#a88858";
+  ctx.fillRect(2, ch - woodH, woodW, woodH);
+  ctx.fillRect(cw - woodW - 2, ch - woodH, woodW, woodH);
+  ctx.fillStyle = "rgba(60,45,28,0.35)";
+  ctx.fillRect(3, ch - woodH + 2, 1, woodH - 4);
+  ctx.fillRect(cw - woodW - 1, ch - woodH + 2, 1, woodH - 4);
+
+  var lightGrad = ctx.createLinearGradient(0, 0, cw, 0);
+  lightGrad.addColorStop(0, "rgba(0,0,0,0.38)");
+  lightGrad.addColorStop(0.45, "rgba(0,0,0,0.06)");
+  lightGrad.addColorStop(1, "rgba(255,255,255,0.28)");
+  ctx.fillStyle = lightGrad;
+  ctx.fillRect(0, 0, cw, ch);
+
+  var tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 1);
+  tex.anisotropy = 4;
+  return tex;
+}
+
 function wallMaterial() {
-  return new THREE.MeshLambertMaterial({
-    color: CONCRETE_COLOR,
+  var mat = new THREE.MeshLambertMaterial({
+    color: 0xffffff,
   });
+  var tex = createLevel1PillarConcreteTexture();
+  if (tex) mat.map = tex;
+  else mat.color.setHex(CONCRETE_COLOR);
+  return mat;
 }
 
 function sharedWallGeo() {
@@ -922,6 +1026,34 @@ function sharedCeilingMat() {
     });
   }
   return _ceilingMat;
+}
+
+var _sharedChunkPlaneGeo = null;
+function sharedChunkPlaneGeo(size) {
+  if (!_sharedChunkPlaneGeo) {
+    _sharedChunkPlaneGeo = new THREE.PlaneGeometry(size, size);
+  }
+  return _sharedChunkPlaneGeo;
+}
+
+function disposeChunkMeshResources(group) {
+  var chunkPlane = _sharedChunkPlaneGeo;
+  var wallGeo = sharedWallGeo();
+  var chestGeo = sharedChestGeo();
+  var pickGeo = sharedChestPickGeo();
+  group.traverse(function (child) {
+    if (!child.isMesh) return;
+    var geo = child.geometry;
+    if (
+      geo &&
+      geo !== chunkPlane &&
+      geo !== wallGeo &&
+      geo !== chestGeo &&
+      geo !== pickGeo
+    ) {
+      geo.dispose();
+    }
+  });
 }
 
 function sharedPanelGeo() {
@@ -1146,18 +1278,12 @@ function loadChunk(cx, cz, ctx) {
   var centerX = (baseCol + CHUNK_CELLS * 0.5) * BLOCK_SIZE;
   var centerZ = (baseRow + CHUNK_CELLS * 0.5) * BLOCK_SIZE;
 
-  var floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(chunkSize, chunkSize),
-    sharedFloorMat()
-  );
+  var floor = new THREE.Mesh(sharedChunkPlaneGeo(chunkSize), sharedFloorMat());
   floor.rotation.x = -Math.PI * 0.5;
   floor.position.set(centerX, 0, centerZ);
   group.add(floor);
 
-  var ceiling = new THREE.Mesh(
-    new THREE.PlaneGeometry(chunkSize, chunkSize),
-    sharedCeilingMat()
-  );
+  var ceiling = new THREE.Mesh(sharedChunkPlaneGeo(chunkSize), sharedCeilingMat());
   ceiling.rotation.x = Math.PI * 0.5;
   ceiling.position.set(centerX, WAREHOUSE_HEIGHT, centerZ);
   group.add(ceiling);
@@ -1274,13 +1400,7 @@ function unloadChunk(key, ctx) {
   }
 
   if (record.group.parent) record.group.parent.remove(record.group);
-  record.group.traverse(function (child) {
-    if (child.isMesh && child.geometry && child.geometry !== sharedWallGeo()) {
-      if (child.geometry.type !== "PlaneGeometry") {
-        /* shared planes kept */
-      }
-    }
-  });
+  disposeChunkMeshResources(record.group);
 
   ctx.chunks.delete(key);
 }
@@ -1383,6 +1503,7 @@ export function buildBackroomsLevel1World(root, opts) {
       unloadChunk(keys[i], ctx);
     }
     if (chunksRoot.parent) chunksRoot.parent.remove(chunksRoot);
+    resetMegModuleState();
   }
 
   update(spawn.x, spawn.z);
@@ -1402,6 +1523,9 @@ export function buildBackroomsLevel1World(root, opts) {
     megGuideNpc: megGuideNpc,
     getMegBaseCenter: function () {
       return megBaseBuilt ? megBaseWorldCenter() : null;
+    },
+    isInsideMegBaseInterior: function (px, pz) {
+      return isInsideMegBaseInterior(px, pz);
     },
     ensureMegBase: function () {
       if (!megBaseBuilt) {
@@ -1446,6 +1570,9 @@ export function buildBackroomsLevel1World(root, opts) {
       if (_megInteriorNpc && _megInteriorNpc.group) roots.push(_megInteriorNpc.group);
       if (_megBackDoorStaffNpc && _megBackDoorStaffNpc.group) {
         roots.push(_megBackDoorStaffNpc.group);
+      }
+      if (_megRationsVendorNpc && _megRationsVendorNpc.group) {
+        roots.push(_megRationsVendorNpc.group);
       }
       if (
         _megDoorState &&

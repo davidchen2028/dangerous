@@ -12,6 +12,20 @@ import {
   BACKPACK_CAPACITY,
 } from "./backrooms-inventory.js";
 import { clearBackroomsSurvivalPersist } from "./backrooms-survival-persist.js";
+import { clearAllBackroomsSessionKeys } from "./backrooms-session-keys.js";
+import {
+  applyMegDeathState,
+  prepareMegRespawnL1Entry,
+} from "./backrooms-meg-checkpoint.js";
+import {
+  clearRoyalRationsBuff,
+  getHpMax,
+  getStaminaMax,
+  syncRoyalRationsExpiry,
+  activateRoyalRationsBuff,
+  HP_MAX_ROYAL,
+  STAMINA_MAX_ROYAL,
+} from "./backrooms-royal-rations.js";
 
 /** 兼容旧引用 — 后室不再使用主游戏 playerInventory 数组 */
 export const playerInventory = [];
@@ -31,17 +45,9 @@ export function resetBackroomsRun() {
   playerInventory.length = 0;
   resetBackpack();
   try {
-    sessionStorage.removeItem("backrooms_clip_pass");
-    sessionStorage.removeItem("backrooms_meg_nv_potion_given");
-    sessionStorage.removeItem("backrooms_night_vision_until");
-    sessionStorage.removeItem("backrooms_backpack_v1");
-    sessionStorage.removeItem("backrooms_l2_doors_v1");
-    sessionStorage.removeItem("backrooms_l2_doors_v2");
-    sessionStorage.removeItem("backrooms_l3_pass");
-    sessionStorage.removeItem("backrooms_l283_pass");
-    sessionStorage.removeItem("backrooms_l3_maze_seed");
-    sessionStorage.removeItem("backrooms_l3_maze_v2");
+    clearAllBackroomsSessionKeys();
     clearBackroomsSurvivalPersist();
+    clearRoyalRationsBuff();
   } catch (err) {
     /* ignore */
   }
@@ -61,6 +67,10 @@ export function registerBackroomsInventoryUseHandlers(survival, options) {
   if (options.onNightVisionPotion) {
     window.__backroomsUseNightVisionPotion = options.onNightVisionPotion;
   }
+  window.__backroomsUseRoyalRations = function () {
+    if (!survival || !survival.useRoyalRations()) return;
+    if (options.onRoyalRationsUsed) options.onRoyalRationsUsed();
+  };
 }
 
 export class BackroomsSurvival {
@@ -133,16 +143,24 @@ export class BackroomsSurvival {
 
   refreshHud() {
     if (!this.rootEl) return;
-    var hpPct = Math.max(0, Math.min(100, this.hp));
+    var now = performance.now();
+    var hpMax = getHpMax(now);
+    var staMax = getStaminaMax(now);
+    var hpPct = hpMax > 0 ? Math.max(0, Math.min(100, (this.hp / hpMax) * 100)) : 0;
     var sanPct = Math.max(0, Math.min(100, this.sanity));
-    var staPct = Math.max(0, Math.min(100, this.stamina));
+    var staPct = staMax > 0 ? Math.max(0, Math.min(100, (this.stamina / staMax) * 100)) : 0;
 
     if (this._fillHp) this._fillHp.style.width = hpPct + "%";
     if (this._fillSanity) this._fillSanity.style.width = sanPct + "%";
     if (this._fillStamina) this._fillStamina.style.width = staPct + "%";
-    if (this._valHp) this._valHp.textContent = String(Math.round(hpPct));
+    if (this._valHp) {
+      this._valHp.textContent = String(Math.round(this.hp)) + "/" + String(hpMax);
+    }
     if (this._valSanity) this._valSanity.textContent = String(Math.round(sanPct));
-    if (this._valStamina) this._valStamina.textContent = String(Math.round(staPct));
+    if (this._valStamina) {
+      this._valStamina.textContent =
+        String(Math.round(this.stamina)) + "/" + String(staMax);
+    }
     if (this._invEl) {
       this._invEl.textContent =
         countUsedSlots() + "/" + BACKPACK_CAPACITY;
@@ -152,14 +170,20 @@ export class BackroomsSurvival {
   update(dt, env) {
     if (this.dead) return;
     env = env || {};
+    var now = performance.now();
+    syncRoyalRationsExpiry(this, now);
+    var hpCap = getHpMax(now);
+    var staCap = getStaminaMax(now);
 
     if (env.sprinting && this.stamina > 0) {
       this.stamina = Math.max(0, this.stamina - 15 * dt);
     } else {
-      this.stamina = Math.min(100, this.stamina + 10 * dt);
+      this.stamina = Math.min(staCap, this.stamina + 10 * dt);
     }
 
     this.sanity = Math.max(0, this.sanity - SANITY_PASSIVE_DRAIN_PER_SEC * dt);
+    this.hp = Math.min(hpCap, this.hp);
+    this.stamina = Math.min(staCap, this.stamina);
 
     if (this.sanity <= 0 && !this.sanityBreaking) {
       this.triggerSanityBreak();
@@ -183,15 +207,33 @@ export class BackroomsSurvival {
 
   takeDamage(amount) {
     if (this.dead) return;
-    this.hp = Math.max(0, this.hp - (amount || 0));
+    var dmg = amount || 0;
+    var was = this.hp;
+    this.hp = Math.max(0, this.hp - dmg);
+    if (was > 0 && this.hp <= 0) {
+      this._megDeathHp = Math.max(1, was - dmg);
+      this._megDeathSanity = this.sanity;
+      this._megDeathStamina = this.stamina;
+    }
     this.refreshHud();
   }
 
   useAlmondWater() {
     if (this.dead) return false;
     if (!removeFirstItem("almond_water")) return false;
+    var hpCap = getHpMax(performance.now());
     this.sanity = Math.min(100, this.sanity + ALMOND_WATER_SANITY);
-    this.hp = Math.min(100, this.hp + ALMOND_WATER_HP);
+    this.hp = Math.min(hpCap, this.hp + ALMOND_WATER_HP);
+    this.refreshHud();
+    return true;
+  }
+
+  useRoyalRations() {
+    if (this.dead) return false;
+    if (!removeFirstItem("royal_rations")) return false;
+    if (!activateRoyalRationsBuff(performance.now())) return false;
+    this.hp = HP_MAX_ROYAL;
+    this.stamina = STAMINA_MAX_ROYAL;
     this.refreshHud();
     return true;
   }
@@ -217,6 +259,7 @@ export class BackroomsSurvival {
     this.hp = 100;
     this.sanity = 100;
     this.stamina = 100;
+    clearRoyalRationsBuff();
     this.dead = false;
     this.sanityBreaking = false;
     if (this._deathTimer) {
@@ -230,6 +273,9 @@ export class BackroomsSurvival {
 
   triggerSanityBreak() {
     this.sanityBreaking = true;
+    this._megDeathHp = this.hp;
+    this._megDeathSanity = Math.max(1, this.sanity);
+    this._megDeathStamina = this.stamina;
     this.sanity = 0;
     document.body.classList.add("backrooms-sanity-break");
     var self = this;
@@ -240,6 +286,9 @@ export class BackroomsSurvival {
 
   triggerDeath(reason) {
     if (this.dead) return;
+    if (typeof this._megDeathPrepare === "function") {
+      this._megDeathPrepare(reason);
+    }
     this.dead = true;
     this.hp = 0;
     document.body.classList.add("backrooms-dead");
@@ -261,9 +310,26 @@ export class BackroomsSurvival {
   }
 
   respawn(reason) {
-    this.resetStats();
-    if (this.onRespawn) this.onRespawn(reason);
-    if (this.onDeath) this.onDeath(reason);
+    if (this._pendingMegRespawn) {
+      this._pendingMegRespawn = false;
+      var redirectL1 = !!this._megRedirectL1;
+      this._megRedirectL1 = false;
+      if (redirectL1) {
+        prepareMegRespawnL1Entry();
+        window.location.href = "backrooms-level1.html";
+        return;
+      }
+      applyMegDeathState(this);
+      this._respawnAtMegBase = true;
+      if (this.onRespawn) this.onRespawn(reason);
+      if (this.onDeath) this.onDeath(reason);
+      return;
+    }
+    if (this._pendingL0Reset) {
+      this._pendingL0Reset = false;
+    }
+    resetBackroomsRun();
+    window.location.replace("backrooms-level0.html");
   }
 }
 

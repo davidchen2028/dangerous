@@ -324,10 +324,12 @@ function decorateZArm(
     lamp.position.set(lampX, 1.65 + (Math.abs(z) % 3) * 0.08, z);
     group.add(lamp);
 
-    var pl = new THREE.PointLight(0xffe8b8, 0.78, 7, 1.45);
-    pl.position.set(lampsOnLeft ? -halfW + 0.25 : halfW - 0.25, 1.65, z);
-    group.add(pl);
-    pointLights.push(pl);
+    if (Math.abs(Math.round(z / step)) % 2 === 0) {
+      var pl = new THREE.PointLight(0xffe8b8, 0.78, 7, 1.45);
+      pl.position.set(lampsOnLeft ? -halfW + 0.25 : halfW - 0.25, 1.65, z);
+      group.add(pl);
+      pointLights.push(pl);
+    }
 
     z += step;
   }
@@ -384,10 +386,12 @@ function decorateXArm(
     lamp.position.set(x, 1.65 + (Math.abs(x) % 3) * 0.08, lampZ);
     group.add(lamp);
 
-    var pl = new THREE.PointLight(0xffe8b8, 0.78, 7, 1.45);
-    pl.position.set(x, 1.65, lampsOnNegZSide ? -halfW + 0.25 : halfW - 0.25);
-    group.add(pl);
-    pointLights.push(pl);
+    if (Math.abs(Math.round(x / step)) % 2 === 0) {
+      var pl = new THREE.PointLight(0xffe8b8, 0.78, 7, 1.45);
+      pl.position.set(x, 1.65, lampsOnNegZSide ? -halfW + 0.25 : halfW - 0.25);
+      group.add(pl);
+      pointLights.push(pl);
+    }
 
     x += step;
   }

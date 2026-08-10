@@ -92,6 +92,19 @@ body.backrooms-pointer-locked .backrooms-input {
   }
 }
 
+.backrooms-hud__hint--sub {
+  bottom: calc(18px + 42px);
+  font-size: 11px;
+  background: rgba(20, 40, 60, 0.55);
+  border: 1px solid rgba(120, 180, 255, 0.35);
+}
+
+@media (max-width: 720px) {
+  .backrooms-hud__hint--sub {
+    bottom: calc(160px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .backrooms-hud__hint kbd {
   display: inline-block;
   min-width: 1.4em;

@@ -10,6 +10,7 @@ export const BACKPACK_CAPACITY = BACKPACK_COLS * BACKPACK_ROWS;
 const ITEM_ICONS = {
   almond_water: "img/backrooms/almond-water.png",
   night_vision_potion: "img/backrooms/night-vision-potion.png",
+  royal_rations: "img/backrooms/royal-rations.png",
 };
 
 /** @type {(null | { id: string, name: string })[]} */
@@ -143,6 +144,10 @@ export function resetBackpack() {
   renderGrid();
 }
 
+export function renderGridPublic() {
+  renderGrid();
+}
+
 function renderGrid() {
   if (!gridEl) return;
   var i;
@@ -204,6 +209,10 @@ export function mountBackpackPanel(parent) {
     } else if (backpackSlots[idx].id === "night_vision_potion") {
       if (typeof window.__backroomsUseNightVisionPotion === "function") {
         window.__backroomsUseNightVisionPotion();
+      }
+    } else if (backpackSlots[idx].id === "royal_rations") {
+      if (typeof window.__backroomsUseRoyalRations === "function") {
+        window.__backroomsUseRoyalRations();
       }
     }
   });
