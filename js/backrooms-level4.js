@@ -25,6 +25,7 @@ import {
 } from "./backrooms-night-vision.js";
 import { attachMobileDragLook } from "./backrooms-fps-look.js";
 import { buildLevel4World, L4_WALL_H } from "./backrooms-level4-world.js";
+import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
 
 const FOG_COLOR = 0xe8ebf0;
 const FOG_NEAR = 6;
@@ -285,6 +286,7 @@ function bindControls() {
 
 function init() {
   if (!enforceEntryOrRedirect()) return;
+  showEnterLevelBannerIfQueued();
   scene = new THREE.Scene();
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);

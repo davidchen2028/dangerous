@@ -100,10 +100,16 @@ function sharedMaterials() {
       metalness: 0.12,
     }),
     monitor: new THREE.MeshStandardMaterial({
-      color: 0x1a1a1e,
-      emissive: 0x050508,
-      emissiveIntensity: 0.08,
-      roughness: 0.6,
+      color: 0x0a0a0c,
+      roughness: 0.55,
+      metalness: 0.15,
+    }),
+    monitorScreen: new THREE.MeshStandardMaterial({
+      color: 0xb4b8c0,
+      emissive: 0x888990,
+      emissiveIntensity: 0.12,
+      roughness: 0.72,
+      metalness: 0.05,
     }),
     cabinet: new THREE.MeshStandardMaterial({
       color: 0x707880,
@@ -126,7 +132,75 @@ function sharedMaterials() {
 
 var _deskGeo = null;
 var _chairSeatGeo = null;
-var _monitorGeo = null;
+
+var _waterCoolerLabelTex = null;
+function waterCoolerLabelTexture() {
+  if (_waterCoolerLabelTex) return _waterCoolerLabelTex;
+  var canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 64;
+  var ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "rgba(255,255,255,0)";
+  ctx.fillRect(0, 0, 128, 64);
+  ctx.fillStyle = "#2a3038";
+  ctx.font = "bold 28px Arial, PingFang SC, Microsoft YaHei, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("饮水机", 64, 34);
+  _waterCoolerLabelTex = new THREE.CanvasTexture(canvas);
+  _waterCoolerLabelTex.colorSpace = THREE.SRGBColorSpace;
+  return _waterCoolerLabelTex;
+}
+
+function addOfficeMonitor(group, wx, wy, wz, mats) {
+  var frame = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.42, 0.05), mats.monitor);
+  frame.position.set(wx, wy, wz);
+  group.add(frame);
+  var screen = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.34, 0.018), mats.monitorScreen);
+  screen.position.set(wx, wy, wz + 0.028);
+  group.add(screen);
+}
+
+function addChairWithLegs(group, colliders, wx, wz, mats) {
+  var seatY = 0.48;
+  var legH = 0.44;
+  var legY = legH * 0.5;
+  var legMat = mats.chair;
+  var offsets = [
+    [-0.2, -0.2],
+    [0.2, -0.2],
+    [-0.2, 0.2],
+    [0.2, 0.2],
+  ];
+  var li;
+  for (li = 0; li < offsets.length; li++) {
+    var leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, legH, 0.07), legMat);
+    leg.position.set(wx + offsets[li][0], legY, wz + 0.62 + offsets[li][1]);
+    group.add(leg);
+  }
+
+  var chair = new THREE.Mesh(_chairSeatGeo || new THREE.BoxGeometry(0.52, 0.08, 0.52), legMat);
+  chair.position.set(wx, seatY, wz + 0.62);
+  group.add(chair);
+  pushBoxCollider(
+    colliders,
+    wx - 0.28,
+    wx + 0.28,
+    wz + 0.62 - 0.28,
+    wz + 0.62 + 0.28
+  );
+  var chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.55, 0.06), legMat);
+  chairBack.position.set(wx, 0.78, wz + 0.86);
+  group.add(chairBack);
+  pushBoxCollider(
+    colliders,
+    wx - 0.26,
+    wx + 0.26,
+    wz + 0.86 - 0.05,
+    wz + 0.86 + 0.05
+  );
+}
 
 function pushBoxCollider(colliders, minX, maxX, minZ, maxZ, h) {
   colliders.push({
@@ -197,7 +271,6 @@ function addWindowWall(group, colliders, wx, wz, rotY, along, mats) {
 function addDeskStation(group, colliders, wx, wz, mats, rng) {
   if (!_deskGeo) _deskGeo = new THREE.BoxGeometry(DESK_W, DESK_H, DESK_D);
   if (!_chairSeatGeo) _chairSeatGeo = new THREE.BoxGeometry(0.52, 0.08, 0.52);
-  if (!_monitorGeo) _monitorGeo = new THREE.BoxGeometry(0.52, 0.38, 0.04);
 
   var desk = new THREE.Mesh(_deskGeo, mats.desk);
   desk.position.set(wx, DESK_H * 0.5, wz);
@@ -210,36 +283,17 @@ function addDeskStation(group, colliders, wx, wz, mats, rng) {
     wz + DESK_D * 0.5
   );
 
-  var chair = new THREE.Mesh(_chairSeatGeo, mats.chair);
-  chair.position.set(wx, 0.48, wz + 0.62);
-  group.add(chair);
-  pushBoxCollider(
-    colliders,
-    wx - 0.28,
-    wx + 0.28,
-    wz + 0.62 - 0.28,
-    wz + 0.62 + 0.28
-  );
-  var chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.55, 0.06), mats.chair);
-  chairBack.position.set(wx, 0.78, wz + 0.86);
-  group.add(chairBack);
-  pushBoxCollider(
-    colliders,
-    wx - 0.26,
-    wx + 0.26,
-    wz + 0.86 - 0.05,
-    wz + 0.86 + 0.05
-  );
+  addChairWithLegs(group, colliders, wx, wz, mats);
 
-  var mon = new THREE.Mesh(_monitorGeo, mats.monitor);
-  mon.position.set(wx, DESK_H + 0.22, wz - 0.18);
-  group.add(mon);
+  var monY = DESK_H + 0.22;
+  var monZ = wz - 0.18;
+  addOfficeMonitor(group, wx, monY, monZ, mats);
   pushBoxCollider(
     colliders,
     wx - 0.28,
     wx + 0.28,
-    wz - 0.18 - 0.04,
-    wz - 0.18 + 0.04
+    monZ - 0.04,
+    monZ + 0.04
   );
 
   if (rng() < 0.35) {
@@ -260,6 +314,20 @@ function addWaterCooler(group, colliders, interactRoots, wx, wz, mats, coolerId)
   var body = new THREE.Mesh(new THREE.BoxGeometry(0.38, 1.15, 0.38), mats.cooler);
   body.position.set(wx, 0.575, wz);
   group.add(body);
+
+  var labelTex = waterCoolerLabelTexture();
+  var labelMat = new THREE.MeshStandardMaterial({
+    map: labelTex || undefined,
+    color: labelTex ? 0xffffff : 0x2a3038,
+    roughness: 0.85,
+    metalness: 0,
+    transparent: true,
+    opacity: labelTex ? 1 : 0.9,
+  });
+  var label = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.16), labelMat);
+  label.position.set(wx, 0.72, wz + 0.2);
+  group.add(label);
+
   pushBoxCollider(colliders, wx - 0.22, wx + 0.22, wz - 0.22, wz + 0.22);
 
   var pick = new THREE.Mesh(

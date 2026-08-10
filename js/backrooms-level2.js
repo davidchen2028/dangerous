@@ -37,6 +37,10 @@ import {
 } from "./backrooms-level2-doors.js";
 import { createLevel2Xiaoye } from "./backrooms-level2-xiaoye.js";
 import {
+  showEnterLevelBannerIfQueued,
+  queueEnterLevelNumber,
+} from "./backrooms-level-enter.js";
+import {
   isNightVisionActive,
   formatNightVisionRemaining,
   useNightVisionPotionFromBackpack,
@@ -261,10 +265,12 @@ function tryLevelTransition() {
     if (dest === "l4") {
       sessionStorage.setItem("backrooms_l4_pass", "1");
       sessionStorage.setItem("backrooms_l4_yaw", String(yaw));
+      queueEnterLevelNumber(4);
       window.location.href = "backrooms-level4.html";
     } else if (dest === "l3") {
       sessionStorage.setItem("backrooms_l3_pass", "1");
       sessionStorage.setItem("backrooms_l3_yaw", String(yaw));
+      queueEnterLevelNumber(3);
       window.location.href = "backrooms-level3.html";
     }
   } catch (err) {
@@ -494,6 +500,7 @@ function onResize() {
 
 function init() {
   if (!enforceLevel2EntryOrRedirect()) return;
+  showEnterLevelBannerIfQueued();
   if (!canvas) throw new Error("找不到 canvas");
 
   scene = new THREE.Scene();

@@ -37,6 +37,7 @@ import {
   resolveClipEntrySpawn,
   WAREHOUSE_HEIGHT,
 } from "./backrooms-level1-world.js";
+import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
 import {
   resolveCircleAgainstColliders,
   raycastWallBlockDistance,
@@ -898,6 +899,7 @@ function updateCorridorFallToL2(dt) {
       } catch (err) {
         /* ignore */
       }
+      queueEnterLevelNumber(2);
       window.location.href = "backrooms-level2.html";
     }
   }
@@ -1077,7 +1079,7 @@ function onResize() {
 function showError(msg) {
   if (!errorEl) return;
   errorEl.hidden = false;
-  errorEl.innerHTML = "<p><strong>Level 1 无法启动</strong></p><p>" + msg + "</p>";
+  errorEl.innerHTML = "<p><strong>alpha 无法启动</strong></p><p>" + msg + "</p>";
 }
 
 /** 无存档：刷新或直接打开 Level 1 一律回到 Level 0 */
@@ -1108,6 +1110,7 @@ function enforceLevel1EntryOrRedirect() {
 
 function init() {
   if (!enforceLevel1EntryOrRedirect()) return;
+  showEnterLevelBannerIfQueued();
   validateMatrix();
   scene = new THREE.Scene();
   scene.background = new THREE.Color(FOG_COLOR);

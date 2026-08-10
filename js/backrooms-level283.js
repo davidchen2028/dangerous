@@ -18,6 +18,7 @@ import {
   useNightVisionPotionFromBackpack,
 } from "./backrooms-night-vision.js";
 import { attachMobileDragLook } from "./backrooms-fps-look.js";
+import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
 
 const CORRIDOR_LEN = 36;
 const CORRIDOR_W = 3.2;
@@ -264,6 +265,7 @@ function bindControls() {
 
 function init() {
   if (!enforceEntryOrRedirect()) return;
+  showEnterLevelBannerIfQueued();
   scene = new THREE.Scene();
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);

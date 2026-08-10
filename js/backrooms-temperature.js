@@ -34,13 +34,17 @@ const LEVEL_PROFILE = {
   283: { min: 19, max: 23, base: 21, swing: 1.8 },
   /** Level 4 — 明亮办公区（稳定日光灯，无 L0 式电流噪） */
   4: { min: 20, max: 24, base: 22, swing: 1.2 },
+  /** Level 0.3 — 极寒 */
+  "0.3": { min: -22, max: -18, base: -20, swing: 1.1 },
 };
 
+/** @type {number | string} */
 let levelIndex = 0;
 let fillEl = null;
 let valueEl = null;
 let rootEl = null;
 let overheatEl = null;
+let overcoldEl = null;
 let displayC = 21;
 let phase = Math.random() * Math.PI * 2;
 
@@ -49,7 +53,34 @@ export const HEAT_DAMAGE_THRESHOLD_C = 45;
 export const HEAT_DAMAGE_HP = 3;
 export const HEAT_DAMAGE_COOLDOWN_MS = 2000;
 
+/** 低于此温度显示「过冷」 */
+export const COLD_OVERCOLD_THRESHOLD_C = 0;
+/** Level 0.3 等极寒区每秒扣血 */
+export const COLD_DAMAGE_HP_PER_SEC = 3;
+
 let heatDamageNextCheckAt = 0;
+
+/** @param {number | string} zone 如 0、1、"0.3" */
+export function setBackroomsTemperatureZone(zone) {
+  levelIndex = zone != null ? zone : 0;
+  var profile = LEVEL_PROFILE[levelIndex] || LEVEL_PROFILE[0];
+  displayC = profile.base;
+  heatDamageNextCheckAt = 0;
+  renderTemperature(displayC);
+}
+
+/**
+ * 极寒环境持续扣血（按 dt）
+ * @param {import("./backrooms-survival.js").BackroomsSurvival | null} survival
+ * @param {number} dt
+ * @param {boolean} active
+ */
+export function updateBackroomsColdDamage(survival, dt, active) {
+  if (!active || !survival || survival.dead) return;
+  if (displayC >= COLD_OVERCOLD_THRESHOLD_C) return;
+  var dmg = COLD_DAMAGE_HP_PER_SEC * (dt || 0);
+  if (dmg > 0) survival.takeDamage(dmg);
+}
 
 export function getBackroomsDisplayTemperature() {
   return displayC;
@@ -103,6 +134,12 @@ export function initBackroomsTemperature(level, elements) {
       : typeof document !== "undefined"
         ? document.getElementById("backroomsOverheat")
         : null;
+  overcoldEl =
+    elements && elements.overcoldEl
+      ? elements.overcoldEl
+      : typeof document !== "undefined"
+        ? document.getElementById("backroomsOvercold")
+        : null;
   var profile = LEVEL_PROFILE[levelIndex] || LEVEL_PROFILE[0];
   displayC = profile.base;
   heatDamageNextCheckAt = 0;
@@ -123,7 +160,12 @@ export function updateBackroomsTemperature(dt, now) {
 
 function renderTemperature(celsius) {
   var c = Math.round(celsius * 10) / 10;
-  var pct = Math.max(0, Math.min(100, ((c - 12) / 42) * 100));
+  var pct;
+  if (c < 12) {
+    pct = Math.max(0, Math.min(100, ((c + 35) / 47) * 100));
+  } else {
+    pct = Math.max(0, Math.min(100, ((c - 12) / 42) * 100));
+  }
   if (valueEl) {
     valueEl.textContent = c.toFixed(1) + "°C";
   }
@@ -134,13 +176,18 @@ function renderTemperature(celsius) {
     rootEl.classList.remove(
       "backrooms-temp--cool",
       "backrooms-temp--warm",
-      "backrooms-temp--hot"
+      "backrooms-temp--hot",
+      "backrooms-temp--freezing"
     );
-    if (c < 20) rootEl.classList.add("backrooms-temp--cool");
+    if (c < 0) rootEl.classList.add("backrooms-temp--freezing");
+    else if (c < 20) rootEl.classList.add("backrooms-temp--cool");
     else if (c >= 36) rootEl.classList.add("backrooms-temp--hot");
     else if (c >= 28) rootEl.classList.add("backrooms-temp--warm");
   }
   if (overheatEl) {
     overheatEl.hidden = !(c > HEAT_DAMAGE_THRESHOLD_C);
+  }
+  if (overcoldEl) {
+    overcoldEl.hidden = !(c < COLD_OVERCOLD_THRESHOLD_C);
   }
 }

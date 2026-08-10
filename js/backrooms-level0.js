@@ -19,9 +19,42 @@ import {
   initBackroomsTemperature,
   updateBackroomsTemperature,
   updateBackroomsHeatDamage,
+  updateBackroomsColdDamage,
+  setBackroomsTemperatureZone,
 } from "./backrooms-temperature.js";
 import { pickCrosshairInteract, getCameraAimRay } from "./backrooms-interact-aim.js";
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
+import {
+  queueEnterLevelNumber,
+  queueEnterPlaceBanner,
+  showEnterLevelBannerIfQueued,
+  showEnterLevelBanner,
+} from "./backrooms-level-enter.js";
+import {
+  isRedChannelCell,
+  buildRedChannelWall,
+  getRedChannelTriggerAabb,
+  pointInAabb,
+  buildRedRoom,
+  RED_ROOM_SANITY_DRAIN_PER_SEC,
+  updateRedDoorWallFlicker,
+} from "./backrooms-level0-red-room.js";
+import {
+  isGrayDoorCell,
+  buildGrayDoorWall,
+  buildLevel02World,
+  createLevel02EnterHazards,
+  getGrayDoorPickMesh,
+  getLevel02ExitPickMesh,
+  LEVEL02_FOG,
+} from "./backrooms-level0-02.js?v=12";
+import {
+  BLUE_HOLE_CELL,
+  buildBlueHole,
+  buildLevel03Room,
+  getBlueHoleTriggerAabb,
+  LEVEL03_FOG,
+} from "./backrooms-level0-03.js?v=1";
 
 // =============================================================================
 // 基础空间尺寸（放在最顶部，方便微调）
@@ -160,8 +193,39 @@ let survival = null;
 /** 切出状态：idle → dashing → done */
 let clipState = "idle";
 let clipDashLeft = 0;
+
+/** @type {THREE.Group | null} */
+let level0WorldRoot = null;
+/** @type {ReturnType<buildRedRoom> | null} */
+let redRoomState = null;
+let inRedRoom = false;
+let inLevel02 = false;
+let inLevel03 = false;
+/** @type {ReturnType<buildLevel03Room> | null} */
+let level03State = null;
+/** @type {{ minX: number, maxX: number, minZ: number, maxZ: number } | null} */
+let blueHoleTrigger = null;
+/** @type {ReturnType<buildLevel02World> | null} */
+let level02State = null;
+/** @type {THREE.Group | null} */
+let level02FxRoot = null;
+/** @type {ReturnType<createLevel02EnterHazards> | null} */
+let level02Hazards = null;
+/** @type {{ x: number, z: number, yaw: number } | null} */
+let l0ReturnSnapshot = null;
+/** @type {{ minX: number, maxX: number, minZ: number, maxZ: number } | null} */
+let redChannelTrigger = null;
+const L0_FOG_COLOR = FOG_COLOR;
 const CLIP_DASH_SPEED = 13;
 const CLIP_DASH_TIME = 0.55;
+
+function syncLevel0HudTitle() {
+  var el = document.querySelector(".backrooms-hud__title");
+  if (!el) return;
+  if (inLevel03) el.textContent = "Backrooms · Level 0.3";
+  else if (inLevel02) el.textContent = "Backrooms · Level 0.2";
+  else el.textContent = "Backrooms · Level 0";
+}
 
 // =============================================================================
 // 坐标工具 — 与墙体生成公式完全一致
@@ -355,6 +419,30 @@ function buildBackroomsLevel(root) {
     for (var col = 0; col < MAP_COLS; col++) {
       if (BACKROOMS_MATRIX[row][col] !== 1) continue;
 
+      if (isRedChannelCell(row, col)) {
+        buildRedChannelWall(
+          wallsGroup,
+          cellCenterX(col),
+          cellCenterZ(row),
+          GRID_SIZE,
+          WALL_HEIGHT,
+          wallColliders
+        );
+        continue;
+      }
+
+      if (isGrayDoorCell(row, col)) {
+        buildGrayDoorWall(
+          wallsGroup,
+          cellCenterX(col),
+          cellCenterZ(row),
+          GRID_SIZE,
+          WALL_HEIGHT,
+          wallColliders
+        );
+        continue;
+      }
+
       var mesh = new THREE.Mesh(
         wallGeo,
         isSpecialWallCell(row, col) ? specialWallMat : wallMat
@@ -399,6 +487,13 @@ function buildBackroomsLevel(root) {
   floor.position.y = 0;
   floor.receiveShadow = true;
   root.add(floor);
+
+  buildBlueHole(
+    root,
+    cellCenterX(BLUE_HOLE_CELL.col),
+    cellCenterZ(BLUE_HOLE_CELL.row),
+    GRID_SIZE
+  );
 
   // 天花板 — 覆盖墙体顶部 Y = WALL_HEIGHT
   var ceilingGeo = new THREE.PlaneGeometry(MAP_WIDTH, MAP_DEPTH);
@@ -567,7 +662,275 @@ function isNearCreepyLandmark() {
   return false;
 }
 
+function getActiveColliders() {
+  if (inRedRoom && redRoomState && redRoomState.colliders) {
+    return redRoomState.colliders;
+  }
+  if (inLevel03 && level03State && level03State.colliders) {
+    return level03State.colliders;
+  }
+  if (inLevel02 && level02State && level02State.colliders) {
+    var raw = level02State.colliders;
+    var out = [];
+    var i;
+    for (i = 0; i < raw.length; i++) {
+      if (raw[i].ghost || raw[i].fallen) continue;
+      out.push(raw[i]);
+    }
+    return out;
+  }
+  return wallColliders;
+}
+
+function applyLevel02Atmosphere(on) {
+  if (!scene || !scene.fog) return;
+  if (on) {
+    scene.background = new THREE.Color(LEVEL02_FOG);
+    scene.fog.color.setHex(LEVEL02_FOG);
+    scene.fog.near = 5;
+    scene.fog.far = 26;
+    if (camera) camera.far = 80;
+  } else {
+    scene.background = new THREE.Color(L0_FOG_COLOR);
+    scene.fog.color.setHex(L0_FOG_COLOR);
+    scene.fog.near = FOG_NEAR;
+    scene.fog.far = FOG_FAR;
+    if (camera) camera.far = 80;
+  }
+  if (camera) camera.updateProjectionMatrix();
+}
+
+function applyLevel03Atmosphere(on) {
+  if (!scene || !scene.fog) return;
+  if (on) {
+    scene.background = new THREE.Color(LEVEL03_FOG);
+    scene.fog.color.setHex(LEVEL03_FOG);
+    scene.fog.near = 4;
+    scene.fog.far = 38;
+    if (camera) camera.far = 90;
+  } else {
+    scene.background = new THREE.Color(L0_FOG_COLOR);
+    scene.fog.color.setHex(L0_FOG_COLOR);
+    scene.fog.near = FOG_NEAR;
+    scene.fog.far = FOG_FAR;
+    if (camera) camera.far = 80;
+  }
+  if (camera) camera.updateProjectionMatrix();
+}
+
+function applyRedRoomAtmosphere(on) {
+  if (!scene || !scene.fog) return;
+  if (on) {
+    scene.background = new THREE.Color(0x060608);
+    scene.fog.color.setHex(0x100808);
+    scene.fog.near = 6;
+    scene.fog.far = 52;
+    if (camera) camera.far = 120;
+  } else {
+    scene.background = new THREE.Color(L0_FOG_COLOR);
+    scene.fog.color.setHex(L0_FOG_COLOR);
+    scene.fog.near = FOG_NEAR;
+    scene.fog.far = FOG_FAR;
+    if (camera) camera.far = 80;
+  }
+  if (camera) camera.updateProjectionMatrix();
+}
+
+function enterRedRoom() {
+  if (inRedRoom || !redRoomState || !level0WorldRoot) return;
+  if (inLevel03) exitLevel03(false);
+  l0ReturnSnapshot = { x: player.x, z: player.z, yaw: yaw };
+  inRedRoom = true;
+  if (inLevel02) {
+    inLevel02 = false;
+    if (level02State) level02State.group.visible = false;
+    applyLevel02Atmosphere(false);
+  }
+  level0WorldRoot.visible = false;
+  redRoomState.group.visible = true;
+  player.x = 0;
+  player.z = 0;
+  feetY = 0;
+  velY = 0;
+  applyRedRoomAtmosphere(true);
+  queueEnterPlaceBanner("红室");
+  showEnterLevelBannerIfQueued();
+}
+
+function exitRedRoom(restorePlayer) {
+  if (!inRedRoom) return;
+  inRedRoom = false;
+  if (level0WorldRoot) level0WorldRoot.visible = !inLevel02 && !inLevel03;
+  if (redRoomState) redRoomState.group.visible = false;
+  if (!inLevel02) applyRedRoomAtmosphere(false);
+  if (restorePlayer !== false && l0ReturnSnapshot) {
+    player.x = l0ReturnSnapshot.x;
+    player.z = l0ReturnSnapshot.z;
+    yaw = l0ReturnSnapshot.yaw;
+  }
+  l0ReturnSnapshot = null;
+}
+
+function enterLevel02() {
+  if (inLevel02 || inRedRoom || inLevel03 || !level02State || !level0WorldRoot) return;
+  if (!survival || survival.dead) return;
+
+  inLevel02 = true;
+  level0WorldRoot.visible = false;
+  if (redRoomState) redRoomState.group.visible = false;
+  level02State.group.visible = true;
+  applyLevel02Atmosphere(true);
+  syncLevel0HudTitle();
+  showEnterLevelBanner("level0.2");
+
+  if (level02FxRoot) level02FxRoot.visible = true;
+  if (!level02Hazards) {
+    level02Hazards = createLevel02EnterHazards(scene, {
+      wallHeight: WALL_HEIGHT,
+    });
+  }
+  level02Hazards.dispose();
+  level02Hazards.start(
+    player.x,
+    player.z,
+    level02State.wallAnimTargets,
+    level02State.colliders,
+    level02FxRoot,
+    level02FxRoot
+  );
+}
+
+function rebuildLevel02World() {
+  if (level02Hazards) level02Hazards.dispose();
+  if (level02State && level02State.group) {
+    scene.remove(level02State.group);
+  }
+  level02State = buildLevel02World(scene, {
+    gridSize: GRID_SIZE,
+    wallHeight: WALL_HEIGHT,
+    matrix: BACKROOMS_MATRIX,
+    mapRows: MAP_ROWS,
+    mapCols: MAP_COLS,
+    cellCenterX: cellCenterX,
+    cellCenterZ: cellCenterZ,
+    mapWidth: MAP_WIDTH,
+    mapDepth: MAP_DEPTH,
+  });
+  level02Hazards = createLevel02EnterHazards(scene, {
+    wallHeight: WALL_HEIGHT,
+  });
+}
+
+function enterLevel03() {
+  if (inLevel03 || inRedRoom || inLevel02 || !level03State || !level0WorldRoot) return;
+  if (!survival || survival.dead) return;
+
+  l0ReturnSnapshot = { x: player.x, z: player.z, yaw: yaw };
+  inLevel03 = true;
+  level0WorldRoot.visible = false;
+  if (redRoomState) redRoomState.group.visible = false;
+  level03State.group.visible = true;
+  player.x = 0;
+  player.z = 0;
+  feetY = 0;
+  velY = 0;
+  setBackroomsTemperatureZone("0.3");
+  applyLevel03Atmosphere(true);
+  syncLevel0HudTitle();
+  showEnterLevelBanner("level0.3");
+}
+
+function exitLevel03(restorePlayer) {
+  if (!inLevel03) return;
+  inLevel03 = false;
+  if (level03State) level03State.group.visible = false;
+  if (level0WorldRoot) level0WorldRoot.visible = !inLevel02;
+  applyLevel03Atmosphere(false);
+  setBackroomsTemperatureZone(0);
+  syncLevel0HudTitle();
+  if (restorePlayer !== false && l0ReturnSnapshot) {
+    player.x = l0ReturnSnapshot.x;
+    player.z = l0ReturnSnapshot.z;
+    yaw = l0ReturnSnapshot.yaw;
+  }
+  l0ReturnSnapshot = null;
+}
+
+function exitLevel02ToSpawn() {
+  if (!inLevel02) return;
+  inLevel02 = false;
+  if (level02State) level02State.group.visible = false;
+  if (level0WorldRoot) level0WorldRoot.visible = !inLevel02 && !inLevel03;
+  applyLevel02Atmosphere(false);
+  syncLevel0HudTitle();
+  if (level02FxRoot) level02FxRoot.visible = false;
+  if (level02Hazards) level02Hazards.dispose();
+
+  player.x = spawnPoint.x;
+  player.z = spawnPoint.z;
+  feetY = 0;
+  velY = 0;
+  rebuildLevel02World();
+}
+
+function showBackroomsToast(msg) {
+  var el = document.getElementById("backroomsToast");
+  if (!el) {
+    el = document.createElement("p");
+    el.id = "backroomsToast";
+    el.className = "backrooms-toast";
+    el.setAttribute("role", "status");
+    var hud = document.querySelector(".backrooms-hud");
+    if (hud) hud.appendChild(el);
+    else document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.hidden = false;
+  el.classList.remove("backrooms-toast--hide");
+  if (el._toastTimer) clearTimeout(el._toastTimer);
+  el._toastTimer = setTimeout(function () {
+    el.classList.add("backrooms-toast--hide");
+    setTimeout(function () {
+      el.hidden = true;
+      el.classList.remove("backrooms-toast--hide");
+    }, 400);
+  }, 2400);
+}
+
+function checkRedChannelEnter() {
+  if (inRedRoom || inLevel02 || inLevel03 || clipState !== "idle" || !redChannelTrigger) return;
+  if (!survival || survival.dead) return;
+  if (pointInAabb(player.x, player.z, redChannelTrigger)) {
+    enterRedRoom();
+  }
+}
+
+function checkRedRoomExit() {
+  if (!inRedRoom || !redRoomState) return;
+  if (pointInAabb(player.x, player.z, redRoomState.exitTrigger)) {
+    exitRedRoom(true);
+  }
+}
+
+function checkBlueHoleEnter() {
+  if (inRedRoom || inLevel02 || inLevel03 || clipState !== "idle" || !blueHoleTrigger) return;
+  if (!survival || survival.dead) return;
+  if (pointInAabb(player.x, player.z, blueHoleTrigger)) {
+    enterLevel03();
+  }
+}
+
+function checkLevel03Exit() {
+  if (!inLevel03 || !level03State) return;
+  if (pointInAabb(player.x, player.z, level03State.exitTrigger)) {
+    exitLevel03(true);
+  }
+}
+
 function respawnAtSafePoint() {
+  if (inRedRoom) exitRedRoom(false);
+  if (inLevel03) exitLevel03(false);
+  if (inLevel02) exitLevel02ToSpawn();
   player.x = spawnPoint.x;
   player.z = spawnPoint.z;
   feetY = 0;
@@ -606,7 +969,7 @@ function initSurvivalHud() {
 // 第一人称漫游
 // =============================================================================
 function resolveCircleAabbXZ(px, pz, radius, collider) {
-  if (collider.ghost) return { x: px, z: pz };
+  if (collider.ghost || collider.fallen) return { x: px, z: pz };
   var nx = px;
   var nz = pz;
   if (px + radius > collider.minX && px - radius < collider.maxX) {
@@ -649,13 +1012,14 @@ function movePlayer(dt, speedMul) {
   var nextZ = player.z + worldZ * speed * dt;
   var r = player.radius;
   var i;
+  var cols = getActiveColliders();
 
-  for (i = 0; i < wallColliders.length; i++) {
-    var resolved = resolveCircleAabbXZ(nextX, player.z, r, wallColliders[i]);
+  for (i = 0; i < cols.length; i++) {
+    var resolved = resolveCircleAabbXZ(nextX, player.z, r, cols[i]);
     nextX = resolved.x;
   }
-  for (i = 0; i < wallColliders.length; i++) {
-    var resolvedZ = resolveCircleAabbXZ(nextX, nextZ, r, wallColliders[i]);
+  for (i = 0; i < cols.length; i++) {
+    var resolvedZ = resolveCircleAabbXZ(nextX, nextZ, r, cols[i]);
     nextZ = resolvedZ.z;
   }
 
@@ -700,9 +1064,23 @@ function getSpecialWallCenter() {
   };
 }
 
+function getInteractPickMeshes() {
+  if (inLevel02) {
+    var exitM = getLevel02ExitPickMesh();
+    return exitM ? [exitM] : [];
+  }
+  if (inRedRoom || inLevel03 || clipState !== "idle") return [];
+  var list = [];
+  if (specialClipWallMesh) list.push(specialClipWallMesh);
+  var grayM = getGrayDoorPickMesh();
+  if (grayM) list.push(grayM);
+  return list;
+}
+
 function refreshAimPickL0() {
   currentAimPickL0 = null;
-  if (!camera || !specialClipWallMesh || clipState !== "idle") return;
+  var meshes = getInteractPickMeshes();
+  if (!camera || !meshes.length) return;
   if (isInventoryOpen()) return;
 
   var maxDist = 4.2;
@@ -711,23 +1089,35 @@ function refreshAimPickL0() {
     aim.origin,
     aim.direction,
     maxDist,
-    wallColliders,
+    getActiveColliders(),
     0,
     WALL_HEIGHT
   );
 
   currentAimPickL0 = pickCrosshairInteract(
     camera,
-    [specialClipWallMesh],
+    meshes,
     maxDist,
     wallBlock
   );
 }
 
-function isAimingClipWall() {
+function isAimingInteractKind(kind) {
   if (!currentAimPickL0 || !currentAimPickL0.data) return false;
-  if (currentAimPickL0.data.kind !== "clip_wall") return false;
+  if (currentAimPickL0.data.kind !== kind) return false;
   return currentAimPickL0.distance <= 3.6;
+}
+
+function isAimingClipWall() {
+  return isAimingInteractKind("clip_wall");
+}
+
+function isAimingGrayDoor() {
+  return isAimingInteractKind("gray_door");
+}
+
+function isAimingLevel02Exit() {
+  return isAimingInteractKind("level02_exit");
 }
 
 function isNearSpecialWall() {
@@ -745,22 +1135,68 @@ function setSpecialWallGhost(ghost) {
 
 function updateClipPrompt() {
   if (!clipHintEl) return;
-  if (clipState !== "idle") {
+  if (inRedRoom || inLevel03 || clipState !== "idle") {
     clipHintEl.hidden = true;
     return;
   }
-  clipHintEl.hidden = !isNearSpecialWall();
+  if (inLevel02) {
+    if (isAimingLevel02Exit()) {
+      clipHintEl.innerHTML = '按 <kbd>Q</kbd> 打开 · 回到出生点';
+      clipHintEl.hidden = false;
+    } else {
+      clipHintEl.hidden = true;
+    }
+    return;
+  }
+  if (isAimingGrayDoor()) {
+    clipHintEl.innerHTML = '按 <kbd>Q</kbd> 打开';
+    clipHintEl.hidden = false;
+    return;
+  }
+  if (isNearSpecialWall()) {
+    clipHintEl.innerHTML = '按 <kbd>Q</kbd> 切出';
+    clipHintEl.hidden = false;
+    return;
+  }
+  clipHintEl.hidden = true;
 }
 
 function updateCrosshairL0() {
   if (!crosshairEl) return;
   var hide =
-    isInventoryOpen() || !survival || survival.dead || clipState !== "idle";
+    inRedRoom ||
+    inLevel03 ||
+    isInventoryOpen() ||
+    !survival ||
+    survival.dead ||
+    (!inLevel02 && clipState !== "idle");
   crosshairEl.classList.toggle("backrooms-crosshair--hidden", hide);
-  crosshairEl.classList.toggle(
-    "backrooms-crosshair--interact",
-    !hide && isAimingClipWall()
-  );
+  var interact =
+    !hide &&
+    (isAimingClipWall() || isAimingGrayDoor() || isAimingLevel02Exit());
+  crosshairEl.classList.toggle("backrooms-crosshair--interact", interact);
+}
+
+function tryOpenGrayDoor() {
+  if (inLevel02 || inLevel03 || inRedRoom || clipState !== "idle" || !isAimingGrayDoor()) return;
+  enterLevel02();
+}
+
+function tryLevel02ExitDoor() {
+  if (!inLevel02 || !isAimingLevel02Exit()) return;
+  exitLevel02ToSpawn();
+}
+
+function tryPrimaryQAction() {
+  if (inLevel02) {
+    tryLevel02ExitDoor();
+    return;
+  }
+  if (isAimingGrayDoor()) {
+    tryOpenGrayDoor();
+    return;
+  }
+  tryClipOut();
 }
 
 function tryClipOut() {
@@ -788,6 +1224,7 @@ function updateClipDash(dt) {
     } catch (err) {
       /* ignore */
     }
+    queueEnterLevelNumber(1);
     window.location.href = "backrooms-level1.html";
   }
 }
@@ -947,7 +1384,7 @@ function bindControls() {
     }
     if (e.code === "KeyQ" && !e.repeat) {
       e.preventDefault();
-      tryClipOut();
+      tryPrimaryQAction();
     }
     if (e.code === "KeyB" && !e.repeat) {
       e.preventDefault();
@@ -1031,6 +1468,11 @@ function init() {
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);
 
+  level02FxRoot = new THREE.Group();
+  level02FxRoot.name = "Level02FxRoot";
+  level02FxRoot.visible = false;
+  scene.add(level02FxRoot);
+
   camera = new THREE.PerspectiveCamera(
     72,
     window.innerWidth / window.innerHeight,
@@ -1050,8 +1492,27 @@ function init() {
   var levelRoot = new THREE.Group();
   levelRoot.name = "BackroomsLevel0";
   scene.add(levelRoot);
+  level0WorldRoot = levelRoot;
 
   buildBackroomsLevel(levelRoot);
+  redRoomState = buildRedRoom(scene, GRID_SIZE, WALL_HEIGHT);
+  level03State = buildLevel03Room(scene, GRID_SIZE, WALL_HEIGHT);
+  level02State = buildLevel02World(scene, {
+    gridSize: GRID_SIZE,
+    wallHeight: WALL_HEIGHT,
+    matrix: BACKROOMS_MATRIX,
+    mapRows: MAP_ROWS,
+    mapCols: MAP_COLS,
+    cellCenterX: cellCenterX,
+    cellCenterZ: cellCenterZ,
+    mapWidth: MAP_WIDTH,
+    mapDepth: MAP_DEPTH,
+  });
+  level02Hazards = createLevel02EnterHazards(scene, {
+    wallHeight: WALL_HEIGHT,
+  });
+  redChannelTrigger = getRedChannelTriggerAabb(cellCenterX, cellCenterZ, GRID_SIZE);
+  blueHoleTrigger = getBlueHoleTriggerAabb(cellCenterX, cellCenterZ, GRID_SIZE);
   console.info(
     "[Backrooms] 地图已生成：",
     wallColliders.length,
@@ -1093,6 +1554,7 @@ function startLoop() {
     var elapsed = clock.getElapsedTime();
     var blackout = updateLevel0Lighting(elapsed);
     updateSpecialClipWallFlicker(elapsed);
+    if (!inRedRoom) updateRedDoorWallFlicker(elapsed);
     var moving = isPlayerMoving();
     var sprinting = isSprintHeld() && moving;
 
@@ -1101,10 +1563,31 @@ function startLoop() {
         blackout: blackout,
         nearLandmark: isNearCreepyLandmark(),
         sprinting: sprinting,
+        skipPassiveSanity: inRedRoom,
+        sanityDrainPerSec: inRedRoom ? RED_ROOM_SANITY_DRAIN_PER_SEC : 0,
       });
     }
 
     updatePlayerPhysics(dt);
+    if (inLevel02 && level02Hazards) {
+      try {
+        level02Hazards.update(
+          dt,
+          {
+            x: player.x,
+            z: player.z,
+            feetY: feetY,
+            bodyHeight: BODY_HEIGHT,
+            radius: player.radius,
+            nudge: player,
+          },
+          survival,
+          showBackroomsToast
+        );
+      } catch (err) {
+        console.error("[Level0.2] hazard update failed:", err);
+      }
+    }
     if ((!survival || !survival.dead) && !isInventoryOpen()) {
       var speedMul =
         survival && sprinting
@@ -1114,6 +1597,12 @@ function startLoop() {
         updateClipDash(dt);
       } else {
         movePlayer(dt, speedMul);
+      }
+      if (inRedRoom) checkRedRoomExit();
+      else if (inLevel03) checkLevel03Exit();
+      else if (!inLevel02) {
+        checkRedChannelEnter();
+        checkBlueHoleEnter();
       }
     }
     if (camera) {
@@ -1127,6 +1616,7 @@ function startLoop() {
     updateCrosshairL0();
     updateBackroomsTemperature(dt, performance.now());
     updateBackroomsHeatDamage(survival, performance.now());
+    updateBackroomsColdDamage(survival, dt, inLevel03);
     if (renderer && scene && camera) {
       renderer.render(scene, camera);
     }

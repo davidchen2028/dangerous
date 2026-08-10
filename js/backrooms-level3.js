@@ -39,12 +39,17 @@ import { attachMobileDragLook } from "./backrooms-fps-look.js";
 import {
   buildLevel3ElevatorShaft,
   isNearLevel3Elevator,
+  updateLevel3ElevatorGlow,
 } from "./backrooms-level3-elevator.js";
+import {
+  showEnterLevelBannerIfQueued,
+  queueEnterLevelNumber,
+} from "./backrooms-level-enter.js";
 
 const MAZE_SEED_KEY = "backrooms_l3_maze_v2";
 const FOG_COLOR = 0x14141c;
 const FOG_NEAR = 4;
-const FOG_FAR = 38;
+const FOG_FAR = 48;
 const NV_FOG_COLOR = 0x3a4a58;
 const NV_FOG_NEAR = 8;
 const NV_FOG_FAR = 36;
@@ -288,7 +293,7 @@ function syncLookUi() {
   if (!hintEl) return;
   var nv = isNightVisionActive() ? " · 夜视 <strong>" + formatNightVisionRemaining() + "</strong>" : "";
   hintEl.innerHTML =
-    "发电站 · 迷宫<strong>中央</strong>有电梯 → Level 4 · <kbd>WASD</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>Space</kbd> 跳 · <kbd>B</kbd> 背包" +
+    "发电站 · 迷宫<strong>中央通天光柱</strong> → Level 4 · <kbd>WASD</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>Space</kbd> 跳 · <kbd>B</kbd> 背包" +
     nv;
 }
 
@@ -331,6 +336,7 @@ function updateElevatorRise(dt) {
     } catch (err) {
       /* ignore */
     }
+    queueEnterLevelNumber(4);
     stopLevel3Hum();
     window.location.href = "backrooms-level4.html";
   }
@@ -424,6 +430,7 @@ function bindControls() {
 
 function init() {
   if (!enforceEntryOrRedirect()) return;
+  showEnterLevelBannerIfQueued();
 
   mazeData = generateLevel3Maze(getMazeSeed());
   var spawn = getLevel3SpawnWorld(mazeData);
@@ -436,7 +443,7 @@ function init() {
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);
 
-  camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 65);
+  camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 100);
   renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -463,6 +470,9 @@ function init() {
   pipeHazards = createLevel3PipeHazards(built.pipeHazardSlots, hazardVfxGroup);
 
   level3Elevator = buildLevel3ElevatorShaft(root);
+  if (level3Elevator.pl) decorPointLights.push(level3Elevator.pl);
+  if (level3Elevator.plMid) decorPointLights.push(level3Elevator.plMid);
+  if (level3Elevator.plUp) decorPointLights.push(level3Elevator.plUp);
 
   ambientLight = new THREE.AmbientLight(0x3a3a48, 0.82);
   scene.add(ambientLight);
@@ -543,6 +553,7 @@ function init() {
     if ((flickerFrame & 1) === 0) {
       updateLevel3FlickerLights(flickerLights, now, flickerIntensityScale);
     }
+    updateLevel3ElevatorGlow(level3Elevator, now);
 
     camera.position.set(player.x, feetY + EYE_HEIGHT, player.z);
     camera.rotation.order = "YXZ";

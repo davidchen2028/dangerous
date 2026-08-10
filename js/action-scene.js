@@ -5152,7 +5152,7 @@ if (typeof window !== "undefined") {
   function updateMapNameDisplay() {
     if (!mapNameEl) return;
     if (currentMapId === "backrooms") {
-      mapNameEl.textContent = "后室 Level 1";
+      mapNameEl.textContent = "后室 alpha";
       return;
     }
     mapNameEl.textContent = currentMapId === "test" ? "测试" : "新手教程";

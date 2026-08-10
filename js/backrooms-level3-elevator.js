@@ -1,159 +1,81 @@
 /**
- * Level 3 — 迷宫中央通天电梯井（Canvas 工业纹理）
+ * Level 3 — 迷宫中央通天光柱（强可见、通向天空，不受雾遮挡）
  */
 import * as THREE from "three";
-import { CELL, MAZE_W, MAZE_H } from "./backrooms-level3-world.js";
+import { CELL, MAZE_W, MAZE_H, WALL_H } from "./backrooms-level3-world.js";
 
-export const ELEVATOR_INTERACT_DIST = 2.55;
-const SHAFT_W = 2.55;
-const SHAFT_D = 2.55;
-const SHAFT_H = 96;
-const SHAFT_VISIBLE_H = 8.5;
+export const ELEVATOR_INTERACT_DIST = 3.2;
+const SHAFT_W = 3.0;
+const BEAM_H = 72;
 
-function createElevatorShaftWallTexture() {
-  var cw = 64;
-  var ch = 256;
-  var canvas = document.createElement("canvas");
-  canvas.width = cw;
-  canvas.height = ch;
-  var ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  ctx.fillStyle = "#4a525c";
-  ctx.fillRect(0, 0, cw, ch);
-
-  var y;
-  for (y = 0; y < ch; y += 4) {
-    ctx.fillStyle = y % 8 === 0 ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.06)";
-    ctx.fillRect(0, y, cw, 2);
-  }
-
-  var n;
-  for (n = 0; n < 900; n++) {
-    var g = 70 + Math.floor(Math.random() * 35);
-    ctx.fillStyle = "rgb(" + g + "," + (g + 2) + "," + (g + 6) + ")";
-    ctx.fillRect(Math.random() * cw, Math.random() * ch, 1, 1);
-  }
-
-  for (y = 0; y < ch; y += 48) {
-    ctx.fillStyle = "#2a3038";
-    ctx.fillRect(0, y, cw, 3);
-    var rx;
-    for (rx = 6; rx < cw; rx += 14) {
-      ctx.fillStyle = "#6a7078";
-      ctx.beginPath();
-      ctx.arc(rx, y + 1.5, 1.8, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  var stripeY = ch - 56;
-  while (stripeY > 0) {
-    ctx.fillStyle = "#c8a020";
-    ctx.fillRect(0, stripeY, cw, 10);
-    ctx.fillStyle = "#1a1a1a";
-    ctx.fillRect(0, stripeY + 10, cw, 10);
-    stripeY -= 56;
-  }
-
-  var tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(1, SHAFT_VISIBLE_H / 2.2);
-  tex.anisotropy = 4;
-  return tex;
-}
-
-function createElevatorDoorTexture() {
+var _beamTex = null;
+function skyBeamTexture() {
+  if (_beamTex) return _beamTex;
   var cw = 128;
-  var ch = 256;
+  var ch = 512;
   var canvas = document.createElement("canvas");
   canvas.width = cw;
   canvas.height = ch;
   var ctx = canvas.getContext("2d");
   if (!ctx) return null;
-
-  ctx.fillStyle = "#5c646e";
-  ctx.fillRect(0, 0, cw, ch);
-
   var y;
-  for (y = 0; y < ch; y += 3) {
-    ctx.fillStyle = y % 6 === 0 ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.07)";
-    ctx.fillRect(0, y, cw, 1);
+  for (y = 0; y < ch; y++) {
+    var t = y / (ch - 1);
+    var core = Math.pow(1 - t, 0.28);
+    var aCore = Math.min(1, core * (0.35 + t * 0.95));
+    ctx.fillStyle = "rgba(255,255,255," + aCore.toFixed(3) + ")";
+    ctx.fillRect(cw * 0.5 - 10 * core - 3, y, 20 * core + 6, 2);
+    ctx.fillStyle = "rgba(180,220,255," + (core * 0.55).toFixed(3) + ")";
+    ctx.fillRect(cw * 0.5 - 28 * core, y, 56 * core, 1);
+    ctx.fillStyle = "rgba(120,180,255," + (core * 0.25).toFixed(3) + ")";
+    ctx.fillRect(cw * 0.5 - 40 * core, y, 80 * core, 1);
   }
-
-  ctx.fillStyle = "#3a4048";
-  ctx.fillRect(cw * 0.5 - 2, 0, 4, ch);
-
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
-  ctx.fillRect(8, ch * 0.38, cw - 16, ch * 0.08);
-
-  ctx.fillStyle = "#dde8f0";
-  ctx.font = "bold 22px Arial, Helvetica, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("▲", cw * 0.5, ch * 0.44);
-
-  ctx.fillStyle = "#8ab4d8";
-  ctx.font = "600 14px Arial, Helvetica, sans-serif";
-  ctx.fillText("LEVEL 4", cw * 0.5, ch * 0.52);
-
-  ctx.fillStyle = "#2a3038";
-  ctx.fillRect(cw * 0.5 - 14, ch * 0.58, 28, 36);
-  ctx.fillStyle = "#88cc44";
-  ctx.fillRect(cw * 0.5 - 10, ch * 0.62, 8, 8);
-  ctx.fillStyle = "#cc4444";
-  ctx.fillRect(cw * 0.5 + 2, ch * 0.62, 8, 8);
-
-  var tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
+  _beamTex = new THREE.CanvasTexture(canvas);
+  _beamTex.colorSpace = THREE.SRGBColorSpace;
+  return _beamTex;
 }
 
-function createElevatorFloorTexture() {
-  var size = 128;
+var _floorGlowTex = null;
+function floorGlowTexture() {
+  if (_floorGlowTex) return _floorGlowTex;
+  var size = 256;
   var canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
   var ctx = canvas.getContext("2d");
   if (!ctx) return null;
-
-  ctx.fillStyle = "#3d4650";
+  var g = ctx.createRadialGradient(size * 0.5, size * 0.5, 0, size * 0.5, size * 0.5, size * 0.5);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.25, "rgba(220,245,255,0.9)");
+  g.addColorStop(0.55, "rgba(140,200,255,0.35)");
+  g.addColorStop(1, "rgba(80,140,220,0)");
+  ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
+  _floorGlowTex = new THREE.CanvasTexture(canvas);
+  _floorGlowTex.colorSpace = THREE.SRGBColorSpace;
+  return _floorGlowTex;
+}
 
-  var step = 16;
-  var x;
-  var y;
-  for (y = 0; y < size; y += step) {
-    for (x = 0; x < size; x += step) {
-      ctx.strokeStyle = (x + y) % (step * 2) === 0 ? "#556070" : "#4a5560";
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.moveTo(x + step * 0.5, y);
-      ctx.lineTo(x + step, y + step * 0.5);
-      ctx.lineTo(x + step * 0.5, y + step);
-      ctx.lineTo(x, y + step * 0.5);
-      ctx.closePath();
-      ctx.stroke();
-    }
-  }
-
-  var tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(2, 2);
-  tex.anisotropy = 4;
-  return tex;
+function glowBasic(opts) {
+  return new THREE.MeshBasicMaterial(
+    Object.assign(
+      {
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        fog: false,
+      },
+      opts
+    )
+  );
 }
 
 export function getLevel3ElevatorWorldCenter() {
-  var cx = Math.floor(MAZE_W * 0.5);
-  var cz = Math.floor(MAZE_H * 0.5);
+  var mid = Math.floor(MAZE_W * 0.5) - 2;
+  var cell = mid + 1.5;
   return {
-    x: (cx - MAZE_W * 0.5) * CELL,
-    z: (cz - MAZE_H * 0.5) * CELL,
+    x: (cell - MAZE_W * 0.5) * CELL,
+    z: (cell - MAZE_H * 0.5) * CELL,
   };
 }
 
@@ -166,117 +88,111 @@ export function buildLevel3ElevatorShaft(parent) {
   group.name = "L3ElevatorShaft";
   group.position.set(center.x, 0, center.z);
 
-  var wallMap = createElevatorShaftWallTexture();
-  var wallMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    map: wallMap || undefined,
-    metalness: 0.62,
-    roughness: 0.48,
-    emissive: 0x1a2838,
-    emissiveIntensity: 0.12,
-    side: THREE.DoubleSide,
-  });
-  if (!wallMap) wallMat.color.setHex(0x4a525c);
+  var beamMap = skyBeamTexture();
+  var floorMap = floorGlowTexture();
 
-  var hw = SHAFT_W * 0.5;
-  var hd = SHAFT_D * 0.5;
-  var wallH = SHAFT_VISIBLE_H;
-
-  function addShaftWall(w, h, x, y, z, rotY) {
-    var mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), wallMat);
-    mesh.position.set(x, y, z);
+  var beams = [];
+  function addBeam(w, h, rotY, opacityMul) {
+    var mat = glowBasic({
+      map: beamMap || undefined,
+      color: beamMap ? 0xffffff : 0xf0f8ff,
+      opacity: 0.95 * (opacityMul || 1),
+      side: THREE.DoubleSide,
+    });
+    var mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    mesh.position.y = h * 0.5 + 0.05;
     mesh.rotation.y = rotY;
+    mesh.renderOrder = 20;
     group.add(mesh);
+    beams.push(mesh);
+    return mesh;
   }
 
-  addShaftWall(SHAFT_W, wallH, 0, wallH * 0.5, hd, Math.PI);
-  addShaftWall(SHAFT_W, wallH, 0, wallH * 0.5, -hd, 0);
-  addShaftWall(SHAFT_D, wallH, hw, wallH * 0.5, 0, -Math.PI * 0.5);
-  addShaftWall(SHAFT_D, wallH, -hw, wallH * 0.5, 0, Math.PI * 0.5);
+  beams.push(addBeam(5.5, BEAM_H, 0, 1));
+  beams.push(addBeam(5.5, BEAM_H, Math.PI * 0.5, 1));
+  beams.push(addBeam(4.2, BEAM_H * 0.96, Math.PI * 0.25, 0.7));
+  beams.push(addBeam(4.2, BEAM_H * 0.96, -Math.PI * 0.25, 0.7));
 
-  var doorMap = createElevatorDoorTexture();
-  var doorMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    map: doorMap || undefined,
-    metalness: 0.55,
-    roughness: 0.42,
-    emissive: 0x223344,
-    emissiveIntensity: 0.18,
-  });
-  if (!doorMap) doorMat.color.setHex(0x5c646e);
+  var core = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.25, 1.45, BEAM_H, 24, 1, true),
+    glowBasic({ color: 0xffffff, opacity: 0.62, side: THREE.DoubleSide })
+  );
+  core.position.y = BEAM_H * 0.5;
+  core.renderOrder = 21;
+  group.add(core);
 
-  var doorH = 2.65;
-  var doorW = SHAFT_W * 0.42;
-  var doorMesh = new THREE.Mesh(new THREE.PlaneGeometry(doorW, doorH), doorMat);
-  doorMesh.position.set(-doorW * 0.5 - 0.02, doorH * 0.5 + 0.02, hd + 0.03);
-  group.add(doorMesh);
-  var doorMeshR = doorMesh.clone();
-  doorMeshR.position.set(doorW * 0.5 + 0.02, doorH * 0.5 + 0.02, hd + 0.03);
-  group.add(doorMeshR);
+  var skyRings = [];
+  var ri;
+  for (ri = 0; ri < 10; ri++) {
+    var ringY = 3 + ri * (BEAM_H / 10);
+    var ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.5 + ri * 0.08, 1.35 + ri * 0.12, 32),
+      glowBasic({ color: 0xd8eeff, opacity: 0.35 - ri * 0.02, side: THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI * 0.5;
+    ring.position.y = ringY;
+    ring.renderOrder = 19;
+    group.add(ring);
+    skyRings.push(ring);
+  }
 
-  var frameMat = new THREE.MeshStandardMaterial({
-    color: 0x2a3038,
-    metalness: 0.5,
-    roughness: 0.55,
-  });
-  var frameTop = new THREE.Mesh(new THREE.BoxGeometry(SHAFT_W + 0.12, 0.1, 0.08), frameMat);
-  frameTop.position.set(0, doorH + 0.06, hd + 0.04);
-  group.add(frameTop);
-  var frameL = new THREE.Mesh(new THREE.BoxGeometry(0.08, doorH + 0.12, 0.08), frameMat);
-  frameL.position.set(-SHAFT_W * 0.5 - 0.02, doorH * 0.5, hd + 0.04);
-  group.add(frameL);
-  var frameR = frameL.clone();
-  frameR.position.x = SHAFT_W * 0.5 + 0.02;
-  group.add(frameR);
-
-  var floorMap = createElevatorFloorTexture();
-  var pad = new THREE.Mesh(
-    new THREE.BoxGeometry(SHAFT_W * 0.92, 0.1, SHAFT_D * 0.92),
-    new THREE.MeshStandardMaterial({
-      color: 0xffffff,
+  var groundGlow = new THREE.Mesh(
+    new THREE.CircleGeometry(6.5, 56),
+    glowBasic({
       map: floorMap || undefined,
-      metalness: 0.45,
-      roughness: 0.55,
-      emissive: 0x1a3040,
-      emissiveIntensity: 0.35,
+      color: 0xffffff,
+      opacity: 0.95,
     })
   );
-  if (!floorMap) pad.material.color.setHex(0x556070);
-  pad.position.y = 0.05;
-  group.add(pad);
+  groundGlow.rotation.x = -Math.PI * 0.5;
+  groundGlow.position.y = 0.04;
+  groundGlow.renderOrder = 18;
+  group.add(groundGlow);
+
+  var platform = new THREE.Mesh(
+    new THREE.CylinderGeometry(SHAFT_W * 0.5, SHAFT_W * 0.54, 0.14, 36),
+    new THREE.MeshStandardMaterial({
+      color: 0xe8f4ff,
+      emissive: 0xaaccff,
+      emissiveIntensity: 2.2,
+      metalness: 0.15,
+      roughness: 0.3,
+      fog: false,
+    })
+  );
+  platform.position.y = 0.09;
+  group.add(platform);
 
   var ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.55, 0.95, 32),
-    new THREE.MeshBasicMaterial({
-      color: 0x66ccff,
-      transparent: true,
-      opacity: 0.55,
-      side: THREE.DoubleSide,
-    })
+    new THREE.RingGeometry(0.7, 1.15, 48),
+    glowBasic({ color: 0xffffff, opacity: 0.95, side: THREE.DoubleSide })
   );
   ring.rotation.x = -Math.PI * 0.5;
-  ring.position.y = 0.12;
+  ring.position.y = 0.16;
   group.add(ring);
 
-  var shaftGlow = new THREE.Mesh(
-    new THREE.CylinderGeometry(SHAFT_W * 0.35, SHAFT_W * 0.35, SHAFT_H, 16, 1, true),
-    new THREE.MeshBasicMaterial({
-      color: 0x4488cc,
-      transparent: true,
-      opacity: 0.06,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    })
-  );
-  shaftGlow.position.y = SHAFT_H * 0.5;
-  group.add(shaftGlow);
+  var skySpot = new THREE.SpotLight(0xffffff, 5.5, BEAM_H * 0.95, 0.38, 0.28, 1.05);
+  skySpot.position.set(0, 0.4, 0);
+  skySpot.target.position.set(0, BEAM_H, 0);
+  group.add(skySpot);
+  group.add(skySpot.target);
 
-  var pl = new THREE.PointLight(0xc8e8ff, 1.05, 16, 1.5);
-  pl.position.set(0, 2.6, 0);
+  var pl = new THREE.PointLight(0xf0f8ff, 4.2, 28, 1.35);
+  pl.position.set(0, 2.8, 0);
   group.add(pl);
-  var plDoor = new THREE.PointLight(0xaaccff, 0.65, 8, 1.8);
-  plDoor.position.set(0, 2.2, hd - 0.2);
-  group.add(plDoor);
+  var plMid = new THREE.PointLight(0xd8ecff, 2.8, 45, 1.15);
+  plMid.position.set(0, 14, 0);
+  group.add(plMid);
+  var plUp = new THREE.PointLight(0xffffff, 2.2, 55, 1.05);
+  plUp.position.set(0, 32, 0);
+  group.add(plUp);
+
+  var pick = new THREE.Mesh(
+    new THREE.CylinderGeometry(SHAFT_W * 0.52, SHAFT_W * 0.52, 0.25, 16),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  pick.position.y = 0.12;
+  group.add(pick);
 
   parent.add(group);
 
@@ -285,7 +201,43 @@ export function buildLevel3ElevatorShaft(parent) {
     x: center.x,
     z: center.z,
     interactDist: ELEVATOR_INTERACT_DIST,
+    beams: beams,
+    core: core,
+    skyRings: skyRings,
+    groundGlow: groundGlow,
+    ring: ring,
+    pl: pl,
+    plMid: plMid,
+    plUp: plUp,
+    skySpot: skySpot,
   };
+}
+
+/** 呼吸式光柱动画 */
+export function updateLevel3ElevatorGlow(shaft, now) {
+  if (!shaft || !shaft.group) return;
+  var t = now * 0.001;
+  var pulse = 0.88 + Math.sin(t * 2.4) * 0.1 + Math.sin(t * 6.1) * 0.04;
+  var i;
+  if (shaft.beams) {
+    for (i = 0; i < shaft.beams.length; i++) {
+      shaft.beams[i].material.opacity = (0.82 + pulse * 0.18) * (i < 2 ? 1 : 0.72);
+    }
+  }
+  if (shaft.core) shaft.core.material.opacity = 0.48 + pulse * 0.28;
+  if (shaft.groundGlow) shaft.groundGlow.material.opacity = 0.82 + pulse * 0.16;
+  if (shaft.ring) shaft.ring.material.opacity = 0.82 + pulse * 0.16;
+  if (shaft.skyRings) {
+    for (i = 0; i < shaft.skyRings.length; i++) {
+      var base = 0.22 - i * 0.012;
+      shaft.skyRings[i].material.opacity = base + pulse * 0.12 + Math.sin(t * 3 + i * 0.7) * 0.04;
+      shaft.skyRings[i].rotation.z = t * 0.15 + i * 0.2;
+    }
+  }
+  if (shaft.pl) shaft.pl.intensity = 3.8 * pulse;
+  if (shaft.plMid) shaft.plMid.intensity = 2.6 * pulse;
+  if (shaft.plUp) shaft.plUp.intensity = 2.0 * pulse;
+  if (shaft.skySpot) shaft.skySpot.intensity = 5.0 * pulse;
 }
 
 export function isNearLevel3Elevator(px, pz, shaft) {

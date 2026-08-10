@@ -181,7 +181,12 @@ export class BackroomsSurvival {
       this.stamina = Math.min(staCap, this.stamina + 10 * dt);
     }
 
-    this.sanity = Math.max(0, this.sanity - SANITY_PASSIVE_DRAIN_PER_SEC * dt);
+    if (!env.skipPassiveSanity) {
+      this.sanity = Math.max(0, this.sanity - SANITY_PASSIVE_DRAIN_PER_SEC * dt);
+    }
+    if ((env.sanityDrainPerSec || 0) > 0) {
+      this.sanity = Math.max(0, this.sanity - env.sanityDrainPerSec * dt);
+    }
     this.hp = Math.min(hpCap, this.hp);
     this.stamina = Math.min(staCap, this.stamina);
 

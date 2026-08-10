@@ -802,7 +802,7 @@ function buildMegAlphaBase(root, ctx) {
   group.add(roof);
 
   // 门上方标牌
-  var signTex = createMegSignTexture("M.E.G Alpha基地");
+  var signTex = createMegSignTexture("alpha");
   var sign = new THREE.Mesh(
     new THREE.PlaneGeometry(4.2, 1.05),
     new THREE.MeshBasicMaterial({ map: signTex, transparent: false })
