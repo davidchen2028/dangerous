@@ -36,6 +36,7 @@ import {
   getLevel2DoorTransition,
 } from "./backrooms-level2-doors.js";
 import { createLevel2Xiaoye } from "./backrooms-level2-xiaoye.js";
+import { createLevel2DeathMoth } from "./backrooms-death-moth.js";
 import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
@@ -117,6 +118,8 @@ let level2Doors = null;
 let interactRoots = [];
 /** @type {ReturnType<createLevel2Xiaoye> | null} */
 let level2Xiaoye = null;
+/** @type {ReturnType<createLevel2DeathMoth> | null} */
+let level2DeathMoth = null;
 /** @type {{ data: object, distance: number } | null} */
 let currentAimPick = null;
 let transitionLock = false;
@@ -435,6 +438,7 @@ function init() {
   level2Doors = built.doors;
   interactRoots = built.interactRoots || [];
   level2Xiaoye = createLevel2Xiaoye(root);
+  level2DeathMoth = createLevel2DeathMoth(root, wallColliders);
   applyLevel2NightVisionLighting(isNightVisionActive());
 
   initSurvivalHud();
@@ -487,6 +491,12 @@ function startLoop() {
     updateLevel2Doors(level2Doors, dt);
     if (level2Xiaoye && survival && !survival.dead) {
       level2Xiaoye.update(dt, fps.player.x, fps.player.z, survival, showLootToast);
+    }
+    if (level2DeathMoth && survival && !survival.dead) {
+      level2DeathMoth.update(dt, fps.player.x, fps.player.z, survival, showLootToast, {
+        wallColliders: wallColliders,
+        now: now,
+      });
     }
 
     if (crosshairEl) {

@@ -41,6 +41,8 @@ var _megBaseCenter = null;
 var _megBaseOccluderGroup = null;
 var _megBaseHalfW = 8;
 var _megBaseHalfD = 6;
+/** @type {object[] | null} M.E.G 基地外墙碰撞（用于恢复同步） */
+var _megBaseColliders = null;
 /** @type {object | null} 基地正门（西） */
 var _megDoorState = null;
 /** @type {object | null} 基地后门（东，仅室内可开） */
@@ -215,7 +217,7 @@ function createMegSignTexture(text) {
   return tex;
 }
 
-function registerMegCollider(ctx, list, minX, maxX, minZ, maxZ) {
+function registerMegCollider(ctx, list, minX, maxX, minZ, maxZ, minY, maxY) {
   var c = {
     kind: "wall",
     minX: minX,
@@ -223,7 +225,22 @@ function registerMegCollider(ctx, list, minX, maxX, minZ, maxZ) {
     minZ: minZ,
     maxZ: maxZ,
   };
+  if (minY != null) c.minY = minY;
+  if (maxY != null) c.maxY = maxY;
   registerMegColliderObject(ctx, list, c);
+}
+
+function syncMegBaseColliders(ctx) {
+  if (!_megBaseColliders || !ctx) return;
+  var i;
+  for (i = 0; i < _megBaseColliders.length; i++) {
+    var c = _megBaseColliders[i];
+    if (!c || c.ghost) continue;
+    if (ctx.colliders.indexOf(c) < 0) {
+      ctx.colliders.push(c);
+      if (ctx.onWallCollider) ctx.onWallCollider(c);
+    }
+  }
 }
 
 function registerMegColliderObject(ctx, list, collider) {
@@ -237,6 +254,12 @@ function removeColliderFromCtx(ctx, collider) {
   var idx = ctx.colliders.indexOf(collider);
   if (idx >= 0) ctx.colliders.splice(idx, 1);
   if (ctx.onWallColliderRemove) ctx.onWallColliderRemove(collider);
+}
+
+function ghostRemoveMegCollider(ctx, collider) {
+  if (!collider) return;
+  collider.ghost = true;
+  removeColliderFromCtx(ctx, collider);
 }
 
 function updateSingleMegDoor(d, dt) {
@@ -426,8 +449,7 @@ function tryOpenMegFrontDoor(px, pz) {
   d.opening = true;
   d.t = 0;
   if (d.collider) {
-    removeColliderFromCtx(d.ctx, d.collider);
-    d.collider = null;
+    ghostRemoveMegCollider(d.ctx, d.collider);
   }
   return true;
 }
@@ -447,12 +469,10 @@ function openMegBackDoorInternal() {
   d.opening = true;
   d.t = 0;
   if (d.collider) {
-    removeColliderFromCtx(d.ctx, d.collider);
-    d.collider = null;
+    ghostRemoveMegCollider(d.ctx, d.collider);
   }
   if (d.outerBlocker) {
-    removeColliderFromCtx(d.ctx, d.outerBlocker);
-    d.outerBlocker = null;
+    ghostRemoveMegCollider(d.ctx, d.outerBlocker);
   }
   return true;
 }
@@ -463,8 +483,7 @@ function tryOpenMegFrontDoorAim() {
   d.opening = true;
   d.t = 0;
   if (d.collider) {
-    removeColliderFromCtx(d.ctx, d.collider);
-    d.collider = null;
+    ghostRemoveMegCollider(d.ctx, d.collider);
   }
   return true;
 }
@@ -491,6 +510,7 @@ var _megLevel11Npc = null;
 function resetMegModuleState() {
   _megBaseCenter = null;
   _megBaseOccluderGroup = null;
+  _megBaseColliders = null;
   _megDoorState = null;
   _megBackDoorState = null;
   _megCorridorFootprint = null;
@@ -608,11 +628,25 @@ function buildMegAlphaBase(root, ctx) {
   var doorH = 3.2;
   var hx = bw * 0.5;
   var hz = bd * 0.5;
+  _megBaseHalfW = hx;
+  _megBaseHalfD = hz;
   var megColliders = [];
   var lintelH = bh - doorH;
   var doorThick = 0.14;
   var doorY0 = doorH * 0.5;
   var doorY1 = bh + doorH * 0.35;
+  var wallPad = 0.1;
+
+  function megWall(minX, maxX, minZ, maxZ) {
+    registerMegCollider(
+      ctx,
+      megColliders,
+      minX - wallPad,
+      maxX + wallPad,
+      minZ - wallPad,
+      maxZ + wallPad
+    );
+  }
 
   var pad = new THREE.Mesh(
     new THREE.BoxGeometry(bw + 2.5, 0.18, bd + 2.5),
@@ -629,45 +663,17 @@ function buildMegAlphaBase(root, ctx) {
 
   // 北墙 (+Z)
   wallBox(bw, bh, wallT, center.x, bh * 0.5, center.z + hz);
-  registerMegCollider(
-    ctx,
-    megColliders,
-    center.x - hx,
-    center.x + hx,
-    center.z + hz - wallT,
-    center.z + hz + wallT
-  );
+  megWall(center.x - hx, center.x + hx, center.z + hz - wallT, center.z + hz + wallT);
   // 南墙 (-Z)
   wallBox(bw, bh, wallT, center.x, bh * 0.5, center.z - hz);
-  registerMegCollider(
-    ctx,
-    megColliders,
-    center.x - hx,
-    center.x + hx,
-    center.z - hz - wallT,
-    center.z - hz + wallT
-  );
+  megWall(center.x - hx, center.x + hx, center.z - hz - wallT, center.z - hz + wallT);
   // 东墙 (+X) 留后门 — 外侧与基地墙同色门板，走廊仅开门后生成
   var segZEast = (bd - doorW) * 0.5;
   var segCenterZEast = hz - segZEast * 0.5;
   wallBox(wallT, bh, segZEast, center.x + hx, bh * 0.5, center.z + segCenterZEast);
-  registerMegCollider(
-    ctx,
-    megColliders,
-    center.x + hx - wallT,
-    center.x + hx + wallT,
-    center.z + doorW * 0.5,
-    center.z + hz
-  );
+  megWall(center.x + hx - wallT, center.x + hx + wallT, center.z + doorW * 0.5, center.z + hz);
   wallBox(wallT, bh, segZEast, center.x + hx, bh * 0.5, center.z - segCenterZEast);
-  registerMegCollider(
-    ctx,
-    megColliders,
-    center.x + hx - wallT,
-    center.x + hx + wallT,
-    center.z - hz,
-    center.z - doorW * 0.5
-  );
+  megWall(center.x + hx - wallT, center.x + hx + wallT, center.z - hz, center.z - doorW * 0.5);
   wallBox(wallT, lintelH, doorW, center.x + hx, doorH + lintelH * 0.5, center.z);
 
   var backDoor = new THREE.Mesh(
@@ -738,25 +744,11 @@ function buildMegAlphaBase(root, ctx) {
   var segZ = (bd - doorW) * 0.5;
   var segCenterZ = hz - segZ * 0.5;
   wallBox(wallT, bh, segZ, center.x - hx, bh * 0.5, center.z + segCenterZ);
-  registerMegCollider(
-    ctx,
-    megColliders,
-    center.x - hx - wallT,
-    center.x - hx + wallT,
-    center.z + doorW * 0.5,
-    center.z + hz
-  );
+  megWall(center.x - hx - wallT, center.x - hx + wallT, center.z + doorW * 0.5, center.z + hz);
   wallBox(wallT, bh, segZ, center.x - hx, bh * 0.5, center.z - segCenterZ);
-  registerMegCollider(
-    ctx,
-    megColliders,
-    center.x - hx - wallT,
-    center.x - hx + wallT,
-    center.z - hz,
-    center.z - doorW * 0.5
-  );
+  megWall(center.x - hx - wallT, center.x - hx + wallT, center.z - hz, center.z - doorW * 0.5);
 
-  // 门楣（仅视觉，不挡门洞碰撞）
+  // 门楣（仅视觉；2D 碰撞不挡门洞）
   wallBox(wallT, lintelH, doorW, center.x - hx, doorH + lintelH * 0.5, center.z);
 
   var door = new THREE.Mesh(
@@ -878,6 +870,7 @@ function buildMegAlphaBase(root, ctx) {
 
   root.add(group);
   _megBaseOccluderGroup = group;
+  _megBaseColliders = megColliders;
   _megCorridorFootprint = megCorridorFootprintBounds(center, hx, doorW, wallT);
   return { group: group, colliders: megColliders, center: center };
 }
@@ -1548,6 +1541,8 @@ export function buildBackroomsLevel1World(root, opts) {
       if (!megBaseBuilt) {
         megBaseBuilt = true;
         buildMegAlphaBase(root, ctx);
+      } else {
+        syncMegBaseColliders(ctx);
       }
       return megBaseWorldCenter();
     },

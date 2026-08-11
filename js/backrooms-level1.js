@@ -67,6 +67,12 @@ import {
   applyMegDeathState,
   MEG_RESPAWN_FLAG,
 } from "./backrooms-meg-checkpoint.js";
+import { createLevel1_1ZoneManager } from "./backrooms-level1-1-zones.js";
+import {
+  markLevel1_1ChestOpened,
+  refreshLevel1_1_3OutpostChestsOnFirstL11Visit,
+} from "./backrooms-level1-1-chests.js";
+import { LEVEL1_1_WALL_H } from "./backrooms-level1-1-world.js";
 
 const CHEST_LOOT_DISTANCE = 2.6;
 const AIM_INTERACT_MAX = 4.5;
@@ -102,6 +108,7 @@ const dialogueSpeakerEl = document.getElementById("backroomsDialogueSpeaker");
 const dialogueTextEl = document.getElementById("backroomsDialogueText");
 const dialogueImageEl = document.getElementById("backroomsDialogueImage");
 const dialogueChoicesEl = document.getElementById("backroomsDialogueChoices");
+const homeEndingEl = document.getElementById("backroomsHomeEnding");
 
 let lootToastUntil = 0;
 let spawnPoint = { x: 0, z: 0 };
@@ -122,6 +129,10 @@ let camera = null;
 let scene = null;
 /** @type {ReturnType<buildBackroomsLevel1World> | null} */
 let level1World = null;
+/** @type {ReturnType<createLevel1_1ZoneManager> | null} */
+let level1_1Zones = null;
+/** @type {THREE.Group | null} */
+let level1Root = null;
 const wallColliders = [];
 /** @type {Array<{ light: THREE.PointLight, panelMat: THREE.Material, baseIntensity: number, baseEmissive: number }>} */
 let industrialLights = [];
@@ -151,7 +162,7 @@ let level11TourStep = 0;
 
 const LEVEL11_SD_IMAGES = {
   variable: "img/backrooms/level11/sd-variable.png",
-  class0: "img/backrooms/level11/sd-class0.png",
+  class0: "img/backrooms/level11/sd-class0.png?v=2",
   class2: "img/backrooms/level11/sd-class2.png",
   class4: "img/backrooms/level11/sd-class4.png",
   deadzone: "img/backrooms/level11/sd-deadzone.png",
@@ -221,6 +232,9 @@ function isSprintHeld() {
 }
 
 function respawnAtMegBase() {
+  if (level1_1Zones && level1_1Zones.isActive()) {
+    level1_1Zones.forceExitL1_1();
+  }
   var sp = getMegSpawnFromCheckpoint();
   if (!sp && level1World && level1World.ensureMegBase) {
     sp = defaultMegBaseSpawn(level1World.ensureMegBase());
@@ -300,7 +314,11 @@ function initSurvivalHud() {
 
 function collectAimInteractRoots() {
   aimInteractScratch.length = 0;
-  if (level1World && level1World.getAimInteractRoots) {
+  if (level1_1Zones && level1_1Zones.isActive()) {
+    var level1_1Roots = level1_1Zones.getAimInteractRoots();
+    var k;
+    for (k = 0; k < level1_1Roots.length; k++) aimInteractScratch.push(level1_1Roots[k]);
+  } else if (level1World && level1World.getAimInteractRoots) {
     var base = level1World.getAimInteractRoots();
     var j;
     for (j = 0; j < base.length; j++) aimInteractScratch.push(base[j]);
@@ -324,9 +342,23 @@ function collectAimInteractRoots() {
   return aimInteractScratch;
 }
 
+function isHomeEndingActive() {
+  return !!(level1_1Zones && level1_1Zones.isHomeEndingTriggered());
+}
+
+function triggerHomeEnding() {
+  if (isHomeEndingActive()) return;
+  if (homeEndingEl) homeEndingEl.hidden = false;
+  document.body.classList.add("backrooms-home-ending-open");
+  if (document.pointerLockElement && document.exitPointerLock) {
+    document.exitPointerLock();
+  }
+}
+
 function refreshAimPick() {
   currentAimPick = null;
-  if (!camera || !level1World || isInventoryOpen() || megDialogueOpen) return;
+  if (!camera || isInventoryOpen() || megDialogueOpen || isHomeEndingActive()) return;
+  if (!level1World && !(level1_1Zones && level1_1Zones.isActive())) return;
   if (!survival || survival.dead) return;
 
   var roots = collectAimInteractRoots();
@@ -362,6 +394,12 @@ function isAimKind(kind, role) {
   if (kind === "chest" && currentAimPick.distance > CHEST_LOOT_DISTANCE) return false;
   if (kind === "meg_npc" && currentAimPick.distance > AIM_NPC_MAX) return false;
   if (kind === "meg_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
+  if (kind === "level1_1_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
+  if (kind === "level1_1_2_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
+  if (kind === "level1_1_12_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
+  if (kind === "level1_1_23_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
+  if (kind === "level1_1_3_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
+  if (kind === "level1_1_34_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   return true;
 }
 
@@ -394,6 +432,7 @@ function updateCrosshair() {
   var hide =
     isInventoryOpen() ||
     megDialogueOpen ||
+    isHomeEndingActive() ||
     !survival ||
     survival.dead ||
     (blackoutHintEl && !blackoutHintEl.hidden);
@@ -441,15 +480,50 @@ function setDialogueContinueQ() {
   dialogueChoicesEl.innerHTML = "按 <kbd>Q</kbd> 继续";
 }
 
+function renderDialogueChoice(letter, label) {
+  return (
+    '<button type="button" class="backrooms-dialogue__choice" data-choice="' +
+    letter +
+    '"><kbd>' +
+    letter.toUpperCase() +
+    "</kbd> " +
+    label +
+    "</button>"
+  );
+}
+
+function isDialogueChoiceKey(e, letter) {
+  if (e.repeat) return false;
+  var upper = letter.toUpperCase();
+  if (e.code === "Key" + upper) return true;
+  var key = e.key;
+  return !!(key && key.length === 1 && key.toLowerCase() === letter);
+}
+
+function focusMegDialogue() {
+  if (!dialogueEl) return;
+  dialogueEl.setAttribute("tabindex", "-1");
+  try {
+    dialogueEl.focus({ preventScroll: true });
+  } catch (err) {
+    dialogueEl.focus();
+  }
+}
+
 function setDialogueChoicesLevel11() {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
   dialogueChoicesEl.innerHTML =
-    "<kbd>A</kbd> 想 · <kbd>B</kbd> 不想 · <kbd>C</kbd> 请介绍一下";
+    renderDialogueChoice("a", "想") +
+    renderDialogueChoice("b", "不想") +
+    renderDialogueChoice("c", "请介绍一下");
 }
 
 function openLevel11Dialogue() {
   if (!dialogueEl || !dialogueTextEl) return;
+  if (refreshLevel1_1_3OutpostChestsOnFirstL11Visit() && level1_1Zones) {
+    level1_1Zones.refreshChestVisuals();
+  }
   megDialogueOpen = true;
   megDialogueKind = "level11";
   level11TourStep = 0;
@@ -464,6 +538,7 @@ function openLevel11Dialogue() {
   if (document.pointerLockElement && document.exitPointerLock) {
     document.exitPointerLock();
   }
+  focusMegDialogue();
 }
 
 function startLevel11IntroTour() {
@@ -560,8 +635,21 @@ function advanceLevel11Tour() {
 
 function megDialogueChooseLevel11(choice) {
   if (choice === "a") {
-    closeMegDialogue();
-    showLootToast("作者未制作");
+    var entered = false;
+    var enterError = false;
+    try {
+      entered = !!(level1_1Zones && level1_1Zones.enterFromMeg());
+    } catch (err) {
+      enterError = true;
+      console.error("enterFromMeg failed", err);
+    } finally {
+      closeMegDialogue();
+    }
+    if (entered) {
+      for (var i = 0; i < 16; i++) depenetratePlayer(20);
+      return;
+    }
+    showLootToast(enterError ? "进入 1.1 失败，请重试" : "无法进入 1.1");
     return;
   }
   if (choice === "b") {
@@ -573,22 +661,34 @@ function megDialogueChooseLevel11(choice) {
   }
 }
 
+function handleMegDialogueChoice(choice) {
+  if (!megDialogueOpen || !choice) return;
+  if (megDialogueKind === "level11" || megDialogueKind === "level11_tour") {
+    megDialogueChooseLevel11(choice);
+    return;
+  }
+  if (choice === "a") megDialogueChoose(true);
+  else if (choice === "b") megDialogueChoose(false);
+}
+
 function setDialogueChoicesGuide() {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
-  dialogueChoicesEl.innerHTML = "<kbd>A</kbd> 想 · <kbd>B</kbd> 算了";
+  dialogueChoicesEl.innerHTML =
+    renderDialogueChoice("a", "想") + renderDialogueChoice("b", "算了");
 }
 
 function setDialogueChoicesTrade() {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
-  dialogueChoicesEl.innerHTML = "<kbd>A</kbd> 兑换 · <kbd>B</kbd> 算了";
+  dialogueChoicesEl.innerHTML =
+    renderDialogueChoice("a", "兑换") + renderDialogueChoice("b", "算了");
 }
 
 function setDialogueChoicesDismiss() {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
-  dialogueChoicesEl.innerHTML = "<kbd>B</kbd> 知道了";
+  dialogueChoicesEl.innerHTML = renderDialogueChoice("b", "知道了");
 }
 
 function openMegGuideDialogue() {
@@ -605,6 +705,7 @@ function openMegGuideDialogue() {
   if (document.pointerLockElement && document.exitPointerLock) {
     document.exitPointerLock();
   }
+  focusMegDialogue();
 }
 
 function openMegTradeDialogue() {
@@ -621,6 +722,7 @@ function openMegTradeDialogue() {
   if (document.pointerLockElement && document.exitPointerLock) {
     document.exitPointerLock();
   }
+  focusMegDialogue();
 }
 
 function openMegRationsDialogue() {
@@ -637,6 +739,7 @@ function openMegRationsDialogue() {
   if (document.pointerLockElement && document.exitPointerLock) {
     document.exitPointerLock();
   }
+  focusMegDialogue();
 }
 
 function tryBuyRoyalRations() {
@@ -699,6 +802,7 @@ function openMegBackDoorStaffDialogue() {
   if (document.pointerLockElement && document.exitPointerLock) {
     document.exitPointerLock();
   }
+  focusMegDialogue();
 }
 
 function tryGiveMegBackDoorNightVisionPotion() {
@@ -814,9 +918,103 @@ function megDialogueChoose(wantYes) {
   closeMegDialogue();
 }
 
+function isAimingLevel1_1WallForCut() {
+  if (!level1_1Zones || !level1_1Zones.isActive() || !level1_1Zones.isWallCutSubZone()) {
+    return false;
+  }
+  if (megDialogueOpen || isInventoryOpen() || !camera || !survival || survival.dead) {
+    return false;
+  }
+  if (currentAimPick) return false;
+  var aim = getCameraAimRay(camera, 5.5);
+  var wallBlock = raycastWallBlockDistance(
+    aim.origin,
+    aim.direction,
+    5.5,
+    wallColliders,
+    0,
+    LEVEL1_1_WALL_H
+  );
+  return wallBlock != null && wallBlock <= 5.2;
+}
+
 function tryMegQAction() {
-  if (megDialogueOpen || isInventoryOpen()) return;
+  if (megDialogueOpen || isInventoryOpen() || isHomeEndingActive()) return;
   if (!survival || survival.dead) return;
+  if (level1_1Zones && level1_1Zones.isActive()) {
+    if (isAimingLevel1_1WallForCut()) {
+      if (level1_1Zones.tryWallCutExit()) return;
+    }
+    if (
+      level1_1Zones.getSubZone() === "outpost" &&
+      level1_1Zones.tryReturnToCorridor(player.x, player.z)
+    ) {
+      return;
+    }
+    if (
+      level1_1Zones.getSubZone() === "outpost2" &&
+      level1_1Zones.tryReturnToCorridor2(player.x, player.z)
+    ) {
+      return;
+    }
+    if (
+      level1_1Zones.getSubZone() === "outpost3" &&
+      level1_1Zones.tryReturnToCorridor3(player.x, player.z)
+    ) {
+      return;
+    }
+    if (
+      level1_1Zones.getSubZone() === "corridor" &&
+      level1_1Zones.tryEnterOutpost(player.x, player.z)
+    ) {
+      return;
+    }
+    if (
+      level1_1Zones.getSubZone() === "corridor2" &&
+      level1_1Zones.tryEnterOutpost2(player.x, player.z)
+    ) {
+      return;
+    }
+    if (
+      level1_1Zones.getSubZone() === "corridor3" &&
+      level1_1Zones.tryEnterOutpost3(player.x, player.z)
+    ) {
+      return;
+    }
+    if (isAimKind("level1_1_door")) {
+      if (level1_1Zones.tryOpenOutpostDoor(player.x, player.z, true)) return;
+    } else if (level1_1Zones.isNearOutpostDoor(player.x, player.z)) {
+      if (level1_1Zones.tryOpenOutpostDoor(player.x, player.z, false)) return;
+    }
+    if (isAimKind("level1_1_12_door")) {
+      if (level1_1Zones.tryOpenCorridor12Door(player.x, player.z, true)) return;
+    } else if (level1_1Zones.isNearCorridor12Door(player.x, player.z)) {
+      if (level1_1Zones.tryOpenCorridor12Door(player.x, player.z, false)) return;
+    }
+    if (isAimKind("level1_1_2_door")) {
+      if (level1_1Zones.tryOpenOutpost2Door(player.x, player.z, true)) return;
+    } else if (level1_1Zones.isNearOutpost2Door(player.x, player.z)) {
+      if (level1_1Zones.tryOpenOutpost2Door(player.x, player.z, false)) return;
+    }
+    if (isAimKind("level1_1_23_door")) {
+      if (level1_1Zones.tryOpenCorridor23Door(player.x, player.z, true)) return;
+      if (level1_1Zones.tryEnterCorridor3AtDoor()) return;
+    } else if (level1_1Zones.isNearCorridor23Door(player.x, player.z)) {
+      if (level1_1Zones.tryOpenCorridor23Door(player.x, player.z, false)) return;
+      if (level1_1Zones.tryEnterCorridor3AtDoor()) return;
+    }
+    if (isAimKind("level1_1_3_door")) {
+      if (level1_1Zones.tryOpenOutpost3Door(player.x, player.z, true)) return;
+    } else if (level1_1Zones.isNearOutpost3Door(player.x, player.z)) {
+      if (level1_1Zones.tryOpenOutpost3Door(player.x, player.z, false)) return;
+    }
+    if (isAimKind("level1_1_34_door")) {
+      if (level1_1Zones.tryOpenCorridor14Door(player.x, player.z, true)) return;
+    } else if (level1_1Zones.isNearCorridor14Door(player.x, player.z)) {
+      if (level1_1Zones.tryOpenCorridor14Door(player.x, player.z, false)) return;
+    }
+    return;
+  }
   if (isNearMegGuide()) {
     openMegGuideDialogue();
     return;
@@ -861,6 +1059,10 @@ function tryMegTalk() {
 
 function updateMegTalkHint() {
   if (!talkHintEl || megDialogueOpen) return;
+  if (level1_1Zones && level1_1Zones.isActive()) {
+    talkHintEl.hidden = true;
+    return;
+  }
   if (isInventoryOpen() || !survival || survival.dead) {
     talkHintEl.hidden = true;
     return;
@@ -873,8 +1075,143 @@ function updateMegTalkHint() {
 }
 
 function updateMegDoorHint() {
-  if (!doorHintEl || megDialogueOpen) return;
+  if (!doorHintEl || megDialogueOpen || isHomeEndingActive()) return;
   if (isInventoryOpen() || !survival || survival.dead) {
+    doorHintEl.hidden = true;
+    return;
+  }
+  if (level1_1Zones && level1_1Zones.isActive()) {
+    if (level1_1Zones.getSubZone() === "outpost") {
+      if (level1_1Zones.isNearOutpostExit(player.x, player.z)) {
+        doorHintEl.innerHTML = "按 <kbd>Q</kbd> 离开 · 或走进黑色门洞";
+        doorHintEl.hidden = false;
+        return;
+      }
+      doorHintEl.hidden = true;
+      return;
+    }
+    if (level1_1Zones.getSubZone() === "outpost2") {
+      if (level1_1Zones.isNearOutpost2Exit(player.x, player.z)) {
+        doorHintEl.innerHTML = "按 <kbd>Q</kbd> 离开 · 或走进黑色门洞";
+        doorHintEl.hidden = false;
+        return;
+      }
+      doorHintEl.hidden = true;
+      return;
+    }
+    if (level1_1Zones.getSubZone() === "outpost3") {
+      if (level1_1Zones.isNearOutpost3Exit(player.x, player.z)) {
+        doorHintEl.innerHTML = "按 <kbd>Q</kbd> 离开 · 或走进黑色门洞";
+        doorHintEl.hidden = false;
+        return;
+      }
+      doorHintEl.hidden = true;
+      return;
+    }
+    if (isAimingLevel1_1WallForCut()) {
+      doorHintEl.innerHTML = "按 <kbd>Q</kbd> 切出 · 返回 L1 基地门口";
+      doorHintEl.hidden = false;
+      return;
+    }
+    if (level1_1Zones.getSubZone() === "corridor") {
+      var level1_1World = level1_1Zones.getWorld();
+      var atEntrance =
+        level1_1Zones.isNearOutpostEntrance(player.x, player.z) ||
+        isAimKind("level1_1_door");
+      if (atEntrance) {
+        if (level1_1World && level1_1World.isOutpostDoorOpen()) {
+          doorHintEl.innerHTML = "按 <kbd>Q</kbd> 进入前哨 · 或走进门洞";
+        } else {
+          doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开前哨门';
+        }
+        doorHintEl.hidden = false;
+        return;
+      }
+      var atCorridor12 =
+        level1_1Zones.isNearCorridor12Entrance(player.x, player.z) ||
+        isAimKind("level1_1_12_door");
+      if (atCorridor12) {
+        if (level1_1World && level1_1World.isCorridor12DoorOpen()) {
+          doorHintEl.innerHTML = "按 <kbd>Q</kbd> 进入 L1.1-2 · 或走进门洞";
+        } else {
+          doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开 L1.1-2 门';
+        }
+        doorHintEl.hidden = false;
+        return;
+      }
+    }
+    if (level1_1Zones.getSubZone() === "corridor2") {
+      var level1_1World2 = level1_1Zones.getWorld2();
+      var atEntrance2 =
+        level1_1Zones.isNearOutpost2Entrance(player.x, player.z) ||
+        isAimKind("level1_1_2_door");
+      if (atEntrance2) {
+        if (level1_1World2 && level1_1World2.isOutpostDoorOpen()) {
+          doorHintEl.innerHTML = "按 <kbd>Q</kbd> 进入前哨 2 · 或走进门洞";
+        } else {
+          doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开前哨 2 门';
+        }
+        doorHintEl.hidden = false;
+        return;
+      }
+      var atCorridor23 =
+        level1_1Zones.isNearCorridor23Entrance(player.x, player.z) ||
+        isAimKind("level1_1_23_door");
+      if (atCorridor23) {
+        if (level1_1World2 && level1_1World2.isCorridor23DoorOpen()) {
+          doorHintEl.innerHTML = "按 <kbd>Q</kbd> 进入 L1.1-3 · 门开后会自动传送";
+        } else {
+          doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开 L1.1-3 门（尽头 · 见「→ L1.1-3」标牌）';
+        }
+        doorHintEl.hidden = false;
+        return;
+      }
+    }
+    if (level1_1Zones.getSubZone() === "corridor3") {
+      var level1_1World3 = level1_1Zones.getWorld3();
+      var atEntrance3 =
+        level1_1Zones.isNearOutpost3Entrance(player.x, player.z) ||
+        isAimKind("level1_1_3_door");
+      if (atEntrance3) {
+        if (level1_1World3 && level1_1World3.isOutpostDoorOpen()) {
+          doorHintEl.innerHTML = "按 <kbd>Q</kbd> 进入前哨 3 · 或走进门洞";
+        } else {
+          doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开前哨 3 门';
+        }
+        doorHintEl.hidden = false;
+        return;
+      }
+      var atCorridor14 =
+        level1_1Zones.isNearCorridor14Entrance(player.x, player.z) ||
+        isAimKind("level1_1_34_door");
+      if (atCorridor14) {
+        if (level1_1World3 && level1_1World3.isCorridor14DoorOpen()) {
+          doorHintEl.innerHTML = "按 <kbd>Q</kbd> 进入 L1.1-4 · 或走进门洞";
+        } else {
+          doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开 L1.1-4 门';
+        }
+        doorHintEl.hidden = false;
+        return;
+      }
+    }
+    if (level1_1Zones.getSubZone() === "corridor4") {
+      if (level1_1Zones.isNearCorridor33Return(player.x, player.z)) {
+        doorHintEl.innerHTML = "走进门洞 · 返回 L1.1-3";
+        doorHintEl.hidden = false;
+        return;
+      }
+      var world4 = level1_1Zones.getWorld4();
+      if (world4 && world4.isAtLighthouse(player.x, player.z)) {
+        doorHintEl.innerHTML = "灯塔在前方 · 继续靠近";
+        doorHintEl.hidden = false;
+        return;
+      }
+      if (world4 && player.z > 150) {
+        doorHintEl.innerHTML = "远处可见灯塔 · 坚持向前";
+        doorHintEl.hidden = false;
+        return;
+      }
+    }
     doorHintEl.hidden = true;
     return;
   }
@@ -907,6 +1244,10 @@ function updateMegDoorHint() {
 
 function updateMegInteriorTalkHint() {
   if (!interiorTalkHintEl || megDialogueOpen) return;
+  if (level1_1Zones && level1_1Zones.isActive()) {
+    interiorTalkHintEl.hidden = true;
+    return;
+  }
   if (isInventoryOpen() || !survival || survival.dead) {
     interiorTalkHintEl.hidden = true;
     return;
@@ -925,6 +1266,10 @@ function updateMegInteriorTalkHint() {
 
 function updateLevel11TalkHint() {
   if (!level11HintEl || megDialogueOpen) return;
+  if (level1_1Zones && level1_1Zones.isActive()) {
+    level11HintEl.hidden = true;
+    return;
+  }
   if (isInventoryOpen() || !survival || survival.dead) {
     level11HintEl.hidden = true;
     return;
@@ -944,10 +1289,60 @@ function updatePointsHud() {
   updateMegPointsDisplay(megPointsEl);
 }
 
+function tryLootFixedChest(chest) {
+  if (!survival || chest.opened) return;
+  if (chest.lootKind === "almond_x2") {
+    var added2 = survival.addAlmondWater(2);
+    if (added2 <= 0) {
+      showLootToast("背包已满");
+      return;
+    }
+    chest.opened = true;
+    if (chest.chestId) markLevel1_1ChestOpened(chest.chestId);
+    showLootToast("搜索宝箱 · 杏仁水 ×" + added2);
+    return;
+  }
+  if (chest.lootKind === "almond_x1") {
+    var added1 = survival.addAlmondWater(1);
+    if (added1 <= 0) {
+      showLootToast("背包已满");
+      return;
+    }
+    chest.opened = true;
+    if (chest.chestId) markLevel1_1ChestOpened(chest.chestId);
+    showLootToast("搜索宝箱 · 杏仁水 ×" + added1);
+    return;
+  }
+  if (chest.lootKind === "royal_rations") {
+    if (!addItem({ id: "royal_rations", name: "皇家口粮" })) {
+      showLootToast("背包已满");
+      return;
+    }
+    chest.opened = true;
+    if (chest.chestId) markLevel1_1ChestOpened(chest.chestId);
+    showLootToast("搜索宝箱 · 皇家口粮 ×1");
+    return;
+  }
+  if (chest.lootKind === "royal_rations_trap") {
+    if (!addItem({ id: "royal_rations", name: "皇家口粮" })) {
+      showLootToast("背包已满");
+      return;
+    }
+    chest.opened = true;
+    if (chest.chestId) markLevel1_1ChestOpened(chest.chestId);
+    survival.takeDamage(99);
+    showLootToast("皇家口粮 ×1 · 陷阱！−99 血量");
+  }
+}
+
 function tryLootChest() {
   if (isInventoryOpen() || !survival || survival.dead) return;
   var chest = findTargetChest();
-  if (!chest) return;
+  if (!chest || chest.opened) return;
+  if (chest.lootKind) {
+    tryLootFixedChest(chest);
+    return;
+  }
   var roll = rollAlmondWaterFromChest();
   var added = survival.addAlmondWater(roll);
   if (added <= 0) {
@@ -1084,7 +1479,10 @@ function updatePlayerPhysics(dt) {
   updateBackroomsPlayerPhysics(stub, dt, {
     gravity: GRAVITY,
     bodyHeight: BODY_HEIGHT,
-    ceilingY: WAREHOUSE_HEIGHT,
+    ceilingY:
+      level1_1Zones && level1_1Zones.isActive()
+        ? level1_1Zones.getCeilingY()
+        : WAREHOUSE_HEIGHT,
   });
   feetY = stub.feetY;
   velY = stub.velY;
@@ -1139,37 +1537,54 @@ function requestLock(fromEl) {
 
 function bindControls() {
   useDragLook = isTouchPrimaryDevice();
+  if (dialogueChoicesEl) {
+    dialogueChoicesEl.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-choice]");
+      if (!btn || !megDialogueOpen) return;
+      var choice = btn.getAttribute("data-choice");
+      if (!choice) return;
+      e.preventDefault();
+      handleMegDialogueChoice(choice);
+    });
+  }
   window.addEventListener("keydown", function (e) {
     if (megDialogueOpen) {
-      if (megDialogueKind === "level11_tour" && e.code === "KeyQ" && !e.repeat) {
-        e.preventDefault();
-        advanceLevel11Tour();
-        return;
-      }
-      if (megDialogueKind === "level11") {
-        if (e.code === "KeyA" && !e.repeat) {
+      if (megDialogueKind === "level11_tour") {
+        if ((e.code === "KeyQ" || e.key === "q" || e.key === "Q") && !e.repeat) {
+          e.preventDefault();
+          advanceLevel11Tour();
+          return;
+        }
+        if (isDialogueChoiceKey(e, "a")) {
           e.preventDefault();
           megDialogueChooseLevel11("a");
           return;
         }
-        if (e.code === "KeyB" && !e.repeat) {
+      }
+      if (megDialogueKind === "level11") {
+        if (isDialogueChoiceKey(e, "a")) {
+          e.preventDefault();
+          megDialogueChooseLevel11("a");
+          return;
+        }
+        if (isDialogueChoiceKey(e, "b")) {
           e.preventDefault();
           megDialogueChooseLevel11("b");
           return;
         }
-        if (e.code === "KeyC" && !e.repeat) {
+        if (isDialogueChoiceKey(e, "c")) {
           e.preventDefault();
           megDialogueChooseLevel11("c");
           return;
         }
       }
       if (megDialogueKind !== "level11" && megDialogueKind !== "level11_tour") {
-        if (e.code === "KeyA" && !e.repeat) {
+        if (isDialogueChoiceKey(e, "a")) {
           e.preventDefault();
           megDialogueChoose(true);
           return;
         }
-        if (e.code === "KeyB" && !e.repeat) {
+        if (isDialogueChoiceKey(e, "b")) {
           e.preventDefault();
           megDialogueChoose(false);
           return;
@@ -1308,6 +1723,7 @@ function init() {
   var root = new THREE.Group();
   root.name = "BackroomsLevel1";
   scene.add(root);
+  level1Root = root;
 
   wallColliders.length = 0;
   level1World = buildBackroomsLevel1World(root, {
@@ -1320,8 +1736,67 @@ function init() {
       if (idx >= 0) wallColliders.splice(idx, 1);
     },
   });
+  if (level1World.ensureMegBase) level1World.ensureMegBase();
   industrialLights = level1World.industrialLights;
   megGuideNpc = level1World.megGuideNpc || null;
+
+  level1_1Zones = createLevel1_1ZoneManager({
+    scene: scene,
+    level1Root: root,
+    wallColliders: wallColliders,
+    fps: {
+      get x() {
+        return player.x;
+      },
+      set x(v) {
+        player.x = v;
+      },
+      get z() {
+        return player.z;
+      },
+      set z(v) {
+        player.z = v;
+      },
+      get yaw() {
+        return yaw;
+      },
+      set yaw(v) {
+        yaw = v;
+      },
+      get pitch() {
+        return pitch;
+      },
+      set pitch(v) {
+        pitch = v;
+      },
+      get roll() {
+        return roll;
+      },
+      set roll(v) {
+        roll = v;
+      },
+      get feetY() {
+        return feetY;
+      },
+      set feetY(v) {
+        feetY = v;
+      },
+    },
+    getSurvival: function () {
+      return survival;
+    },
+    horror: horror,
+    onHudTitleChange: function (title) {
+      if (hintEl) hintEl.textContent = title;
+    },
+    showToast: showLootToast,
+    camera: camera,
+    onHomeEnding: triggerHomeEnding,
+    ensureMegBase: function () {
+      if (level1World && level1World.ensureMegBase) level1World.ensureMegBase();
+    },
+  });
+
   placePlayerAtSpawn();
 
   horror.resetSchedule(performance.now());
@@ -1362,17 +1837,27 @@ function startLoop() {
       horrorResult = horror.update(now, player.x, player.z);
     }
 
-    if (survival && !survival.dead) {
+    if (survival && !survival.dead && !isHomeEndingActive()) {
+      var sanityDrain =
+        level1_1Zones && level1_1Zones.isActive()
+          ? level1_1Zones.getSanityDrainPerSec()
+          : 0;
       survival.update(dt, {
         blackout: horrorResult.blackout,
         nearLandmark: false,
         sprinting: sprinting,
+        sanityDrainPerSec: sanityDrain,
       });
     }
 
     updatePlayerPhysics(dt);
     depenetratePlayer();
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !megDialogueOpen) {
+    if (
+      (!survival || !survival.dead) &&
+      !isInventoryOpen() &&
+      !megDialogueOpen &&
+      !isHomeEndingActive()
+    ) {
       var speedMul =
         survival && sprinting
           ? survival.getSprintSpeedMul(player.speed, sprinting, moving)
@@ -1382,12 +1867,14 @@ function startLoop() {
       }
     }
     updateLootToast(now);
-    if (level1World) {
+    if (level1_1Zones && level1_1Zones.isActive()) {
+      level1_1Zones.update(dt);
+    } else if (level1World) {
       level1World.update(player.x, player.z);
       level1World.updateMegDoor(dt);
       level1World.updateMegCorridorVisibility(player.x, player.z);
     }
-    if (survival && level1World) {
+    if (survival && level1World && !(level1_1Zones && level1_1Zones.isActive())) {
       updateMegBaseAutoSave(survival, level1World, player.x, player.z);
     }
     camera.position.set(player.x, feetY + EYE_HEIGHT, player.z);

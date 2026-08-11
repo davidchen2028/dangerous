@@ -26,13 +26,6 @@ function allCorridorEndArms(halfLen) {
   ];
 }
 
-function pickRandomSpawnArm(halfLen) {
-  var pool = allCorridorEndArms(halfLen).filter(function (a) {
-    return a.arm !== SPAWN_ARM_ID;
-  });
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
 function readSpawnSpec(halfLen) {
   try {
     var raw = sessionStorage.getItem(XIAOYE_STORAGE_KEY);
@@ -57,6 +50,29 @@ function readSpawnSpec(halfLen) {
     /* ignore */
   }
   return pick;
+}
+
+function pickRandomSpawnArm(halfLen) {
+  var pool = allCorridorEndArms(halfLen).filter(function (a) {
+    return a.arm !== SPAWN_ARM_ID;
+  });
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/** 与笑靥共用走廊（L2 死亡飞蛾等） */
+export function getLevel2SharedCorridorSpec(halfLen) {
+  return readSpawnSpec(halfLen);
+}
+
+/** 从走廊末端向十字中心偏移 */
+export function insetCorridorPosition(spec, inset) {
+  var x = spec.x;
+  var z = spec.z;
+  if (spec.arm === "pz") z -= inset;
+  else if (spec.arm === "nz") z += inset;
+  else if (spec.arm === "px") x -= inset;
+  else if (spec.arm === "nx") x += inset;
+  return { x: x, z: z, rotY: spec.rotY, arm: spec.arm };
 }
 
 function clearXiaoyeSpawnSlot() {
@@ -260,6 +276,124 @@ export function createLevel2Xiaoye(parent) {
         cooldownLeft = COOLDOWN_SEC;
         group.position.set(homeX, 0, homeZ);
         group.rotation.y = spec.rotY;
+      }
+    }
+  }
+
+  function dispose() {
+    if (group.parent) group.parent.remove(group);
+    if (faceTex) faceTex.dispose();
+    faceMat.dispose();
+    face.geometry.dispose();
+  }
+
+  return { group: group, update: update, dispose: dispose };
+}
+
+/**
+ * 固定位置笑靥（L1.1-3 等）
+ * @param {THREE.Group} parent
+ * @param {{ x: number, z: number, rotY?: number, faceW?: number, faceH?: number }} spec
+ */
+export function createFixedXiaoye(parent, spec) {
+  var rotY = spec.rotY != null ? spec.rotY : 0;
+  var faceW = spec.faceW != null ? spec.faceW : FACE_W * 0.72;
+  var faceH = spec.faceH != null ? spec.faceH : FACE_H * 0.72;
+
+  var group = new THREE.Group();
+  group.name = "FixedXiaoye";
+
+  var faceTex = createSmileFaceTexture();
+  var faceMat = new THREE.MeshBasicMaterial({
+    map: faceTex || undefined,
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.92,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  if (!faceTex) faceMat.color.setHex(0xffffff);
+
+  var face = new THREE.Mesh(new THREE.PlaneGeometry(faceW, faceH), faceMat);
+  face.position.y = faceH * 0.42;
+  group.add(face);
+
+  var glow = new THREE.PointLight(0xe8f4ff, 0.55, 14, 2);
+  glow.position.set(0, faceH * 0.45, 0.6);
+  group.add(glow);
+
+  group.position.set(spec.x, 0, spec.z);
+  group.rotation.y = rotY;
+  parent.add(group);
+
+  var homeX = spec.x;
+  var homeZ = spec.z;
+  var phase = "wait";
+  var lungeT = 0;
+  var lungeTargetX = 0;
+  var lungeTargetZ = 0;
+  var attacked = false;
+  var cooldownLeft = 0;
+
+  function applyAttack(survival, toastFn) {
+    if (attacked || !survival || survival.dead) return;
+    attacked = true;
+    survival.takeDamage(XIAOYE_DAMAGE);
+    if (typeof toastFn === "function") toastFn("笑靥 — −100 血量");
+  }
+
+  function update(dt, px, pz, survival, toastFn) {
+    if (phase === "gone" || !survival) return;
+
+    if (phase === "cooldown") {
+      cooldownLeft -= dt;
+      group.position.set(homeX, 0, homeZ);
+      group.rotation.y = rotY;
+      faceMat.opacity = 0.35 + 0.08 * Math.sin(performance.now() * 0.003);
+      glow.intensity = 0.18;
+      group.scale.setScalar(0.75);
+      group.visible = true;
+      if (cooldownLeft <= 0) {
+        phase = "wait";
+        attacked = false;
+      }
+      return;
+    }
+
+    var dx = px - group.position.x;
+    var dz = pz - group.position.z;
+    var dist = Math.hypot(dx, dz);
+    var reveal = 1 - Math.min(1, Math.max(0, (dist - 8) / 28));
+    var pulse = 0.88 + 0.12 * Math.sin(performance.now() * 0.004);
+    faceMat.opacity = (0.08 + reveal * 0.88) * pulse;
+    glow.intensity = 0.12 + reveal * 0.65;
+
+    if (phase === "wait") {
+      group.scale.setScalar(0.85 + reveal * 0.35);
+      if (dist <= TRIGGER_DIST && !survival.dead && !attacked) {
+        phase = "lunge";
+        lungeT = 0;
+        lungeTargetX = px;
+        lungeTargetZ = pz;
+        applyAttack(survival, toastFn);
+      }
+      return;
+    }
+
+    if (phase === "lunge") {
+      lungeT += dt;
+      var p = Math.min(1, lungeT / LUNGE_DURATION);
+      var ease = p * p * (3 - 2 * p);
+      group.position.x = homeX + (lungeTargetX - homeX) * ease;
+      group.position.z = homeZ + (lungeTargetZ - homeZ) * ease;
+      group.scale.setScalar(1.1 + ease * 2.4);
+      faceMat.opacity = Math.min(1, 0.95 + ease * 0.05);
+      glow.intensity = 1.2 + ease * 2.5;
+      if (p >= 1) {
+        phase = "cooldown";
+        cooldownLeft = COOLDOWN_SEC;
+        group.position.set(homeX, 0, homeZ);
+        group.rotation.y = rotY;
       }
     }
   }

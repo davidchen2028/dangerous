@@ -1,13 +1,21 @@
 /**
- * M.E.G 基地存档点：进入基地保存；在基地或已存档后于任意 L1/L2/L3 死亡 → 保留物品与状态并在基地复活
+ * M.E.G 基地存档点：进入基地保存位置；在基地或已存档后于 L1/L2/L3 等死亡 → 在基地复活
+ * 复活：清空背包 · 血量/理智/体力回满 · 清除皇家口粮与夜视药水效果
  */
 import {
   backpackSlots,
   BACKPACK_CAPACITY,
   renderGridPublic,
+  resetBackpack,
 } from "./backrooms-inventory.js";
 import { consumeXiaoyeFullHealFlag } from "./backrooms-level2-xiaoye.js";
-import { getHpMax, getStaminaMax } from "./backrooms-royal-rations.js";
+import {
+  clearRoyalRationsBuff,
+  HP_MAX_DEFAULT,
+  STAMINA_MAX_DEFAULT,
+} from "./backrooms-royal-rations.js";
+import { clearNightVision } from "./backrooms-night-vision.js";
+import { saveBackroomsSurvival } from "./backrooms-survival-persist.js";
 import { resetBackroomsRun } from "./backrooms-survival.js";
 import { refreshLevelPass, grantLevelPass } from "./backrooms-level-pass.js";
 
@@ -151,44 +159,10 @@ export function saveMegBaseCheckpoint(spawn) {
   }
 }
 
-function captureMegDeathPayload(survival, reason) {
-  var now = performance.now();
-  var hpCap = getHpMax(now);
-  var staCap = getStaminaMax(now);
-  var snap = survival._deathSnapshot || {};
-  var hp =
-    snap.hp != null
-      ? snap.hp
-      : Math.max(1, Math.min(100, survival.hp || 1));
-  var sanity =
-    snap.sanity != null
-      ? snap.sanity
-      : Math.max(1, Math.min(100, survival.sanity || 1));
-  var stamina =
-    snap.stamina != null
-      ? snap.stamina
-      : Math.max(0, Math.min(100, survival.stamina || 0));
-  if (reason === "sanity") {
-    sanity = Math.max(1, sanity);
-  }
-  hp = Math.max(1, Math.min(hpCap, hp));
-  sanity = Math.max(1, Math.min(100, sanity));
-  stamina = Math.max(0, Math.min(staCap, stamina));
-  if (consumeXiaoyeFullHealFlag()) {
-    hp = 100;
-    sanity = 100;
-    stamina = 100;
-  }
+function captureMegDeathPayload(_survival, _reason) {
+  consumeXiaoyeFullHealFlag();
   try {
-    sessionStorage.setItem(
-      MEG_DEATH_KEY,
-      JSON.stringify({
-        hp: hp,
-        sanity: sanity,
-        stamina: stamina,
-        backpack: snapshotBackpackSlots(),
-      })
-    );
+    sessionStorage.setItem(MEG_DEATH_KEY, JSON.stringify({ v: 2, at: Date.now() }));
   } catch (err) {
     /* ignore */
   }
@@ -200,19 +174,14 @@ export function applyMegDeathState(survival) {
     var raw = sessionStorage.getItem(MEG_DEATH_KEY);
     if (!raw) return false;
     sessionStorage.removeItem(MEG_DEATH_KEY);
-    var data = JSON.parse(raw);
-    if (!data || typeof data !== "object") return false;
-    var now = performance.now();
-    var hpCap = getHpMax(now);
-    var staCap = getStaminaMax(now);
-    if (Number.isFinite(data.hp)) survival.hp = Math.max(1, Math.min(hpCap, data.hp));
-    if (Number.isFinite(data.sanity)) {
-      survival.sanity = Math.max(1, Math.min(100, data.sanity));
-    }
-    if (Number.isFinite(data.stamina)) {
-      survival.stamina = Math.max(0, Math.min(staCap, data.stamina));
-    }
-    restoreBackpackSnapshot(data.backpack);
+
+    clearRoyalRationsBuff();
+    clearNightVision();
+    resetBackpack();
+
+    survival.hp = HP_MAX_DEFAULT;
+    survival.sanity = 100;
+    survival.stamina = STAMINA_MAX_DEFAULT;
     survival.dead = false;
     survival.sanityBreaking = false;
     if (survival._deathTimer) {
@@ -222,6 +191,7 @@ export function applyMegDeathState(survival) {
     document.body.classList.remove("backrooms-sanity-break", "backrooms-dead");
     if (survival.deathEl) survival.deathEl.classList.remove("br-survival__death--show");
     survival.refreshHud();
+    saveBackroomsSurvival(survival);
     return true;
   } catch (err2) {
     return false;

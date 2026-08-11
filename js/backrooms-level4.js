@@ -26,6 +26,7 @@ import {
 import { buildLevel4World, L4_WALL_H } from "./backrooms-level4-world.js";
 import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
 import { enforceLevelEntry } from "./backrooms-level-pass.js";
+import { refreshLevel1_1OutpostChestsOnFirstL4Visit } from "./backrooms-level1-1-chests.js";
 import {
   createBackroomsFpsState,
   moveBackroomsPlayer,
@@ -201,6 +202,7 @@ function bindControls() {
 
 function init() {
   if (!enforceEntryOrRedirect()) return;
+  refreshLevel1_1OutpostChestsOnFirstL4Visit();
   showEnterLevelBannerIfQueued();
   scene = new THREE.Scene();
   scene.background = new THREE.Color(FOG_COLOR);

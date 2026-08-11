@@ -645,9 +645,30 @@ body.backrooms-pack-open .backrooms-crosshair {
 }
 
 .backrooms-dialogue__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   margin: 12px 0 0;
   font-size: 13px;
   color: #a8cce8;
+}
+
+.backrooms-dialogue__choice {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.backrooms-dialogue__choice:hover,
+.backrooms-dialogue__choice:focus-visible {
+  background: rgba(120, 180, 240, 0.18);
+  border-color: rgba(160, 200, 255, 0.35);
+  outline: none;
 }
 
 .backrooms-dialogue__choices kbd {
@@ -665,6 +686,61 @@ body.backrooms-pack-open .backrooms-crosshair {
 body.backrooms-dialogue-open .backrooms-crosshair,
 body.backrooms-dialogue-open .backrooms-hud__hint,
 body.backrooms-dialogue-open .backrooms-hud__talk {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.backrooms-home-ending {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 10, 0.88);
+}
+
+.backrooms-home-ending[hidden] {
+  display: none !important;
+}
+
+.backrooms-home-ending__panel {
+  max-width: min(92vw, 420px);
+  padding: 2rem 1.75rem;
+  border: 1px solid rgba(255, 220, 140, 0.35);
+  border-radius: 12px;
+  background: rgba(18, 20, 28, 0.92);
+  text-align: center;
+  box-shadow: 0 0 48px rgba(255, 200, 100, 0.12);
+}
+
+.backrooms-home-ending__title {
+  margin: 0 0 0.75rem;
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: #ffe8b8;
+  letter-spacing: 0.08em;
+}
+
+.backrooms-home-ending__text {
+  margin: 0 0 1.25rem;
+  line-height: 1.55;
+  color: rgba(240, 240, 245, 0.88);
+}
+
+.backrooms-home-ending__link {
+  display: inline-block;
+  padding: 0.55rem 1.1rem;
+  border-radius: 8px;
+  background: rgba(255, 220, 140, 0.14);
+  color: #ffe8b8;
+  text-decoration: none;
+  border: 1px solid rgba(255, 220, 140, 0.35);
+}
+
+body.backrooms-home-ending-open .backrooms-crosshair,
+body.backrooms-home-ending-open .backrooms-hud__search,
+body.backrooms-home-ending-open .backrooms-hud__talk {
   opacity: 0;
   pointer-events: none;
 }

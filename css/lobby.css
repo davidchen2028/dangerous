@@ -144,6 +144,24 @@ body:not(.hub-home) .hub-top {
   left: max(1.25rem, env(safe-area-inset-left, 0px));
 }
 
+.btn-hub--backrooms {
+  top: 50%;
+  left: max(1.25rem, env(safe-area-inset-left, 0px));
+  transform: translateY(-50%);
+  text-decoration: none;
+  background: rgba(12, 12, 16, 0.88);
+  border-color: rgba(180, 180, 200, 0.45);
+  color: rgba(240, 240, 248, 0.96);
+}
+
+.btn-hub--backrooms:hover {
+  transform: translateY(-50%) scale(1.04);
+}
+
+.btn-hub--backrooms:active {
+  transform: translateY(-50%) scale(0.96);
+}
+
 .btn-hub--market {
   top: max(1.25rem, env(safe-area-inset-top, 0px));
   right: max(1.25rem, env(safe-area-inset-right, 0px));
@@ -190,35 +208,41 @@ body:not(.hub-home) .hub-top {
 
 /* 打开面板时隐藏入口按钮，× 返回大厅 */
 body.room-open .btn-hub--room,
+body.room-open .btn-hub--backrooms,
 body.room-open .btn-hub--stash,
 body.room-open .btn-hub--market,
 body.room-open .btn-hub--tutorial,
 body.room-open .btn-hub--map,
 body.room-open .btn-hub--action,
 body.stash-open .btn-hub--room,
+body.stash-open .btn-hub--backrooms,
 body.stash-open .btn-hub--stash,
 body.stash-open .btn-hub--market,
 body.stash-open .btn-hub--tutorial,
 body.stash-open .btn-hub--map,
 body.stash-open .btn-hub--action,
 body.market-open .btn-hub--room,
+body.market-open .btn-hub--backrooms,
 body.market-open .btn-hub--stash,
 body.market-open .btn-hub--market,
 body.market-open .btn-hub--tutorial,
 body.market-open .btn-hub--map,
 body.market-open .btn-hub--action,
 body.tutorial-open .btn-hub--room,
+body.tutorial-open .btn-hub--backrooms,
 body.tutorial-open .btn-hub--stash,
 body.tutorial-open .btn-hub--market,
 body.tutorial-open .btn-hub--tutorial,
 body.tutorial-open .btn-hub--map,
 body.tutorial-open .btn-hub--action,
 body.map-open .btn-hub--room,
+body.map-open .btn-hub--backrooms,
 body.map-open .btn-hub--stash,
 body.map-open .btn-hub--market,
 body.map-open .btn-hub--tutorial,
 body.map-open .btn-hub--map,
 body.action-open .btn-hub--room,
+body.action-open .btn-hub--backrooms,
 body.action-open .btn-hub--stash,
 body.action-open .btn-hub--market,
 body.action-open .btn-hub--tutorial,
@@ -1511,6 +1535,10 @@ body.loadout-drag-active .loadout-slot {
 
   .btn-hub--room {
     top: max(0.65rem, env(safe-area-inset-top, 0px));
+    left: max(0.65rem, env(safe-area-inset-left, 0px));
+  }
+
+  .btn-hub--backrooms {
     left: max(0.65rem, env(safe-area-inset-left, 0px));
   }
 
