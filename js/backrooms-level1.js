@@ -38,10 +38,19 @@ import {
   WAREHOUSE_HEIGHT,
 } from "./backrooms-level1-world.js";
 import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
+import { enforceLevel1Entry, grantLevelPass } from "./backrooms-level-pass.js";
 import {
   resolveCircleAgainstColliders,
   raycastWallBlockDistance,
 } from "./backrooms-collide.js";
+import {
+  moveBackroomsPlayer,
+  updateBackroomsPlayerPhysics,
+  tryBackroomsJump,
+  isBackroomsPlayerMoving,
+  isBackroomsSprintHeld,
+  resolveBackroomsMoveCollisions,
+} from "./backrooms-fps-controller.js";
 import {
   pickCrosshairInteract,
   getCameraAimRay,
@@ -87,9 +96,11 @@ const tempValueEl = document.getElementById("backroomsTempValue");
 const talkHintEl = document.getElementById("backroomsTalkHint");
 const doorHintEl = document.getElementById("backroomsDoorHint");
 const interiorTalkHintEl = document.getElementById("backroomsInteriorTalkHint");
+const level11HintEl = document.getElementById("backroomsLevel11Hint");
 const dialogueEl = document.getElementById("backroomsDialogue");
 const dialogueSpeakerEl = document.getElementById("backroomsDialogueSpeaker");
 const dialogueTextEl = document.getElementById("backroomsDialogueText");
+const dialogueImageEl = document.getElementById("backroomsDialogueImage");
 const dialogueChoicesEl = document.getElementById("backroomsDialogueChoices");
 
 let lootToastUntil = 0;
@@ -134,8 +145,18 @@ let grounded = true;
 /** @type {{ x: number, z: number, talkRadius: number } | null} */
 let megGuideNpc = null;
 let megDialogueOpen = false;
-/** @type {"guide" | "trade" | "backdoor" | "rations" | null} */
+/** @type {"guide" | "trade" | "backdoor" | "rations" | "level11" | "level11_tour" | null} */
 let megDialogueKind = null;
+let level11TourStep = 0;
+
+const LEVEL11_SD_IMAGES = {
+  variable: "img/backrooms/level11/sd-variable.png",
+  class0: "img/backrooms/level11/sd-class0.png",
+  class2: "img/backrooms/level11/sd-class2.png",
+  class4: "img/backrooms/level11/sd-class4.png",
+  deadzone: "img/backrooms/level11/sd-deadzone.png",
+  na: "img/backrooms/level11/sd-na.png",
+};
 /** @type {{ data: object, distance: number } | null} */
 let currentAimPick = null;
 
@@ -192,11 +213,11 @@ function updateLootToast(now) {
 }
 
 function isPlayerMoving() {
-  return move.forward || move.back || move.left || move.right;
+  return isBackroomsPlayerMoving({ move: move, keys: keys });
 }
 
 function isSprintHeld() {
-  return !!(keys.ShiftLeft || keys.ShiftRight);
+  return isBackroomsSprintHeld({ move: move, keys: keys });
 }
 
 function respawnAtMegBase() {
@@ -221,22 +242,6 @@ function respawnAtMegBase() {
   if (level1World) level1World.update(player.x, player.z);
 }
 
-function respawnAtSafePoint() {
-  if (survival && survival._respawnAtMegBase) {
-    survival._respawnAtMegBase = false;
-    respawnAtMegBase();
-    return;
-  }
-  player.x = spawnPoint.x;
-  player.z = spawnPoint.z;
-  feetY = 0;
-  velY = 0;
-  yaw = 0;
-  pitch = 0;
-  roll = 0;
-  depenetratePlayer(16);
-}
-
 function initSurvivalHud() {
   var megDeathReturn = false;
   try {
@@ -245,9 +250,7 @@ function initSurvivalHud() {
     megDeathReturn = false;
   }
 
-  survival = new BackroomsSurvival({
-    onRespawn: respawnAtSafePoint,
-  });
+  survival = new BackroomsSurvival();
   var hudHost = document.querySelector(".backrooms-hud") || document.body;
   survival.mountHud(hudHost);
   mountMegSaveStatus(survival);
@@ -255,22 +258,26 @@ function initSurvivalHud() {
     loadBackroomsSurvival(survival);
   }
   registerBackroomsSurvivalPersist(survival);
-  installMegCheckpointDeathHooks(survival, function () {
-    return {
-      level: 1,
-      isInMegBase: function () {
-        return (
-          !!level1World &&
-          !!level1World.isInsideMegBaseInterior &&
-          level1World.isInsideMegBaseInterior(player.x, player.z)
-        );
-      },
-      getMegSpawn: function () {
-        if (!level1World || !level1World.ensureMegBase) return null;
-        return defaultMegBaseSpawn(level1World.ensureMegBase());
-      },
-    };
-  });
+  installMegCheckpointDeathHooks(
+    survival,
+    function () {
+      return {
+        level: 1,
+        isInMegBase: function () {
+          return (
+            !!level1World &&
+            !!level1World.isInsideMegBaseInterior &&
+            level1World.isInsideMegBaseInterior(player.x, player.z)
+          );
+        },
+        getMegSpawn: function () {
+          if (!level1World || !level1World.ensureMegBase) return null;
+          return defaultMegBaseSpawn(level1World.ensureMegBase());
+        },
+      };
+    },
+    { onMegRespawn: respawnAtMegBase, refreshLevelPass: "clip", getLevelPassYaw: function () { return yaw; } }
+  );
   setInventoryOpenHandler(function (open) {
     if (open && document.pointerLockElement && document.exitPointerLock) {
       document.exitPointerLock();
@@ -411,6 +418,159 @@ function isNearMegBackDoorStaff() {
 
 function isNearMegRationsVendor() {
   return isAimKind("meg_npc", "rations");
+}
+
+function isNearMegLevel11Staff() {
+  return isAimKind("meg_npc", "level11");
+}
+
+function setDialogueImage(src) {
+  if (!dialogueImageEl) return;
+  if (!src) {
+    dialogueImageEl.hidden = true;
+    dialogueImageEl.removeAttribute("src");
+    return;
+  }
+  dialogueImageEl.src = src;
+  dialogueImageEl.hidden = false;
+}
+
+function setDialogueContinueQ() {
+  if (!dialogueChoicesEl) return;
+  dialogueChoicesEl.hidden = false;
+  dialogueChoicesEl.innerHTML = "按 <kbd>Q</kbd> 继续";
+}
+
+function setDialogueChoicesLevel11() {
+  if (!dialogueChoicesEl) return;
+  dialogueChoicesEl.hidden = false;
+  dialogueChoicesEl.innerHTML =
+    "<kbd>A</kbd> 想 · <kbd>B</kbd> 不想 · <kbd>C</kbd> 请介绍一下";
+}
+
+function openLevel11Dialogue() {
+  if (!dialogueEl || !dialogueTextEl) return;
+  megDialogueOpen = true;
+  megDialogueKind = "level11";
+  level11TourStep = 0;
+  document.body.classList.add("backrooms-dialogue-open");
+  dialogueEl.hidden = false;
+  if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "M.E.G 人员";
+  dialogueTextEl.textContent = "你想去 1.1 吗？";
+  setDialogueImage(null);
+  setDialogueChoicesLevel11();
+  if (level11HintEl) level11HintEl.hidden = true;
+  if (interiorTalkHintEl) interiorTalkHintEl.hidden = true;
+  if (document.pointerLockElement && document.exitPointerLock) {
+    document.exitPointerLock();
+  }
+}
+
+function startLevel11IntroTour() {
+  megDialogueKind = "level11_tour";
+  level11TourStep = 0;
+  applyLevel11TourStep();
+}
+
+/** Level 1.1 介绍分步（按 Q 推进：文案 → 图 → 文案 → 图 …） */
+function applyLevel11TourStep() {
+  if (!dialogueTextEl) return;
+  var step = level11TourStep;
+  if (step === 0) {
+    dialogueTextEl.textContent =
+      "Level 1.1（腐败的走廊）有五个区域，总体生存难度为「变化」。";
+    setDialogueImage(null);
+    setDialogueContinueQ();
+    return;
+  }
+  if (step === 1) {
+    dialogueTextEl.textContent = "";
+    setDialogueImage(LEVEL11_SD_IMAGES.variable);
+    setDialogueContinueQ();
+    return;
+  }
+  if (step === 2) {
+    dialogueTextEl.textContent = "第一个区域（洁白走廊）生存难度为等级 0。";
+    setDialogueImage(null);
+    setDialogueContinueQ();
+    return;
+  }
+  if (step === 3) {
+    dialogueTextEl.textContent = "";
+    setDialogueImage(LEVEL11_SD_IMAGES.class0);
+    setDialogueContinueQ();
+    return;
+  }
+  if (step === 4) {
+    dialogueTextEl.textContent = "第二个区域（错乱走廊）生存难度为等级 2。";
+    setDialogueImage(null);
+    setDialogueContinueQ();
+    return;
+  }
+  if (step === 5) {
+    dialogueTextEl.textContent = "";
+    setDialogueImage(LEVEL11_SD_IMAGES.class2);
+    setDialogueContinueQ();
+    return;
+  }
+  if (step === 6) {
+    dialogueTextEl.textContent = "第三个区域（蒙黑走廊）生存难度为等级 4。";
+    setDialogueImage(null);
+    setDialogueContinueQ();
+    return;
+  }
+  if (step === 7) {
+    dialogueTextEl.textContent = "";
+    setDialogueImage(LEVEL11_SD_IMAGES.class4);
+    setDialogueContinueQ();
+    return;
+  }
+  if (step === 8) {
+    dialogueTextEl.textContent = "第四个区域（扭曲走廊）生存难度为「死区」。";
+    setDialogueImage(null);
+    setDialogueContinueQ();
+    return;
+  }
+  if (step === 9) {
+    dialogueTextEl.textContent = "";
+    setDialogueImage(LEVEL11_SD_IMAGES.deadzone);
+    setDialogueContinueQ();
+    return;
+  }
+  if (step === 10) {
+    dialogueTextEl.textContent = "第五个区域（虚无走廊）生存难度为「不适用」。";
+    setDialogueImage(null);
+    setDialogueContinueQ();
+    return;
+  }
+  if (step === 11) {
+    dialogueTextEl.textContent = "";
+    setDialogueImage(LEVEL11_SD_IMAGES.na);
+    setDialogueContinueQ();
+    return;
+  }
+  closeMegDialogue();
+}
+
+function advanceLevel11Tour() {
+  if (megDialogueKind !== "level11_tour") return;
+  level11TourStep += 1;
+  applyLevel11TourStep();
+}
+
+function megDialogueChooseLevel11(choice) {
+  if (choice === "a") {
+    closeMegDialogue();
+    showLootToast("作者未制作");
+    return;
+  }
+  if (choice === "b") {
+    closeMegDialogue();
+    return;
+  }
+  if (choice === "c") {
+    startLevel11IntroTour();
+  }
 }
 
 function setDialogueChoicesGuide() {
@@ -589,6 +749,8 @@ function tryGiveMegBackDoorAlmondWater() {
 function closeMegDialogue() {
   megDialogueOpen = false;
   megDialogueKind = null;
+  level11TourStep = 0;
+  setDialogueImage(null);
   document.body.classList.remove("backrooms-dialogue-open");
   if (dialogueEl) dialogueEl.hidden = true;
   if (dialogueChoicesEl) dialogueChoicesEl.hidden = true;
@@ -621,12 +783,15 @@ function teleportToMegBase() {
   feetY = 0;
   velY = 0;
   saveMegBaseCheckpoint(defaultMegBaseSpawn(center));
-  flashMegSaving();
+  flashMegSaving(survival);
   depenetratePlayer(20);
   if (level1World) level1World.update(player.x, player.z);
 }
 
 function megDialogueChoose(wantYes) {
+  if (megDialogueKind === "level11" || megDialogueKind === "level11_tour") {
+    return;
+  }
   if (megDialogueKind === "guide") {
     closeMegDialogue();
     if (wantYes) teleportToMegBase();
@@ -666,6 +831,10 @@ function tryMegQAction() {
   }
   if (isNearMegInteriorStaff()) {
     openMegTradeDialogue();
+    return;
+  }
+  if (isNearMegLevel11Staff()) {
+    openLevel11Dialogue();
     return;
   }
   if (level1World) {
@@ -713,7 +882,7 @@ function updateMegDoorHint() {
     doorHintEl.hidden = true;
     return;
   }
-  if (isNearMegGuide() || isNearMegInteriorStaff() || isNearMegBackDoorStaff() || isNearMegRationsVendor()) {
+  if (isNearMegGuide() || isNearMegInteriorStaff() || isNearMegBackDoorStaff() || isNearMegRationsVendor() || isNearMegLevel11Staff()) {
     doorHintEl.hidden = true;
     return;
   }
@@ -754,6 +923,23 @@ function updateMegInteriorTalkHint() {
     !(isNearMegInteriorStaff() || isNearMegBackDoorStaff() || isNearMegRationsVendor());
 }
 
+function updateLevel11TalkHint() {
+  if (!level11HintEl || megDialogueOpen) return;
+  if (isInventoryOpen() || !survival || survival.dead) {
+    level11HintEl.hidden = true;
+    return;
+  }
+  if (blackoutHintEl && !blackoutHintEl.hidden) {
+    level11HintEl.hidden = true;
+    return;
+  }
+  if (!level1World || !level1World.isMegDoorOpen || !level1World.isMegDoorOpen()) {
+    level11HintEl.hidden = true;
+    return;
+  }
+  level11HintEl.hidden = !isNearMegLevel11Staff();
+}
+
 function updatePointsHud() {
   updateMegPointsDisplay(megPointsEl);
 }
@@ -776,7 +962,7 @@ function tryLootChest() {
 }
 
 function resolvePlayerCollisions(px, pz) {
-  return resolveCircleAgainstColliders(px, pz, player.radius, wallColliders);
+  return resolveBackroomsMoveCollisions(px, pz, player.radius, wallColliders);
 }
 
 function depenetratePlayer(maxIter) {
@@ -811,34 +997,19 @@ function placePlayerAtSpawn() {
 }
 
 function movePlayer(dt, speedMul) {
-  var dx = 0;
-  var dz = 0;
-  if (move.forward) dz -= 1;
-  if (move.back) dz += 1;
-  if (move.left) dx -= 1;
-  if (move.right) dx += 1;
-  if (dx === 0 && dz === 0) return;
-
-  var len = Math.hypot(dx, dz) || 1;
-  dx /= len;
-  dz /= len;
-  var sinY = Math.sin(yaw);
-  var cosY = Math.cos(yaw);
-  var worldX = dx * cosY + dz * sinY;
-  var worldZ = -dx * sinY + dz * cosY;
-  var speed = player.speed * (speedMul || 1);
-  var nextX = player.x + worldX * speed * dt;
-  var nextZ = player.z + worldZ * speed * dt;
-  var resolved = resolvePlayerCollisions(nextX, nextZ);
-  player.x = resolved.x;
-  player.z = resolved.z;
+  moveBackroomsPlayer(
+    { move: move, yaw: yaw, player: player },
+    dt,
+    speedMul,
+    resolvePlayerCollisions
+  );
 }
 
 function tryJump() {
-  if (grounded) {
-    velY = JUMP_SPEED;
-    grounded = false;
-  }
+  var stub = { grounded: grounded, velY: velY };
+  if (!tryBackroomsJump(stub, JUMP_SPEED)) return;
+  velY = stub.velY;
+  grounded = stub.grounded;
 }
 
 function isCorridorL2SequenceActive() {
@@ -894,8 +1065,7 @@ function updateCorridorFallToL2(dt) {
     if (feetY <= CORRIDOR_L2_SINK_DEPTH) {
       corridorL2FallState = "done";
       try {
-        sessionStorage.setItem("backrooms_l2_pass", "1");
-        sessionStorage.setItem("backrooms_l2_yaw", String(yaw));
+        grantLevelPass("l2", yaw);
       } catch (err) {
         /* ignore */
       }
@@ -910,19 +1080,15 @@ function updatePlayerPhysics(dt) {
     updateCorridorFallToL2(dt);
   }
   if (isCorridorL2SequenceActive()) return;
-  velY -= GRAVITY * dt;
-  feetY += velY * dt;
-  if (feetY <= 0) {
-    feetY = 0;
-    velY = 0;
-    grounded = true;
-  } else {
-    grounded = false;
-  }
-  if (feetY + BODY_HEIGHT > WAREHOUSE_HEIGHT) {
-    feetY = WAREHOUSE_HEIGHT - BODY_HEIGHT;
-    if (velY > 0) velY = 0;
-  }
+  var stub = { feetY: feetY, velY: velY, grounded: grounded };
+  updateBackroomsPlayerPhysics(stub, dt, {
+    gravity: GRAVITY,
+    bodyHeight: BODY_HEIGHT,
+    ceilingY: WAREHOUSE_HEIGHT,
+  });
+  feetY = stub.feetY;
+  velY = stub.velY;
+  grounded = stub.grounded;
 }
 
 function isTouchPrimaryDevice() {
@@ -975,15 +1141,39 @@ function bindControls() {
   useDragLook = isTouchPrimaryDevice();
   window.addEventListener("keydown", function (e) {
     if (megDialogueOpen) {
-      if (e.code === "KeyA" && !e.repeat) {
+      if (megDialogueKind === "level11_tour" && e.code === "KeyQ" && !e.repeat) {
         e.preventDefault();
-        megDialogueChoose(true);
+        advanceLevel11Tour();
         return;
       }
-      if (e.code === "KeyB" && !e.repeat) {
-        e.preventDefault();
-        megDialogueChoose(false);
-        return;
+      if (megDialogueKind === "level11") {
+        if (e.code === "KeyA" && !e.repeat) {
+          e.preventDefault();
+          megDialogueChooseLevel11("a");
+          return;
+        }
+        if (e.code === "KeyB" && !e.repeat) {
+          e.preventDefault();
+          megDialogueChooseLevel11("b");
+          return;
+        }
+        if (e.code === "KeyC" && !e.repeat) {
+          e.preventDefault();
+          megDialogueChooseLevel11("c");
+          return;
+        }
+      }
+      if (megDialogueKind !== "level11" && megDialogueKind !== "level11_tour") {
+        if (e.code === "KeyA" && !e.repeat) {
+          e.preventDefault();
+          megDialogueChoose(true);
+          return;
+        }
+        if (e.code === "KeyB" && !e.repeat) {
+          e.preventDefault();
+          megDialogueChoose(false);
+          return;
+        }
       }
       if (e.code === "Escape" && !e.repeat) {
         e.preventDefault();
@@ -1082,25 +1272,14 @@ function showError(msg) {
   errorEl.innerHTML = "<p><strong>alpha 无法启动</strong></p><p>" + msg + "</p>";
 }
 
-/** 无存档：刷新或直接打开 Level 1 一律回到 Level 0 */
+/** 刷新 → 重置回 L0；否则须 clip 或 M.E.G 回城标记 */
 function enforceLevel1EntryOrRedirect() {
-  var nav =
-    typeof performance !== "undefined" &&
-    performance.getEntriesByType &&
-    performance.getEntriesByType("navigation")[0];
-  if (nav && nav.type === "reload") {
-    window.location.replace("backrooms-level0.html");
-    return false;
-  }
   try {
-    if (sessionStorage.getItem(MEG_RESPAWN_FLAG) === "1") {
-      return true;
-    }
-    if (sessionStorage.getItem("backrooms_clip_pass") !== "1") {
+    var megReturn = sessionStorage.getItem(MEG_RESPAWN_FLAG) === "1";
+    if (!enforceLevel1Entry({ megRespawn: megReturn })) {
       window.location.replace("backrooms-level0.html");
       return false;
     }
-    sessionStorage.removeItem("backrooms_clip_pass");
   } catch (err) {
     window.location.replace("backrooms-level0.html");
     return false;
@@ -1222,6 +1401,7 @@ function startLoop() {
     updateMegTalkHint();
     updateMegDoorHint();
     updateMegInteriorTalkHint();
+    updateLevel11TalkHint();
     updateCrosshair();
     updatePointsHud();
     updateBackroomsTemperature(dt, now);

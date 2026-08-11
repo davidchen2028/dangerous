@@ -71,13 +71,13 @@ function sharedMaterials() {
     ceiling: new THREE.MeshStandardMaterial({
       color: 0xf0f2f5,
       emissive: 0xe8ecf0,
-      emissiveIntensity: 0.15,
+      emissiveIntensity: 0.1,
       roughness: 0.88,
     }),
     lightPanel: new THREE.MeshStandardMaterial({
       color: 0xfffaf0,
       emissive: 0xfff6dc,
-      emissiveIntensity: 1.05,
+      emissiveIntensity: 0.78,
       roughness: 0.35,
     }),
     windowFrame: new THREE.MeshStandardMaterial({
@@ -156,9 +156,11 @@ function waterCoolerLabelTexture() {
 function addOfficeMonitor(group, wx, wy, wz, mats) {
   var frame = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.42, 0.05), mats.monitor);
   frame.position.set(wx, wy, wz);
+  tagShadowMesh(frame, true, false);
   group.add(frame);
   var screen = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.34, 0.018), mats.monitorScreen);
   screen.position.set(wx, wy, wz + 0.028);
+  tagShadowMesh(screen, false, false);
   group.add(screen);
 }
 
@@ -177,11 +179,13 @@ function addChairWithLegs(group, colliders, wx, wz, mats) {
   for (li = 0; li < offsets.length; li++) {
     var leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, legH, 0.07), legMat);
     leg.position.set(wx + offsets[li][0], legY, wz + 0.62 + offsets[li][1]);
+    tagShadowMesh(leg, true, false);
     group.add(leg);
   }
 
   var chair = new THREE.Mesh(_chairSeatGeo || new THREE.BoxGeometry(0.52, 0.08, 0.52), legMat);
   chair.position.set(wx, seatY, wz + 0.62);
+  tagShadowMesh(chair, true, false);
   group.add(chair);
   pushBoxCollider(
     colliders,
@@ -192,6 +196,7 @@ function addChairWithLegs(group, colliders, wx, wz, mats) {
   );
   var chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.55, 0.06), legMat);
   chairBack.position.set(wx, 0.78, wz + 0.86);
+  tagShadowMesh(chairBack, true, false);
   group.add(chairBack);
   pushBoxCollider(
     colliders,
@@ -210,6 +215,18 @@ function pushBoxCollider(colliders, minX, maxX, minZ, maxZ, h) {
     minZ: minZ,
     maxZ: maxZ,
   });
+}
+
+function tagShadowMesh(mesh, cast, receive) {
+  if (!mesh) return;
+  mesh.castShadow = !!cast;
+  mesh.receiveShadow = !!receive;
+}
+
+function addChunkCeilingGlow(group, ox, oz) {
+  var glow = new THREE.PointLight(0xfff6dc, 0.38, L4_CHUNK_SIZE * 0.92, 1.4);
+  glow.position.set(ox, L4_WALL_H - 0.42, oz);
+  group.add(glow);
 }
 
 function addFluorescentGrid(group, cx, cz, mats) {
@@ -274,6 +291,7 @@ function addDeskStation(group, colliders, wx, wz, mats, rng) {
 
   var desk = new THREE.Mesh(_deskGeo, mats.desk);
   desk.position.set(wx, DESK_H * 0.5, wz);
+  tagShadowMesh(desk, true, true);
   group.add(desk);
   pushBoxCollider(
     colliders,
@@ -299,6 +317,7 @@ function addDeskStation(group, colliders, wx, wz, mats, rng) {
   if (rng() < 0.35) {
     var cab = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.05, 0.48), mats.cabinet);
     cab.position.set(wx + DESK_W * 0.5 + 0.35, 0.525, wz + 0.15);
+    tagShadowMesh(cab, true, true);
     group.add(cab);
     pushBoxCollider(
       colliders,
@@ -313,6 +332,7 @@ function addDeskStation(group, colliders, wx, wz, mats, rng) {
 function addWaterCooler(group, colliders, interactRoots, wx, wz, mats, coolerId) {
   var body = new THREE.Mesh(new THREE.BoxGeometry(0.38, 1.15, 0.38), mats.cooler);
   body.position.set(wx, 0.575, wz);
+  tagShadowMesh(body, true, true);
   group.add(body);
 
   var labelTex = waterCoolerLabelTexture();
@@ -343,6 +363,7 @@ function addWaterCooler(group, colliders, interactRoots, wx, wz, mats, coolerId)
 function addWhiteboard(group, colliders, wx, wz, mats) {
   var board = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 0.05), mats.whiteboard);
   board.position.set(wx, 1.45, wz);
+  tagShadowMesh(board, true, false);
   group.add(board);
   pushBoxCollider(colliders, wx - 0.82, wx + 0.82, wz - 0.12, wz + 0.12);
 }
@@ -365,6 +386,7 @@ function loadChunk(cx, cz, ctx) {
     mats.carpet
   );
   floor.position.set(ox, 0.06, oz);
+  tagShadowMesh(floor, false, true);
   group.add(floor);
 
   var ceiling = new THREE.Mesh(
@@ -372,12 +394,14 @@ function loadChunk(cx, cz, ctx) {
     mats.ceiling
   );
   ceiling.position.set(ox, L4_WALL_H, oz);
+  tagShadowMesh(ceiling, false, false);
   group.add(ceiling);
 
   var colliders = [];
   var chunkInteractRoots = [];
 
   addFluorescentGrid(group, cx, cz, mats);
+  addChunkCeilingGlow(group, ox, oz);
 
   if (Math.abs(cx) % 2 === 0) {
     addWindowWall(group, colliders, ox - half + 0.15, oz, Math.PI * 0.5, false, mats);
@@ -423,6 +447,7 @@ function loadChunk(cx, cz, ctx) {
       })
     );
     shaft.position.set(ox, 1.3, oz - 1);
+    tagShadowMesh(shaft, true, true);
     group.add(shaft);
     pushBoxCollider(colliders, ox - 1.08, ox + 1.08, oz - 1 - 1.08, oz - 1 + 1.08);
   }
@@ -494,16 +519,47 @@ export function buildLevel4World(root) {
     interactRoots: interactRoots,
   };
 
-  var ambient = new THREE.AmbientLight(0xf2f4f8, 0.92);
+  var ambient = new THREE.AmbientLight(0xf2f4f8, 0.58);
   root.add(ambient);
-  var hemi = new THREE.HemisphereLight(0xffffff, 0x9098a0, 0.48);
+  var hemi = new THREE.HemisphereLight(0xffffff, 0x9098a0, 0.36);
   root.add(hemi);
 
+  var sunLight = new THREE.DirectionalLight(0xfff2e0, 0.52);
+  sunLight.position.set(L4_SPAWN_X + 8, 16, L4_SPAWN_Z + 6);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(1024, 1024);
+  sunLight.shadow.bias = -0.00035;
+  sunLight.shadow.normalBias = 0.02;
+  sunLight.shadow.camera.near = 0.5;
+  sunLight.shadow.camera.far = 42;
+  var shCam = sunLight.shadow.camera;
+  shCam.left = -16;
+  shCam.right = 16;
+  shCam.top = 16;
+  shCam.bottom = -16;
+  root.add(sunLight);
+  root.add(sunLight.target);
+
+  var followKey = new THREE.PointLight(0xfff0d8, 0.62, 11, 1.5);
+  var followFill = new THREE.PointLight(0xc8d0e0, 0.2, 7.5, 1.85);
+  root.add(followKey);
+  root.add(followFill);
+
   updateStreaming(L4_SPAWN_X, L4_SPAWN_Z, ctx);
+
+  function syncLighting(px, pz) {
+    sunLight.position.set(px + 10, 15, pz + 7);
+    sunLight.target.position.set(px, 0, pz);
+    sunLight.target.updateMatrixWorld();
+    followKey.position.set(px, 2.15, pz);
+    followFill.position.set(px + 0.35, 2.75, pz + 0.45);
+  }
+  syncLighting(L4_SPAWN_X, L4_SPAWN_Z);
 
   return {
     update: function (px, pz) {
       updateStreaming(px, pz, ctx);
+      syncLighting(px, pz);
     },
     dispose: function () {
       var keys = [];

@@ -14,10 +14,6 @@ import {
 import { clearBackroomsSurvivalPersist } from "./backrooms-survival-persist.js";
 import { clearAllBackroomsSessionKeys } from "./backrooms-session-keys.js";
 import {
-  applyMegDeathState,
-  prepareMegRespawnL1Entry,
-} from "./backrooms-meg-checkpoint.js";
-import {
   clearRoyalRationsBuff,
   getHpMax,
   getStaminaMax,
@@ -81,8 +77,10 @@ export class BackroomsSurvival {
     this.stamina = 100;
     this.dead = false;
     this.sanityBreaking = false;
+    /** @type {{ hp?: number, sanity?: number, stamina?: number } | null} */
+    this._deathSnapshot = null;
+    this.onPrepareDeath = options.onPrepareDeath || null;
     this.onDeath = options.onDeath || null;
-    this.onRespawn = options.onRespawn || null;
     this.rootEl = null;
     this.deathEl = null;
     this._fillHp = null;
@@ -216,9 +214,11 @@ export class BackroomsSurvival {
     var was = this.hp;
     this.hp = Math.max(0, this.hp - dmg);
     if (was > 0 && this.hp <= 0) {
-      this._megDeathHp = Math.max(1, was - dmg);
-      this._megDeathSanity = this.sanity;
-      this._megDeathStamina = this.stamina;
+      this._deathSnapshot = {
+        hp: Math.max(1, was - dmg),
+        sanity: this.sanity,
+        stamina: this.stamina,
+      };
     }
     this.refreshHud();
   }
@@ -267,6 +267,7 @@ export class BackroomsSurvival {
     clearRoyalRationsBuff();
     this.dead = false;
     this.sanityBreaking = false;
+    this._deathSnapshot = null;
     if (this._deathTimer) {
       clearTimeout(this._deathTimer);
       this._deathTimer = null;
@@ -278,9 +279,11 @@ export class BackroomsSurvival {
 
   triggerSanityBreak() {
     this.sanityBreaking = true;
-    this._megDeathHp = this.hp;
-    this._megDeathSanity = Math.max(1, this.sanity);
-    this._megDeathStamina = this.stamina;
+    this._deathSnapshot = {
+      hp: this.hp,
+      sanity: Math.max(1, this.sanity),
+      stamina: this.stamina,
+    };
     this.sanity = 0;
     document.body.classList.add("backrooms-sanity-break");
     var self = this;
@@ -291,8 +294,8 @@ export class BackroomsSurvival {
 
   triggerDeath(reason) {
     if (this.dead) return;
-    if (typeof this._megDeathPrepare === "function") {
-      this._megDeathPrepare(reason);
+    if (this.onPrepareDeath) {
+      this.onPrepareDeath(reason);
     }
     this.dead = true;
     this.hp = 0;
@@ -315,23 +318,9 @@ export class BackroomsSurvival {
   }
 
   respawn(reason) {
-    if (this._pendingMegRespawn) {
-      this._pendingMegRespawn = false;
-      var redirectL1 = !!this._megRedirectL1;
-      this._megRedirectL1 = false;
-      if (redirectL1) {
-        prepareMegRespawnL1Entry();
-        window.location.href = "backrooms-level1.html";
-        return;
-      }
-      applyMegDeathState(this);
-      this._respawnAtMegBase = true;
-      if (this.onRespawn) this.onRespawn(reason);
-      if (this.onDeath) this.onDeath(reason);
+    if (this.onDeath) {
+      this.onDeath(reason);
       return;
-    }
-    if (this._pendingL0Reset) {
-      this._pendingL0Reset = false;
     }
     resetBackroomsRun();
     window.location.replace("backrooms-level0.html");

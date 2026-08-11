@@ -8,6 +8,10 @@ import {
   buildBackroomsLevel1World,
   WAREHOUSE_HEIGHT as BACKROOMS_L1_HEIGHT,
 } from "./backrooms-level1-world.js";
+import {
+  resolveBackroomsGfxProfile,
+  applyBackroomsRendererSize,
+} from "./backrooms-gfx-profile.js";
 
 if (typeof window !== "undefined") {
   window.THREE = THREE;
@@ -28,6 +32,7 @@ if (typeof window !== "undefined") {
   var bodyCapsule;
   var camera;
   var renderer;
+  var actionGfxProfile = null;
   var leftHand;
   var rightHand;
   var fpsArmsRoot = null;
@@ -5623,12 +5628,19 @@ if (typeof window !== "undefined") {
 
       mountActionWeapon();
 
+      actionGfxProfile = resolveBackroomsGfxProfile();
       renderer = new THREE.WebGLRenderer({
         canvas: canvas,
-        antialias: true,
+        antialias: actionGfxProfile.antialias,
         powerPreference: "high-performance",
       });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      applyBackroomsRendererSize(
+        renderer,
+        actionRoot.clientWidth || window.innerWidth,
+        actionRoot.clientHeight || window.innerHeight,
+        actionGfxProfile
+      );
+      renderer.shadowMap.enabled = false;
 
       scene.add(new THREE.AmbientLight(0xe8f4ff, 0.72));
       var sun = new THREE.DirectionalLight(0xfffaf0, 1.05);
@@ -5656,7 +5668,7 @@ if (typeof window !== "undefined") {
     if (w < 1 || h < 1) return;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(w, h, false);
+    applyBackroomsRendererSize(renderer, w, h, actionGfxProfile || undefined);
   }
 
   function wantsCrouchInput() {
@@ -6080,6 +6092,7 @@ if (typeof window !== "undefined") {
     }
     animId = requestAnimationFrame(tick);
     var dt = Math.min(clock.getDelta(), 0.05);
+    if (typeof document !== "undefined" && document.hidden) return;
 
     updateTestNorthIronGates(dt);
     updateTestNorthSideRooms();

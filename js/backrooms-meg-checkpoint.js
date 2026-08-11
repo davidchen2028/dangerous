@@ -8,13 +8,62 @@ import {
 } from "./backrooms-inventory.js";
 import { consumeXiaoyeFullHealFlag } from "./backrooms-level2-xiaoye.js";
 import { getHpMax, getStaminaMax } from "./backrooms-royal-rations.js";
+import { resetBackroomsRun } from "./backrooms-survival.js";
+import { refreshLevelPass, grantLevelPass } from "./backrooms-level-pass.js";
 
 export const MEG_CHECKPOINT_KEY = "backrooms_meg_checkpoint_v1";
 export const MEG_DEATH_KEY = "backrooms_meg_death_v1";
 export const MEG_RESPAWN_FLAG = "backrooms_meg_respawn";
+/** M.E.G 基地所在关卡页面（由 checkpoint 模块持有，survival 不感知关卡） */
+export const MEG_HUB_PAGE = "backrooms-level1.html";
+export const LEVEL0_PAGE = "backrooms-level0.html";
 
-let megSaveEl = null;
-let megSaveHideTimer = null;
+/** @type {WeakMap<object, { el: HTMLElement, hideTimer: ReturnType<typeof setTimeout> | null }>} */
+const megSaveUiBySurvival = new WeakMap();
+
+function getMegSaveUi(survival) {
+  if (!survival) return null;
+  return megSaveUiBySurvival.get(survival) || null;
+}
+
+export function resetMegSaveStatus(survival) {
+  if (!survival) return;
+  var ui = megSaveUiBySurvival.get(survival);
+  if (!ui) return;
+  if (ui.hideTimer) {
+    clearTimeout(ui.hideTimer);
+    ui.hideTimer = null;
+  }
+  if (ui.el && ui.el.parentNode) ui.el.parentNode.removeChild(ui.el);
+  megSaveUiBySurvival.delete(survival);
+}
+
+export function mountMegSaveStatus(survival) {
+  if (!survival || !survival.rootEl) return;
+  var ui = getMegSaveUi(survival);
+  if (ui && ui.el && ui.el.isConnected && survival.rootEl.contains(ui.el)) return;
+
+  resetMegSaveStatus(survival);
+
+  var el = document.createElement("p");
+  el.className = "br-survival__save";
+  el.id = "backroomsMegSave";
+  el.hidden = true;
+  el.textContent = "正在保存…";
+  survival.rootEl.appendChild(el);
+  megSaveUiBySurvival.set(survival, { el: el, hideTimer: null });
+}
+
+export function flashMegSaving(survival) {
+  var ui = getMegSaveUi(survival);
+  if (!ui || !ui.el) return;
+  ui.el.hidden = false;
+  if (ui.hideTimer) clearTimeout(ui.hideTimer);
+  ui.hideTimer = setTimeout(function () {
+    if (ui.el) ui.el.hidden = true;
+    ui.hideTimer = null;
+  }, 2200);
+}
 
 function persistBackpackFromSlots() {
   try {
@@ -106,17 +155,18 @@ function captureMegDeathPayload(survival, reason) {
   var now = performance.now();
   var hpCap = getHpMax(now);
   var staCap = getStaminaMax(now);
+  var snap = survival._deathSnapshot || {};
   var hp =
-    survival._megDeathHp != null
-      ? survival._megDeathHp
+    snap.hp != null
+      ? snap.hp
       : Math.max(1, Math.min(100, survival.hp || 1));
   var sanity =
-    survival._megDeathSanity != null
-      ? survival._megDeathSanity
+    snap.sanity != null
+      ? snap.sanity
       : Math.max(1, Math.min(100, survival.sanity || 1));
   var stamina =
-    survival._megDeathStamina != null
-      ? survival._megDeathStamina
+    snap.stamina != null
+      ? snap.stamina
       : Math.max(0, Math.min(100, survival.stamina || 0));
   if (reason === "sanity") {
     sanity = Math.max(1, sanity);
@@ -188,46 +238,38 @@ export function clearMegCheckpointStorage() {
   }
 }
 
-export function mountMegSaveStatus(survival) {
-  if (megSaveEl || !survival || !survival.rootEl) return;
-  megSaveEl = document.createElement("p");
-  megSaveEl.className = "br-survival__save";
-  megSaveEl.id = "backroomsMegSave";
-  megSaveEl.hidden = true;
-  megSaveEl.textContent = "正在保存…";
-  survival.rootEl.appendChild(megSaveEl);
-}
-
-export function flashMegSaving() {
-  if (!megSaveEl) return;
-  megSaveEl.hidden = false;
-  if (megSaveHideTimer) clearTimeout(megSaveHideTimer);
-  megSaveHideTimer = setTimeout(function () {
-    if (megSaveEl) megSaveEl.hidden = true;
-    megSaveHideTimer = null;
-  }, 2200);
+function setMegDeathOverlayMessage(survival, reason, text) {
+  if (!survival || !survival.deathEl) return;
+  var msg = survival.deathEl.querySelector("[data-death-msg]");
+  if (msg) msg.textContent = text;
 }
 
 /**
+ * 注入 M.E.G 死亡/重生策略：survival 只负责判定死亡并回调，具体跳转由本模块 closure 决定。
  * @param {import('./backrooms-survival.js').BackroomsSurvival} survival
  * @param {() => { level: number, isInMegBase?: () => boolean, getMegSpawn?: () => { x: number, z: number, yaw?: number } | null }} getCtx
+ * @param {{ onMegRespawn?: (reason: string) => void, refreshLevelPass?: import('./backrooms-level-pass.js').BackroomsLevelPassId, getLevelPassYaw?: () => number, megHubPage?: string, level0Page?: string }} [options]
  */
-export function installMegCheckpointDeathHooks(survival, getCtx) {
+export function installMegCheckpointDeathHooks(survival, getCtx, options) {
   if (!survival) return;
-  survival._megDeathPrepare = function (reason) {
+  options = options || {};
+  var megHubPage = options.megHubPage || MEG_HUB_PAGE;
+  var level0Page = options.level0Page || LEVEL0_PAGE;
+  /** @type {"l0_reset" | "meg_hub_redirect" | "meg_local" | null} */
+  var deathPlan = null;
+
+  survival.onPrepareDeath = function (reason) {
     var ctx = getCtx() || {};
     var inBase = ctx.level === 1 && ctx.isInMegBase && ctx.isInMegBase();
     if (!hasMegBaseCheckpoint() && !inBase) {
-      survival._pendingL0Reset = true;
-      if (survival.deathEl) {
-        var failMsg = survival.deathEl.querySelector("[data-death-msg]");
-        if (failMsg) {
-          failMsg.textContent =
-            reason === "sanity"
-              ? "精神崩溃 — 即将返回 Level 0…"
-              : "你已死亡 — 即将返回 Level 0…";
-        }
-      }
+      deathPlan = "l0_reset";
+      setMegDeathOverlayMessage(
+        survival,
+        reason,
+        reason === "sanity"
+          ? "精神崩溃 — 即将返回 Level 0…"
+          : "你已死亡 — 即将返回 Level 0…"
+      );
       return;
     }
 
@@ -237,18 +279,43 @@ export function installMegCheckpointDeathHooks(survival, getCtx) {
     }
 
     captureMegDeathPayload(survival, reason);
-    survival._pendingMegRespawn = true;
-    if (ctx.level !== 1) survival._megRedirectL1 = true;
+    deathPlan = ctx.level !== 1 ? "meg_hub_redirect" : "meg_local";
+    setMegDeathOverlayMessage(
+      survival,
+      reason,
+      ctx.level !== 1
+        ? "你已死亡 — 正在传送至 M.E.G 基地…"
+        : "你已死亡 — 正在 M.E.G 基地复活…"
+    );
+  };
 
-    if (survival.deathEl) {
-      var msg = survival.deathEl.querySelector("[data-death-msg]");
-      if (msg) {
-        msg.textContent =
-          ctx.level !== 1
-            ? "你已死亡 — 正在传送至 M.E.G 基地…"
-            : "你已死亡 — 正在 M.E.G 基地复活…";
-      }
+  survival.onDeath = function (reason) {
+    var plan = deathPlan;
+    deathPlan = null;
+    survival._deathSnapshot = null;
+
+    if (plan === "l0_reset") {
+      resetBackroomsRun();
+      window.location.replace(level0Page);
+      return;
     }
+    if (plan === "meg_hub_redirect") {
+      prepareMegRespawnL1Entry();
+      window.location.href = megHubPage;
+      return;
+    }
+    if (plan === "meg_local") {
+      applyMegDeathState(survival);
+      if (options.refreshLevelPass) {
+        var passYaw = options.getLevelPassYaw ? options.getLevelPassYaw() : null;
+        refreshLevelPass(options.refreshLevelPass, passYaw);
+      }
+      if (options.onMegRespawn) options.onMegRespawn(reason);
+      return;
+    }
+
+    resetBackroomsRun();
+    window.location.replace(level0Page);
   };
 }
 
@@ -275,7 +342,7 @@ export function updateMegBaseAutoSave(survival, level1World, px, pz) {
   var center = level1World.ensureMegBase ? level1World.ensureMegBase() : null;
   var spawn = defaultMegBaseSpawn(center);
   saveMegBaseCheckpoint(spawn);
-  flashMegSaving();
+  flashMegSaving(survival);
 }
 
 export function consumeMegRespawnRedirectFlag() {
@@ -291,7 +358,7 @@ export function consumeMegRespawnRedirectFlag() {
 export function prepareMegRespawnL1Entry() {
   try {
     sessionStorage.setItem(MEG_RESPAWN_FLAG, "1");
-    sessionStorage.setItem("backrooms_clip_pass", "1");
+    grantLevelPass("clip");
   } catch (err) {
     /* ignore */
   }

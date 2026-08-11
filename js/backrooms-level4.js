@@ -16,16 +16,33 @@ import {
   updateBackroomsTemperature,
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
-import { resolveCircleAgainstColliders, raycastWallBlockDistance } from "./backrooms-collide.js";
+import { raycastWallBlockDistance } from "./backrooms-collide.js";
 import { pickCrosshairInteract, getCameraAimRay } from "./backrooms-interact-aim.js";
 import {
   isNightVisionActive,
   formatNightVisionRemaining,
   useNightVisionPotionFromBackpack,
 } from "./backrooms-night-vision.js";
-import { attachMobileDragLook } from "./backrooms-fps-look.js";
 import { buildLevel4World, L4_WALL_H } from "./backrooms-level4-world.js";
 import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
+import { enforceLevelEntry } from "./backrooms-level-pass.js";
+import {
+  createBackroomsFpsState,
+  moveBackroomsPlayer,
+  updateBackroomsPlayerPhysics,
+  tryBackroomsJump,
+  isBackroomsPlayerMoving,
+  isBackroomsSprintHeld,
+  resolveBackroomsMoveCollisions,
+  bindBackroomsFpsControls,
+  bindBackroomsWindowResize,
+  applyBackroomsCamera,
+  showBackroomsLootToast,
+  DEFAULT_LOOK_SENS,
+  DEFAULT_EYE_HEIGHT,
+  DEFAULT_GRAVITY,
+  DEFAULT_BODY_HEIGHT,
+} from "./backrooms-fps-controller.js";
 
 const FOG_COLOR = 0xe8ebf0;
 const FOG_NEAR = 6;
@@ -57,16 +74,9 @@ let scene = null;
 let level4World = null;
 let colliders = [];
 let survival = null;
-const keys = Object.create(null);
-const move = { forward: false, back: false, left: false, right: false };
-let yaw = 0;
-let pitch = 0;
-let pointerLocked = false;
-let mobileLook = null;
-const player = { x: 0, z: 0, radius: 0.32, speed: 4.15 };
-let feetY = 0;
-let velY = 0;
-let grounded = true;
+const fps = createBackroomsFpsState({
+  player: { x: 0, z: 0, radius: 0.32, speed: 4.15 },
+});
 let spawnX = 0;
 let spawnZ = 2;
 /** @type {THREE.Object3D[]} */
@@ -82,25 +92,14 @@ function showError(msg) {
 }
 
 function enforceEntryOrRedirect() {
-  var nav =
-    typeof performance !== "undefined" &&
-    performance.getEntriesByType &&
-    performance.getEntriesByType("navigation")[0];
-  if (nav && nav.type === "reload") {
-    window.location.replace("backrooms-level0.html");
-    return false;
-  }
   try {
-    if (sessionStorage.getItem("backrooms_l4_pass") !== "1") {
+    if (
+      !enforceLevelEntry("l4", function (y) {
+        fps.yaw = y;
+      })
+    ) {
       window.location.replace("backrooms-level0.html");
       return false;
-    }
-    sessionStorage.removeItem("backrooms_l4_pass");
-    var rawYaw = sessionStorage.getItem("backrooms_l4_yaw");
-    sessionStorage.removeItem("backrooms_l4_yaw");
-    if (rawYaw != null) {
-      var y = parseFloat(rawYaw);
-      if (Number.isFinite(y)) yaw = y;
     }
   } catch (err) {
     window.location.replace("backrooms-level0.html");
@@ -109,52 +108,8 @@ function enforceEntryOrRedirect() {
   return true;
 }
 
-function movePlayer(dt, speedMul) {
-  var dx = 0;
-  var dz = 0;
-  if (move.forward) dz -= 1;
-  if (move.back) dz += 1;
-  if (move.left) dx -= 1;
-  if (move.right) dx += 1;
-  if (dx === 0 && dz === 0) return;
-  var len = Math.hypot(dx, dz) || 1;
-  dx /= len;
-  dz /= len;
-  var sinY = Math.sin(yaw);
-  var cosY = Math.cos(yaw);
-  var worldX = dx * cosY + dz * sinY;
-  var worldZ = -dx * sinY + dz * cosY;
-  var step = player.speed * speedMul * dt;
-  var out = resolveCircleAgainstColliders(
-    player.x + worldX * step,
-    player.z + worldZ * step,
-    player.radius,
-    colliders,
-    16
-  );
-  player.x = out.x;
-  player.z = out.z;
-}
-
-function updatePlayerPhysics(dt) {
-  velY -= GRAVITY * dt;
-  feetY += velY * dt;
-  if (feetY <= 0) {
-    feetY = 0;
-    velY = 0;
-    grounded = true;
-  } else grounded = false;
-  if (feetY + BODY_HEIGHT > L4_WALL_H) {
-    feetY = L4_WALL_H - BODY_HEIGHT;
-    if (velY > 0) velY = 0;
-  }
-}
-
 function showLootToast(msg) {
-  if (!lootToastEl) return;
-  lootToastEl.textContent = msg;
-  lootToastEl.hidden = false;
-  lootToastUntil = performance.now() + 2600;
+  showBackroomsLootToast(msg, { durationMs: 2600 });
 }
 
 function syncLookUi() {
@@ -213,75 +168,35 @@ function tryWaterCoolerQ() {
 }
 
 function bindControls() {
-  var cap = inputEl || canvas;
-  if (cap) {
-    mobileLook = attachMobileDragLook({
-      captureEl: cap,
-      inputEl: inputEl,
-      lookSens: LOOK_SENS,
-      getPointerLocked: function () {
-        return pointerLocked;
-      },
-      getYaw: function () {
-        return yaw;
-      },
-      setYaw: function (v) {
-        yaw = v;
-      },
-      getPitch: function () {
-        return pitch;
-      },
-      setPitch: function (v) {
-        pitch = v;
-      },
-      shouldBlockPointerLock: function () {
-        return isInventoryOpen();
-      },
-    });
-  }
-  window.addEventListener("keydown", function (e) {
-    keys[e.code] = true;
-    if (e.code === "KeyW") move.forward = true;
-    if (e.code === "KeyS") move.back = true;
-    if (e.code === "KeyA") move.left = true;
-    if (e.code === "KeyD") move.right = true;
-    if (e.code === "Space" && !e.repeat && grounded) {
-      e.preventDefault();
-      velY = JUMP_SPEED;
-      grounded = false;
-    }
-    if (e.code === "KeyB" && !e.repeat) {
-      e.preventDefault();
-      toggleBackpack();
-    }
-    if (e.code === "KeyQ" && !e.repeat) {
-      e.preventDefault();
-      tryWaterCoolerQ();
-    }
+  bindBackroomsFpsControls({
+    canvas: canvas,
+    inputEl: inputEl,
+    state: fps,
+    lookSens: DEFAULT_LOOK_SENS,
+    shouldBlockPointerLock: function () {
+      return isInventoryOpen();
+    },
+    onJump: function () {
+      tryBackroomsJump(fps, JUMP_SPEED);
+    },
+    onKeyDown: function (e) {
+      if (e.code === "KeyB" && !e.repeat) {
+        e.preventDefault();
+        toggleBackpack();
+        return true;
+      }
+      if (e.code === "KeyQ" && !e.repeat) {
+        e.preventDefault();
+        tryWaterCoolerQ();
+        return true;
+      }
+      return false;
+    },
+    onPointerLockChange: function () {
+      syncLookUi();
+    },
   });
-  window.addEventListener("keyup", function (e) {
-    keys[e.code] = false;
-    if (e.code === "KeyW") move.forward = false;
-    if (e.code === "KeyS") move.back = false;
-    if (e.code === "KeyA") move.left = false;
-    if (e.code === "KeyD") move.right = false;
-  });
-  document.addEventListener("mousemove", function (e) {
-    if (!pointerLocked) return;
-    yaw -= e.movementX * LOOK_SENS;
-    pitch -= e.movementY * LOOK_SENS;
-    pitch = Math.max(-1.35, Math.min(1.35, pitch));
-  });
-  document.addEventListener("pointerlockchange", function () {
-    pointerLocked = document.pointerLockElement === inputEl || document.pointerLockElement === canvas;
-    if (mobileLook) mobileLook.syncInputDragClass(pointerLocked);
-  });
-  window.addEventListener("resize", function () {
-    if (!renderer || !camera) return;
-    renderer.setSize(window.innerWidth, window.innerHeight, false);
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-  });
+  bindBackroomsWindowResize(renderer, camera);
 }
 
 function init() {
@@ -295,6 +210,10 @@ function init() {
   renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.92;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   var root = new THREE.Group();
   root.name = "BackroomsLevel4";
@@ -305,17 +224,10 @@ function init() {
   interactRoots = level4World.interactRoots;
   spawnX = level4World.spawnX;
   spawnZ = level4World.spawnZ;
-  player.x = spawnX;
-  player.z = spawnZ;
+  fps.player.x = spawnX;
+  fps.player.z = spawnZ;
 
-  survival = new BackroomsSurvival({
-    onRespawn: function () {
-      player.x = spawnX;
-      player.z = spawnZ;
-      feetY = 0;
-      velY = 0;
-    },
-  });
+  survival = new BackroomsSurvival();
   survival.mountHud(document.querySelector(".backrooms-hud") || document.body);
   loadBackroomsSurvival(survival);
   registerBackroomsSurvivalPersist(survival);
@@ -348,25 +260,27 @@ function init() {
   function frame() {
     requestAnimationFrame(frame);
     var dt = Math.min(clock.getDelta(), 0.05);
-    var moving = move.forward || move.back || move.left || move.right;
-    var sprinting = !!(keys.ShiftLeft || keys.ShiftRight) && moving;
+    var moving = isBackroomsPlayerMoving(fps);
+    var sprinting = isBackroomsSprintHeld(fps) && moving;
     if (survival && !survival.dead) survival.update(dt, { sprinting: sprinting });
-    updatePlayerPhysics(dt);
+    updateBackroomsPlayerPhysics(fps, dt, {
+      gravity: DEFAULT_GRAVITY,
+      bodyHeight: BODY_HEIGHT,
+      ceilingY: L4_WALL_H,
+    });
     if ((!survival || !survival.dead) && !isInventoryOpen()) {
-      var mul = survival && sprinting ? survival.getSprintSpeedMul(player.speed, sprinting, moving) : 1;
-      movePlayer(dt, mul);
+      var mul =
+        survival && sprinting
+          ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
+          : 1;
+      moveBackroomsPlayer(fps, dt, mul, function (nx, nz) {
+        return resolveBackroomsMoveCollisions(nx, nz, fps.player.radius, colliders, 16);
+      });
     }
-    if (level4World) level4World.update(player.x, player.z);
+    if (level4World) level4World.update(fps.player.x, fps.player.z);
     updateAimPick();
     updateWaterHint();
-    if (lootToastEl && lootToastUntil && performance.now() > lootToastUntil) {
-      lootToastEl.hidden = true;
-      lootToastUntil = 0;
-    }
-    camera.position.set(player.x, feetY + EYE_HEIGHT, player.z);
-    camera.rotation.order = "YXZ";
-    camera.rotation.y = yaw;
-    camera.rotation.x = pitch;
+    applyBackroomsCamera(fps, camera, EYE_HEIGHT);
     if (crosshairEl) {
       crosshairEl.classList.toggle(
         "backrooms-crosshair--hidden",

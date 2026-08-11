@@ -326,8 +326,16 @@ function addWallMountedPipes(group, colliders, grid, x, z, wpos, rng, pipeMat, p
   }
 }
 
-function addWallLamp(group, grid, x, z, wpos, rng, lampMat, flickerLights, decorPointLights, avoidSide) {
-  if (decorPointLights.length >= 48) return;
+var _wallLampGeo = null;
+
+function wallLampGeo() {
+  if (!_wallLampGeo) _wallLampGeo = new THREE.SphereGeometry(0.07, 8, 8);
+  return _wallLampGeo;
+}
+
+function addWallLamp(group, grid, x, z, wpos, rng, lampMat, flickerLights, avoidSide) {
+  // 装饰灯仅保留 emissive mesh；闪烁改材质，不再挂 PointLight
+  if (flickerLights.length >= 48) return;
   if (rng() > 0.065) return;
   var sides = wallSides(grid, x, z);
   if (avoidSide) {
@@ -344,16 +352,13 @@ function addWallLamp(group, grid, x, z, wpos, rng, lampMat, flickerLights, decor
   else if (side === "w") lx = wpos.x - half + 0.14;
   else if (side === "n") lz = wpos.z + half - 0.14;
   else lz = wpos.z - half + 0.14;
-  var lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 10), lampMat);
+  var mat = lampMat.clone();
+  var lamp = new THREE.Mesh(wallLampGeo(), mat);
   lamp.position.set(lx, 1.62, lz);
   group.add(lamp);
-  var pl = new THREE.PointLight(0xffe8b8, 0.95, 5.5, 1.5);
-  pl.position.set(lx, 1.62, lz);
-  group.add(pl);
-  decorPointLights.push(pl);
   flickerLights.push({
-    light: pl,
-    base: 0.55,
+    mat: mat,
+    base: 1.2,
     phase: rng() * Math.PI * 2,
     speed: 5 + rng() * 4,
   });
@@ -368,7 +373,6 @@ export function buildLevel3World(mazeData) {
   group.name = "Level3PowerMaze";
   var flickerLights = [];
   var pipeHazardSlots = [];
-  var decorPointLights = [];
   var rng = mulberry32((mazeData.seed + 991) | 0);
 
   var wallMap = createLevel2StyleWallTexture();
@@ -405,7 +409,7 @@ export function buildLevel3World(mazeData) {
   var lampMat = new THREE.MeshStandardMaterial({
     color: 0xfff0d0,
     emissive: 0xffcc66,
-    emissiveIntensity: 1.28,
+    emissiveIntensity: 1.55,
     roughness: 0.4,
     metalness: 0,
   });
@@ -467,7 +471,6 @@ export function buildLevel3World(mazeData) {
           rng,
           lampMat,
           flickerLights,
-          decorPointLights,
           pipeSide
         );
 
@@ -493,7 +496,7 @@ export function buildLevel3World(mazeData) {
     colliders: wallColliders,
     flickerLights: flickerLights,
     pipeHazardSlots: pipeHazardSlots,
-    decorPointLights: decorPointLights,
+    decorPointLights: [],
     materials: { wall: wallMat, floor: floorMat, pipe: pipeMat, lamp: lampMat },
   };
 }
@@ -508,6 +511,7 @@ export function updateLevel3FlickerLights(lights, now, intensityScale) {
     var L = lights[i];
     var flick = L.base * (0.35 + 0.65 * Math.abs(Math.sin(t * L.speed + L.phase)));
     if (flickerGlitch) flick *= 0.15;
-    L.light.intensity = flick * scale;
+    if (L.mat) L.mat.emissiveIntensity = flick * scale;
+    else if (L.light) L.light.intensity = flick * scale;
   }
 }

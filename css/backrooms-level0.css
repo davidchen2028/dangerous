@@ -630,6 +630,20 @@ body.backrooms-pack-open .backrooms-crosshair {
   color: #e8f4ff;
 }
 
+.backrooms-dialogue__image {
+  display: block;
+  width: 100%;
+  max-height: min(38vh, 220px);
+  margin: 10px 0 0;
+  object-fit: contain;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.backrooms-dialogue__image[hidden] {
+  display: none;
+}
+
 .backrooms-dialogue__choices {
   margin: 12px 0 0;
   font-size: 13px;

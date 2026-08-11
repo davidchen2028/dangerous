@@ -310,7 +310,6 @@ function decorateZArm(
   lampMat,
   pipeMat,
   pipeSpecs,
-  pointLights,
   lampsOnLeft
 ) {
   var z = zFrom;
@@ -319,17 +318,11 @@ function decorateZArm(
   else step = Math.abs(step);
 
   while (dir > 0 ? z <= zTo : z >= zTo) {
+    // 仅用 emissive 灯体模拟发光，避免每盏 PointLight 拖垮移动端
     var lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 10), lampMat);
     var lampX = lampsOnLeft ? -halfW + 0.12 : halfW - 0.12;
     lamp.position.set(lampX, 1.65 + (Math.abs(z) % 3) * 0.08, z);
     group.add(lamp);
-
-    if (Math.abs(Math.round(z / step)) % 2 === 0) {
-      var pl = new THREE.PointLight(0xffe8b8, 0.78, 7, 1.45);
-      pl.position.set(lampsOnLeft ? -halfW + 0.25 : halfW - 0.25, 1.65, z);
-      group.add(pl);
-      pointLights.push(pl);
-    }
 
     z += step;
   }
@@ -372,7 +365,6 @@ function decorateXArm(
   lampMat,
   pipeMat,
   pipeSpecs,
-  pointLights,
   lampsOnNegZSide
 ) {
   var x = xFrom;
@@ -385,13 +377,6 @@ function decorateXArm(
     var lampZ = lampsOnNegZSide ? -halfW + 0.12 : halfW - 0.12;
     lamp.position.set(x, 1.65 + (Math.abs(x) % 3) * 0.08, lampZ);
     group.add(lamp);
-
-    if (Math.abs(Math.round(x / step)) % 2 === 0) {
-      var pl = new THREE.PointLight(0xffe8b8, 0.78, 7, 1.45);
-      pl.position.set(x, 1.65, lampsOnNegZSide ? -halfW + 0.25 : halfW - 0.25);
-      group.add(pl);
-      pointLights.push(pl);
-    }
 
     x += step;
   }
@@ -491,11 +476,10 @@ export function buildBackroomsLevel2World(root) {
   var lampMat = new THREE.MeshStandardMaterial({
     color: 0xfff0d0,
     emissive: 0xffcc66,
-    emissiveIntensity: 1.1,
+    emissiveIntensity: 1.65,
     roughness: 0.4,
     metalness: 0,
   });
-  var pointLights = [];
   var pipeSpecs = [
     { r: 0.2, y: 0.95, xOff: 0.38 },
     { r: 0.14, y: 1.55, xOff: 0.52 },
@@ -514,7 +498,6 @@ export function buildBackroomsLevel2World(root) {
     lampMat,
     pipeMat,
     pipeSpecs,
-    pointLights,
     true
   );
   decorateZArm(
@@ -527,7 +510,6 @@ export function buildBackroomsLevel2World(root) {
     lampMat,
     pipeMat,
     pipeSpecs,
-    pointLights,
     true
   );
   decorateXArm(
@@ -540,7 +522,6 @@ export function buildBackroomsLevel2World(root) {
     lampMat,
     pipeMat,
     pipeSpecs,
-    pointLights,
     true
   );
   decorateXArm(
@@ -553,7 +534,6 @@ export function buildBackroomsLevel2World(root) {
     lampMat,
     pipeMat,
     pipeSpecs,
-    pointLights,
     true
   );
 
@@ -574,10 +554,11 @@ export function buildBackroomsLevel2World(root) {
 
   root.add(group);
 
-  var ambient = new THREE.AmbientLight(0x2a2a38, 0.58);
+  // 略提高环境光，补上装饰 PointLight 移除后的基础亮度
+  var ambient = new THREE.AmbientLight(0x2a2a38, 0.78);
   root.add(ambient);
 
-  var fill = new THREE.HemisphereLight(0x3a3a50, 0x0a0a10, 0.28);
+  var fill = new THREE.HemisphereLight(0x3a3a50, 0x0a0a10, 0.4);
   root.add(fill);
 
   return {
@@ -587,7 +568,7 @@ export function buildBackroomsLevel2World(root) {
     lighting: {
       ambient: ambient,
       fill: fill,
-      pointLights: pointLights,
+      pointLights: [],
       materials: {
         wall: wallMat,
         floor: floorMat,

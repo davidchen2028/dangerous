@@ -177,15 +177,10 @@ export function buildLevel3ElevatorShaft(parent) {
   group.add(skySpot);
   group.add(skySpot.target);
 
-  var pl = new THREE.PointLight(0xf0f8ff, 4.2, 28, 1.35);
-  pl.position.set(0, 2.8, 0);
+  // 光柱只保留 1 盏 PointLight；高度感靠 emissive beam / SpotLight
+  var pl = new THREE.PointLight(0xf0f8ff, 4.6, 42, 1.25);
+  pl.position.set(0, 6, 0);
   group.add(pl);
-  var plMid = new THREE.PointLight(0xd8ecff, 2.8, 45, 1.15);
-  plMid.position.set(0, 14, 0);
-  group.add(plMid);
-  var plUp = new THREE.PointLight(0xffffff, 2.2, 55, 1.05);
-  plUp.position.set(0, 32, 0);
-  group.add(plUp);
 
   var pick = new THREE.Mesh(
     new THREE.CylinderGeometry(SHAFT_W * 0.52, SHAFT_W * 0.52, 0.25, 16),
@@ -207,8 +202,8 @@ export function buildLevel3ElevatorShaft(parent) {
     groundGlow: groundGlow,
     ring: ring,
     pl: pl,
-    plMid: plMid,
-    plUp: plUp,
+    plMid: null,
+    plUp: null,
     skySpot: skySpot,
   };
 }
@@ -234,9 +229,7 @@ export function updateLevel3ElevatorGlow(shaft, now) {
       shaft.skyRings[i].rotation.z = t * 0.15 + i * 0.2;
     }
   }
-  if (shaft.pl) shaft.pl.intensity = 3.8 * pulse;
-  if (shaft.plMid) shaft.plMid.intensity = 2.6 * pulse;
-  if (shaft.plUp) shaft.plUp.intensity = 2.0 * pulse;
+  if (shaft.pl) shaft.pl.intensity = 4.2 * pulse;
   if (shaft.skySpot) shaft.skySpot.intensity = 5.0 * pulse;
 }
 

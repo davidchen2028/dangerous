@@ -11,6 +11,7 @@ export const LEVEL02_EXIT_CELL = { row: 9, col: 11 };
 
 export const LEVEL02_FOG = 0x9a9a98;
 export const LEVEL02_DAMAGE = 50;
+export const LEVEL02_BIG_DAMAGE = 75;
 export const LEVEL02_DEBRIS_DELAY_SEC = 2;
 export const LEVEL02_DEBRIS_INTERVAL_SEC = 1;
 export const LEVEL02_WALL_INTERVAL_SEC = 1;

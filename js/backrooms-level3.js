@@ -29,13 +29,11 @@ import {
   updateLevel3FlickerLights,
   WALL_H,
 } from "./backrooms-level3-world.js";
-import { resolveCircleAgainstColliders } from "./backrooms-collide.js";
 import {
   createLevel3PipeHazards,
   updateLevel3PipeHazards,
 } from "./backrooms-level3-hazards.js";
 import { bindLevel3HumOnGesture, startLevel3Hum, stopLevel3Hum } from "./backrooms-level3-audio.js";
-import { attachMobileDragLook } from "./backrooms-fps-look.js";
 import {
   buildLevel3ElevatorShaft,
   isNearLevel3Elevator,
@@ -45,6 +43,23 @@ import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
 } from "./backrooms-level-enter.js";
+import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import {
+  createBackroomsFpsState,
+  moveBackroomsPlayer,
+  updateBackroomsPlayerPhysics,
+  tryBackroomsJump,
+  isBackroomsPlayerMoving,
+  isBackroomsSprintHeld,
+  resolveBackroomsMoveCollisions,
+  bindBackroomsFpsControls,
+  bindBackroomsWindowResize,
+  applyBackroomsCamera,
+  showBackroomsLootToast,
+  DEFAULT_LOOK_SENS,
+  DEFAULT_EYE_HEIGHT,
+  DEFAULT_GRAVITY,
+} from "./backrooms-fps-controller.js";
 
 const MAZE_SEED_KEY = "backrooms_l3_maze_v2";
 const FOG_COLOR = 0x14141c;
@@ -85,23 +100,16 @@ let lootToastUntil = 0;
 let ambientLight = null;
 let fillLight = null;
 let level3Materials = null;
-let decorPointLights = [];
+/** @type {{ key: THREE.PointLight, fill: THREE.PointLight } | null} */
+let playerFollowLights = null;
 let lastNvApplied = null;
 let flickerIntensityScale = 1;
 let lastNvHintSec = -1;
 let flickerFrame = 0;
 
-const keys = Object.create(null);
-const move = { forward: false, back: false, left: false, right: false };
-let yaw = 0;
-let pitch = 0;
-let pointerLocked = false;
-/** @type {ReturnType<attachMobileDragLook> | null} */
-let mobileLook = null;
-const player = { x: 0, z: 0, radius: 0.32, speed: 4.05 };
-let feetY = 0;
-let velY = 0;
-let grounded = true;
+const fps = createBackroomsFpsState({
+  player: { x: 0, z: 0, radius: 0.32, speed: 4.05 },
+});
 let spawnX = 0;
 let spawnZ = 0;
 /** @type {ReturnType<buildLevel3ElevatorShaft> | null} */
@@ -119,10 +127,23 @@ function showError(msg) {
 }
 
 function showLootToast(text) {
-  if (!lootToastEl) return;
-  lootToastEl.textContent = text;
-  lootToastEl.hidden = false;
+  showBackroomsLootToast(text, { durationMs: 2600 });
   lootToastUntil = performance.now() + 2600;
+}
+
+function createPlayerFollowLights(parent) {
+  var key = new THREE.PointLight(0xffe8b8, 1.15, 10, 1.55);
+  var fill = new THREE.PointLight(0xb0bcd0, 0.28, 7, 1.8);
+  parent.add(key);
+  parent.add(fill);
+  return { key: key, fill: fill };
+}
+
+function syncPlayerFollowLights() {
+  if (!playerFollowLights) return;
+  var eyeY = fps.feetY + EYE_HEIGHT;
+  playerFollowLights.key.position.set(fps.player.x, eyeY + 0.12, fps.player.z);
+  playerFollowLights.fill.position.set(fps.player.x, eyeY + 0.85, fps.player.z);
 }
 
 function applyLevel3Vision(nv) {
@@ -133,7 +154,6 @@ function applyLevel3Vision(nv) {
   var floor = level3Materials && level3Materials.floor;
   var pipe = level3Materials && level3Materials.pipe;
   var lamp = level3Materials && level3Materials.lamp;
-  var i;
   if (nv) {
     scene.background.setHex(NV_FOG_COLOR);
     scene.fog.color.setHex(NV_FOG_COLOR);
@@ -163,8 +183,13 @@ function applyLevel3Vision(nv) {
       pipe.color.setHex(0x6a7078);
       pipe.emissive.setHex(0x282830);
     }
-    if (lamp) lamp.emissiveIntensity = 1.45;
-    for (i = 0; i < decorPointLights.length; i++) decorPointLights[i].intensity = 1.55;
+    if (lamp) lamp.emissiveIntensity = 1.7;
+    if (playerFollowLights) {
+      playerFollowLights.key.intensity = 1.75;
+      playerFollowLights.key.distance = 15;
+      playerFollowLights.fill.intensity = 0.5;
+      playerFollowLights.fill.distance = 10;
+    }
     flickerIntensityScale = 1.65;
   } else {
     scene.background.setHex(FOG_COLOR);
@@ -173,12 +198,12 @@ function applyLevel3Vision(nv) {
     scene.fog.far = FOG_FAR;
     if (ambientLight) {
       ambientLight.color.setHex(0x3a3a48);
-      ambientLight.intensity = 0.82;
+      ambientLight.intensity = 0.95;
     }
     if (fillLight) {
       fillLight.color.setHex(0x4a4a62);
       fillLight.groundColor.setHex(0x141418);
-      fillLight.intensity = 0.45;
+      fillLight.intensity = 0.52;
     }
     renderer.toneMappingExposure = 0.98;
     if (wall) {
@@ -195,8 +220,13 @@ function applyLevel3Vision(nv) {
       pipe.color.setHex(0x2a2a32);
       pipe.emissive.setHex(0x141418);
     }
-    if (lamp) lamp.emissiveIntensity = 1.1;
-    for (i = 0; i < decorPointLights.length; i++) decorPointLights[i].intensity = 0.98;
+    if (lamp) lamp.emissiveIntensity = 1.55;
+    if (playerFollowLights) {
+      playerFollowLights.key.intensity = 1.15;
+      playerFollowLights.key.distance = 10;
+      playerFollowLights.fill.intensity = 0.28;
+      playerFollowLights.fill.distance = 7;
+    }
     flickerIntensityScale = 0.95;
   }
 }
@@ -221,25 +251,14 @@ function getMazeSeed() {
 }
 
 function enforceEntryOrRedirect() {
-  var nav =
-    typeof performance !== "undefined" &&
-    performance.getEntriesByType &&
-    performance.getEntriesByType("navigation")[0];
-  if (nav && nav.type === "reload") {
-    window.location.replace("backrooms-level0.html");
-    return false;
-  }
   try {
-    if (sessionStorage.getItem("backrooms_l3_pass") !== "1") {
+    if (
+      !enforceLevelEntry("l3", function (y) {
+        fps.yaw = y;
+      })
+    ) {
       window.location.replace("backrooms-level0.html");
       return false;
-    }
-    sessionStorage.removeItem("backrooms_l3_pass");
-    var rawYaw = sessionStorage.getItem("backrooms_l3_yaw");
-    sessionStorage.removeItem("backrooms_l3_yaw");
-    if (rawYaw != null) {
-      var y = parseFloat(rawYaw);
-      if (Number.isFinite(y)) yaw = y;
     }
   } catch (err) {
     window.location.replace("backrooms-level0.html");
@@ -248,46 +267,6 @@ function enforceEntryOrRedirect() {
   return true;
 }
 
-function movePlayer(dt, speedMul) {
-  var dx = 0;
-  var dz = 0;
-  if (move.forward) dz -= 1;
-  if (move.back) dz += 1;
-  if (move.left) dx -= 1;
-  if (move.right) dx += 1;
-  if (dx === 0 && dz === 0) return;
-  var len = Math.hypot(dx, dz) || 1;
-  dx /= len;
-  dz /= len;
-  var sinY = Math.sin(yaw);
-  var cosY = Math.cos(yaw);
-  var worldX = dx * cosY + dz * sinY;
-  var worldZ = -dx * sinY + dz * cosY;
-  var step = player.speed * speedMul * dt;
-  var out = resolveCircleAgainstColliders(
-    player.x + worldX * step,
-    player.z + worldZ * step,
-    player.radius,
-    wallColliders,
-    14
-  );
-  player.x = out.x;
-  player.z = out.z;
-}
-
-function updatePlayerPhysics(dt) {
-  velY -= GRAVITY * dt;
-  feetY += velY * dt;
-  if (feetY <= 0) {
-    feetY = 0;
-    velY = 0;
-    grounded = true;
-  } else grounded = false;
-  if (feetY + BODY_HEIGHT > WALL_H) {
-    feetY = WALL_H - BODY_HEIGHT;
-    if (velY > 0) velY = 0;
-  }
-}
 
 function syncLookUi() {
   if (!hintEl) return;
@@ -303,19 +282,19 @@ function updateElevatorHint() {
     elevatorHintEl.hidden = true;
     return;
   }
-  elevatorHintEl.hidden = !isNearLevel3Elevator(player.x, player.z, level3Elevator);
+  elevatorHintEl.hidden = !isNearLevel3Elevator(fps.player.x, fps.player.z, level3Elevator);
 }
 
 function tryStartElevator() {
   if (elevatorRising || isInventoryOpen() || !survival || survival.dead) return;
-  if (!isNearLevel3Elevator(player.x, player.z, level3Elevator)) return;
+  if (!isNearLevel3Elevator(fps.player.x, fps.player.z, level3Elevator)) return;
   elevatorRising = true;
   elevatorRiseT = 0;
-  elevatorStartPitch = pitch;
-  move.forward = false;
-  move.back = false;
-  move.left = false;
-  move.right = false;
+  elevatorStartPitch = fps.pitch;
+  fps.move.forward = false;
+  fps.move.back = false;
+  fps.move.left = false;
+  fps.move.right = false;
   if (elevatorHintEl) elevatorHintEl.hidden = true;
   showLootToast("电梯上升…");
   if (document.exitPointerLock) document.exitPointerLock();
@@ -326,13 +305,12 @@ function updateElevatorRise(dt) {
   elevatorRiseT += dt;
   var p = Math.min(1, elevatorRiseT / ELEVATOR_RISE_DURATION);
   var ease = p * p * (3 - 2 * p);
-  feetY = ease * ELEVATOR_RISE_HEIGHT;
-  pitch = elevatorStartPitch + (-0.42 - elevatorStartPitch) * ease;
+  fps.feetY = ease * ELEVATOR_RISE_HEIGHT;
+  fps.pitch = elevatorStartPitch + (-0.42 - elevatorStartPitch) * ease;
   if (p >= 1) {
     try {
       saveBackroomsSurvival(survival);
-      sessionStorage.setItem("backrooms_l4_pass", "1");
-      sessionStorage.setItem("backrooms_l4_yaw", String(yaw));
+      grantLevelPass("l4", fps.yaw);
     } catch (err) {
       /* ignore */
     }
@@ -345,86 +323,38 @@ function updateElevatorRise(dt) {
 
 function bindControls() {
   bindLevel3HumOnGesture();
-  var cap = inputEl || canvas;
-  if (cap) {
-    mobileLook = attachMobileDragLook({
-      captureEl: cap,
-      inputEl: inputEl,
-      lookSens: LOOK_SENS,
-      getPointerLocked: function () {
-        return pointerLocked;
-      },
-      getYaw: function () {
-        return yaw;
-      },
-      setYaw: function (v) {
-        yaw = v;
-      },
-      getPitch: function () {
-        return pitch;
-      },
-      setPitch: function (v) {
-        pitch = v;
-      },
-      shouldBlockPointerLock: function () {
-        return isInventoryOpen();
-      },
-    });
-  }
-  window.addEventListener("keydown", function (e) {
-    keys[e.code] = true;
-    if (e.code === "KeyW") move.forward = true;
-    if (e.code === "KeyS") move.back = true;
-    if (e.code === "KeyA") move.left = true;
-    if (e.code === "KeyD") move.right = true;
-    if (e.code === "Space" && !e.repeat && grounded) {
-      e.preventDefault();
-      velY = JUMP_SPEED;
-      grounded = false;
-    }
-    if (e.code === "KeyB" && !e.repeat) {
-      e.preventDefault();
-      toggleBackpack();
-    }
-    if (e.code === "KeyQ" && !e.repeat) {
-      e.preventDefault();
-      tryStartElevator();
-    }
-  });
-  window.addEventListener("keyup", function (e) {
-    keys[e.code] = false;
-    if (e.code === "KeyW") move.forward = false;
-    if (e.code === "KeyS") move.back = false;
-    if (e.code === "KeyA") move.left = false;
-    if (e.code === "KeyD") move.right = false;
-  });
-  document.addEventListener("mousemove", function (e) {
-    if (!pointerLocked) return;
-    yaw -= e.movementX * LOOK_SENS;
-    pitch -= e.movementY * LOOK_SENS;
-    pitch = Math.max(-1.35, Math.min(1.35, pitch));
-  });
-  document.addEventListener("pointerlockchange", function () {
-    pointerLocked = document.pointerLockElement === inputEl || document.pointerLockElement === canvas;
-    if (pointerLocked) startLevel3Hum();
-    if (mobileLook) mobileLook.syncInputDragClass(pointerLocked);
-  });
-  if (cap) {
-    cap.addEventListener("pointerdown", function (e) {
-      if (mobileLook && mobileLook.isDragLook()) return;
-      if (!isInventoryOpen() && e.button === 0 && !pointerLocked && cap.requestPointerLock) {
-        cap.requestPointerLock();
+  bindBackroomsFpsControls({
+    canvas: canvas,
+    inputEl: inputEl,
+    state: fps,
+    lookSens: DEFAULT_LOOK_SENS,
+    shouldBlockPointerLock: function () {
+      return isInventoryOpen();
+    },
+    onJump: function () {
+      tryBackroomsJump(fps, JUMP_SPEED);
+    },
+    onKeyDown: function (e) {
+      if (e.code === "KeyB" && !e.repeat) {
+        e.preventDefault();
+        toggleBackpack();
+        return true;
       }
-    });
-  }
+      if (e.code === "KeyQ" && !e.repeat) {
+        e.preventDefault();
+        tryStartElevator();
+        return true;
+      }
+      return false;
+    },
+    onPointerLockChange: function (locked) {
+      if (locked) startLevel3Hum();
+      syncLookUi();
+    },
+  });
+  bindBackroomsWindowResize(renderer, camera);
   window.addEventListener("pagehide", function () {
     stopLevel3Hum();
-  });
-  window.addEventListener("resize", function () {
-    if (!renderer || !camera) return;
-    renderer.setSize(window.innerWidth, window.innerHeight, false);
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
   });
 }
 
@@ -436,8 +366,8 @@ function init() {
   var spawn = getLevel3SpawnWorld(mazeData);
   spawnX = spawn.x;
   spawnZ = spawn.z;
-  player.x = spawnX;
-  player.z = spawnZ;
+  fps.player.x = spawnX;
+  fps.player.z = spawnZ;
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(FOG_COLOR);
@@ -461,7 +391,6 @@ function init() {
     wallColliders.push(built.colliders[ci]);
   }
   flickerLights = built.flickerLights;
-  decorPointLights = built.decorPointLights || [];
   level3Materials = built.materials;
 
   hazardVfxGroup = new THREE.Group();
@@ -470,23 +399,14 @@ function init() {
   pipeHazards = createLevel3PipeHazards(built.pipeHazardSlots, hazardVfxGroup);
 
   level3Elevator = buildLevel3ElevatorShaft(root);
-  if (level3Elevator.pl) decorPointLights.push(level3Elevator.pl);
-  if (level3Elevator.plMid) decorPointLights.push(level3Elevator.plMid);
-  if (level3Elevator.plUp) decorPointLights.push(level3Elevator.plUp);
 
-  ambientLight = new THREE.AmbientLight(0x3a3a48, 0.82);
+  ambientLight = new THREE.AmbientLight(0x3a3a48, 0.95);
   scene.add(ambientLight);
-  fillLight = new THREE.HemisphereLight(0x4a4a62, 0x141418, 0.45);
+  fillLight = new THREE.HemisphereLight(0x4a4a62, 0x141418, 0.52);
   scene.add(fillLight);
+  playerFollowLights = createPlayerFollowLights(root);
 
-  survival = new BackroomsSurvival({
-    onRespawn: function () {
-      player.x = spawnX;
-      player.z = spawnZ;
-      feetY = 0;
-      velY = 0;
-    },
-  });
+  survival = new BackroomsSurvival();
   survival.mountHud(document.querySelector(".backrooms-hud") || document.body);
   loadBackroomsSurvival(survival);
   registerBackroomsSurvivalPersist(survival);
@@ -532,22 +452,39 @@ function init() {
     var nv = isNightVisionActive(now);
     applyLevel3Vision(nv);
 
-    var moving = move.forward || move.back || move.left || move.right;
-    var sprinting = !!(keys.ShiftLeft || keys.ShiftRight) && moving;
-    if (survival && !survival.dead) survival.update(dt, { sprinting: sprinting && !elevatorRising });
+    var moving = isBackroomsPlayerMoving(fps);
+    var sprinting = isBackroomsSprintHeld(fps) && moving;
+    if (survival && !survival.dead) {
+      survival.update(dt, { sprinting: sprinting && !elevatorRising });
+    }
     if (elevatorRising) {
       updateElevatorRise(dt);
-      velY = 0;
-      grounded = false;
+      fps.velY = 0;
+      fps.grounded = false;
     } else {
-      updatePlayerPhysics(dt);
+      updateBackroomsPlayerPhysics(fps, dt, {
+        gravity: DEFAULT_GRAVITY,
+        bodyHeight: BODY_HEIGHT,
+        ceilingY: WALL_H,
+      });
       if ((!survival || !survival.dead) && !isInventoryOpen()) {
-        var mul = survival && sprinting ? survival.getSprintSpeedMul(player.speed, sprinting, moving) : 1;
-        movePlayer(dt, mul);
+        var mul =
+          survival && sprinting
+            ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
+            : 1;
+        moveBackroomsPlayer(fps, dt, mul, function (nx, nz) {
+          return resolveBackroomsMoveCollisions(nx, nz, fps.player.radius, wallColliders, 14);
+        });
       }
     }
 
-    var hazardMsg = updateLevel3PipeHazards(survival, pipeHazards, player.x, player.z, now);
+    var hazardMsg = updateLevel3PipeHazards(
+      survival,
+      pipeHazards,
+      fps.player.x,
+      fps.player.z,
+      now
+    );
     if (hazardMsg) showLootToast(hazardMsg);
     flickerFrame += 1;
     if ((flickerFrame & 1) === 0) {
@@ -555,10 +492,8 @@ function init() {
     }
     updateLevel3ElevatorGlow(level3Elevator, now);
 
-    camera.position.set(player.x, feetY + EYE_HEIGHT, player.z);
-    camera.rotation.order = "YXZ";
-    camera.rotation.y = yaw;
-    camera.rotation.x = pitch;
+    applyBackroomsCamera(fps, camera, EYE_HEIGHT);
+    syncPlayerFollowLights();
 
     if (crosshairEl) {
       crosshairEl.classList.toggle(

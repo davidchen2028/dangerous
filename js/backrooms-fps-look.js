@@ -5,7 +5,12 @@ export const MOBILE_LOOK_SENS_MULT = 1.35;
 
 export function isTouchPrimaryDevice() {
   var ua = navigator.userAgent || "";
-  if (/iPad|iPhone|iPod|Android|Mobile/i.test(ua)) return true;
+  if (/iPad/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) {
+    return true;
+  }
+  if (/iPhone|iPod|Android|HarmonyOS|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
+    return true;
+  }
   if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
     return true;
   }
