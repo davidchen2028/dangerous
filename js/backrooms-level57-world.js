@@ -10,6 +10,7 @@ export const L57_SPAWN_YAW = Math.PI;
 
 const PAINTER_GLB_URL = "models/painter-man.glb";
 const WALL_T = 0.14;
+const PAINTING_VARIANT_KEY = "backrooms_l57_painting_v1";
 
 var _painterTemplate = null;
 var _painterLoadStarted = false;
@@ -81,6 +82,63 @@ function yellowRoomPaintingTexture() {
   var tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+function cavePaintingTexture() {
+  var w = 256;
+  var h = 192;
+  var c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  var ctx = c.getContext("2d");
+  if (!ctx) return null;
+  var sky = ctx.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, "#111722");
+  sky.addColorStop(1, "#050608");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = "#30343a";
+  ctx.beginPath();
+  ctx.moveTo(0, 42);
+  ctx.lineTo(48, 18);
+  ctx.lineTo(82, 52);
+  ctx.lineTo(128, 12);
+  ctx.lineTo(178, 50);
+  ctx.lineTo(220, 20);
+  ctx.lineTo(w, 46);
+  ctx.lineTo(w, 0);
+  ctx.lineTo(0, 0);
+  ctx.fill();
+  ctx.fillStyle = "#22262b";
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  ctx.lineTo(0, 132);
+  ctx.lineTo(44, 108);
+  ctx.lineTo(86, 126);
+  ctx.lineTo(126, 92);
+  ctx.lineTo(172, 125);
+  ctx.lineTo(220, 104);
+  ctx.lineTo(w, 128);
+  ctx.lineTo(w, h);
+  ctx.fill();
+  ctx.fillStyle = "#8292a0";
+  ctx.fillRect(120, 82, 16, 54);
+  var tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function isCavePaintingThisRun() {
+  try {
+    var saved = sessionStorage.getItem(PAINTING_VARIANT_KEY);
+    if (saved === "cave") return true;
+    if (saved === "yellow") return false;
+    var cave = Math.random() < 0.4;
+    sessionStorage.setItem(PAINTING_VARIANT_KEY, cave ? "cave" : "yellow");
+    return cave;
+  } catch (err) {
+    return Math.random() < 0.4;
+  }
 }
 
 function lambertMat(color, emissive) {
@@ -220,6 +278,7 @@ export function buildLevel57World(root) {
   var half = L57_ROOM_SIZE * 0.5;
   var roomMinZ = -half;
   var roomMaxZ = half;
+  var cavePainting = isCavePaintingThisRun();
 
   var group = new THREE.Group();
   group.name = "Level57World";
@@ -258,7 +317,7 @@ export function buildLevel57World(root) {
 
   var paintingZ = roomMinZ + 0.08;
   var paintingY = 1.55;
-  var paintTex = yellowRoomPaintingTexture();
+  var paintTex = cavePainting ? cavePaintingTexture() : yellowRoomPaintingTexture();
   var frame = new THREE.Mesh(new THREE.BoxGeometry(1.55, 1.15, 0.08), frameMat);
   frame.position.set(0, paintingY, paintingZ + 0.04);
   group.add(frame);
@@ -279,7 +338,9 @@ export function buildLevel57World(root) {
     new THREE.MeshBasicMaterial({ visible: false })
   );
   paintPick.position.set(0, paintingY, paintingZ + 0.35);
-  paintPick.userData.brInteract = { kind: "l57_painting" };
+  paintPick.userData.brInteract = {
+    kind: cavePainting ? "l57_cave_painting" : "l57_painting",
+  };
   group.add(paintPick);
   interactRoots.push(paintPick);
 
@@ -304,5 +365,6 @@ export function buildLevel57World(root) {
     spawnX: 0,
     spawnZ: 1.8,
     spawnYaw: L57_SPAWN_YAW,
+    cavePainting: cavePainting,
   };
 }

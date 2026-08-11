@@ -24,6 +24,11 @@ import {
   useNightVisionPotionFromBackpack,
 } from "./backrooms-night-vision.js";
 import { buildLevel4World, L4_WALL_H } from "./backrooms-level4-world.js";
+import {
+  resolveBackroomsGfxProfile,
+  applyBackroomsRendererSize,
+  applyBackroomsToneMapping,
+} from "./backrooms-gfx-profile.js";
 import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
 import { enforceLevelEntry } from "./backrooms-level-pass.js";
 import { refreshLevel1_1OutpostChestsOnFirstL4Visit } from "./backrooms-level1-1-chests.js";
@@ -67,6 +72,14 @@ const GRAVITY = 32;
 const JUMP_SPEED = 8;
 const EYE_HEIGHT = 1.65;
 const BODY_HEIGHT = 1.85;
+
+/** 每帧复用，避免 update 循环字面量分配 */
+const _survCtx = { sprinting: false };
+const _physOpts = {
+  gravity: DEFAULT_GRAVITY,
+  bodyHeight: BODY_HEIGHT,
+  ceilingY: L4_WALL_H,
+};
 
 let renderer = null;
 let camera = null;
@@ -209,19 +222,19 @@ function init() {
   scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);
 
   camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 90);
-  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.92;
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  var gfx = resolveBackroomsGfxProfile();
+  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
+  applyBackroomsRendererSize(renderer, window.innerWidth, window.innerHeight, gfx);
+  applyBackroomsToneMapping(renderer);
+  // L4 是唯一有平行光阴影的关卡；low 档关闭，high 档使用 PCFSoft
+  renderer.shadowMap.enabled = gfx.shadows;
+  if (gfx.shadows) renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   var root = new THREE.Group();
   root.name = "BackroomsLevel4";
   scene.add(root);
 
-  level4World = buildLevel4World(root);
+  level4World = buildLevel4World(root, gfx);
   colliders = level4World.colliders;
   interactRoots = level4World.interactRoots;
   spawnX = level4World.spawnX;
@@ -264,12 +277,14 @@ function init() {
     var dt = Math.min(clock.getDelta(), 0.05);
     var moving = isBackroomsPlayerMoving(fps);
     var sprinting = isBackroomsSprintHeld(fps) && moving;
-    if (survival && !survival.dead) survival.update(dt, { sprinting: sprinting });
-    updateBackroomsPlayerPhysics(fps, dt, {
-      gravity: DEFAULT_GRAVITY,
-      bodyHeight: BODY_HEIGHT,
-      ceilingY: L4_WALL_H,
-    });
+    if (survival && !survival.dead) {
+      _survCtx.sprinting = sprinting;
+      survival.update(dt, _survCtx);
+    }
+    _physOpts.gravity = DEFAULT_GRAVITY;
+    _physOpts.bodyHeight = BODY_HEIGHT;
+    _physOpts.ceilingY = L4_WALL_H;
+    updateBackroomsPlayerPhysics(fps, dt, _physOpts);
     if ((!survival || !survival.dead) && !isInventoryOpen()) {
       var mul =
         survival && sprinting

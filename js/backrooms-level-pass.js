@@ -4,7 +4,7 @@
 import { resetBackroomsRun } from "./backrooms-survival.js";
 
 export const LEVEL0_PAGE = "backrooms-level0.html";
-/** @typedef {"clip" | "l2" | "l3" | "l4" | "l283" | "l57"} BackroomsLevelPassId */
+/** @typedef {"clip" | "l2" | "l3" | "l4" | "l8" | "l9" | "l57" | "l75" | "l283"} BackroomsLevelPassId */
 
 /** @type {Record<BackroomsLevelPassId, { pass: string, yaw: string | null }>} */
 export const LEVEL_PASS_KEYS = {
@@ -14,6 +14,9 @@ export const LEVEL_PASS_KEYS = {
   l4: { pass: "backrooms_l4_pass", yaw: "backrooms_l4_yaw" },
   l283: { pass: "backrooms_l283_pass", yaw: "backrooms_l283_yaw" },
   l57: { pass: "backrooms_l57_pass", yaw: "backrooms_l57_yaw" },
+  l8: { pass: "backrooms_l8_pass", yaw: "backrooms_l8_yaw" },
+  l9: { pass: "backrooms_l9_pass", yaw: "backrooms_l9_yaw" },
+  l75: { pass: "backrooms_l75_pass", yaw: "backrooms_l75_yaw" },
 };
 
 function keysFor(levelId) {

@@ -30,7 +30,9 @@ import {
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
+  applyBackroomsToneMapping,
 } from "./backrooms-gfx-profile.js";
+import { createPointLightPool } from "./backrooms-point-light-pool.js";
 import {
   createBackroomsFpsState,
   moveBackroomsPlayer,
@@ -53,7 +55,7 @@ import {
   isGrayDoorCell,
   buildGrayDoorWall,
   getGrayDoorPickMesh,
-} from "./backrooms-level0-02.js?v=12";
+} from "./backrooms-level0-02.js?v=14";
 import { BLUE_HOLE_CELL, buildBlueHole } from "./backrooms-level0-03.js?v=1";
 import { createLevel0ZoneManager } from "./backrooms-level0-zones.js";
 import { grantLevelPass } from "./backrooms-level-pass.js";
@@ -132,6 +134,21 @@ const JUMP_SPEED = 9;
 const EYE_HEIGHT = 1.6;
 const BODY_HEIGHT = 1.78;
 
+/** 每帧复用，避免 update 循环字面量分配 */
+const _survCtx = {
+  blackout: false,
+  nearLandmark: false,
+  sprinting: false,
+  skipPassiveSanity: false,
+  sanityDrainPerSec: 0,
+};
+const _physOpts = {
+  gravity: GRAVITY,
+  bodyHeight: BODY_HEIGHT,
+  ceilingY: WALL_HEIGHT,
+};
+const _emptyZoneEnv = { skipPassiveSanity: false, sanityDrainPerSec: 0 };
+
 const MAP_WIDTH = MAP_COLS * GRID_SIZE;
 const MAP_DEPTH = MAP_ROWS * GRID_SIZE;
 const HALF_W = MAP_WIDTH * 0.5;
@@ -149,8 +166,10 @@ let animId = 0;
 /** 墙体 AABB，供第一人称碰撞使用 */
 const wallColliders = [];
 
-/** @type {Array<{ light: THREE.PointLight, glowMat: THREE.MeshStandardMaterial, bloomMat: THREE.MeshBasicMaterial, baseIntensity: number, baseEmissive: number, baseBloom: number, dimUntil: number, buzzPhase: number }>} */
+/** @type {Array<{ x: number, y: number, z: number, intensity: number, glowMat: THREE.MeshStandardMaterial, bloomMat: THREE.MeshBasicMaterial, baseIntensity: number, baseEmissive: number, baseBloom: number, dimUntil: number, buzzPhase: number }>} */
 const fluorescentFixtures = [];
+/** @type {ReturnType<createPointLightPool> | null} */
+let fluorescentLightPool = null;
 /** @type {ReturnType<resolveBackroomsGfxProfile> | null} */
 let level0GfxProfile = null;
 let aimPickFrame = 0;
@@ -424,9 +443,9 @@ function buildBackroomsLevel(root) {
       );
       mesh.name = "Wall_" + row + "_" + col;
       mesh.visible = true;
-      var wallShadows = level0GfxProfile && level0GfxProfile.shadows;
-      mesh.castShadow = !!wallShadows;
-      mesh.receiveShadow = !!wallShadows;
+      // L0 无 DirectionalLight，阴影恒关（见 gfx-profile.shadows 注释）
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
 
       // 严格网格对齐：墙根落在 Y=0，绝不悬空
       mesh.position.x = cellCenterX(col);
@@ -461,7 +480,7 @@ function buildBackroomsLevel(root) {
   floor.name = "BackroomsFloor";
   floor.rotation.x = -Math.PI * 0.5;
   floor.position.y = 0;
-  floor.receiveShadow = !!(level0GfxProfile && level0GfxProfile.shadows);
+  floor.receiveShadow = false;
   root.add(floor);
 
   buildBlueHole(
@@ -505,10 +524,10 @@ function createFluorescentFixture(x, z, rotY) {
   var glowMat = new THREE.MeshStandardMaterial({
     color: 0xfffef6,
     emissive: 0xfff2cc,
-    emissiveIntensity: 1.55,
+    // ACES 下参与 tone mapping，避免 NoToneMapping 时 1.55 过曝
+    emissiveIntensity: 1.15,
     roughness: 0.18,
     metalness: 0,
-    toneMapped: false,
   });
   var fixture = new THREE.Mesh(
     new THREE.BoxGeometry(FLUORO_LENGTH, FLUORO_DEPTH, FLUORO_WIDTH),
@@ -518,11 +537,11 @@ function createFluorescentFixture(x, z, rotY) {
   fixture.castShadow = false;
   fixture.receiveShadow = false;
 
-  // 略大的半透明光晕，让整块长方体看起来在向外溢光
+  // 假 bloom：加性叠加、不写深度、跳过 tone mapping
   var bloomMat = new THREE.MeshBasicMaterial({
     color: 0xfff6dc,
     transparent: true,
-    opacity: 0.42,
+    opacity: 0.32,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     toneMapped: false,
@@ -538,24 +557,21 @@ function createFluorescentFixture(x, z, rotY) {
   bloom.position.y = -FLUORO_DEPTH * 0.5;
   bloom.renderOrder = 1;
 
-  var light = null;
-  if (!level0GfxProfile || level0GfxProfile.fluorescentPointLights) {
-    light = new THREE.PointLight(0xfff6e8, 0.52, 10, 1.4);
-    light.position.y = -FLUORO_DEPTH * 0.45;
-    group.add(light);
-  }
-
   group.add(fixture, bloom);
   group.position.set(x, FLUORO_MOUNT_Y, z);
   group.rotation.y = rotY;
 
+  // 灯具本身只发 emissive；真正的点光由 fluorescentLightPool 按距离复用（见 backrooms-point-light-pool.js）
   fluorescentFixtures.push({
-    light: light,
+    x: x,
+    y: FLUORO_MOUNT_Y - FLUORO_DEPTH * 0.45,
+    z: z,
+    intensity: 0,
     glowMat: glowMat,
     bloomMat: bloomMat,
     baseIntensity: 0.44 + Math.random() * 0.16,
-    baseEmissive: 1.35 + Math.random() * 0.4,
-    baseBloom: 0.36 + Math.random() * 0.14,
+    baseEmissive: 1.0 + Math.random() * 0.3,
+    baseBloom: 0.26 + Math.random() * 0.12,
     dimUntil: 0,
     buzzPhase: Math.random() * Math.PI * 2,
   });
@@ -565,6 +581,10 @@ function createFluorescentFixture(x, z, rotY) {
 
 function addFluorescentLights(root) {
   fluorescentFixtures.length = 0;
+  if (fluorescentLightPool) {
+    fluorescentLightPool.dispose();
+    fluorescentLightPool = null;
+  }
 
   var hemi = new THREE.HemisphereLight(0xfff8e0, 0x8a8563, 0.38);
   hemi.name = "BackroomsHemi";
@@ -592,6 +612,19 @@ function addFluorescentLights(root) {
   }
 
   root.add(fixturesGroup);
+
+  var budget = level0GfxProfile ? level0GfxProfile.pointLightBudget : 6;
+  if (level0GfxProfile && !level0GfxProfile.fluorescentPointLights) {
+    budget = Math.min(budget, 3);
+  }
+  fluorescentLightPool = createPointLightPool(root, {
+    count: Math.min(budget, fluorescentFixtures.length),
+    color: 0xfff6e8,
+    distance: 10,
+    decay: 1.4,
+    y: FLUORO_MOUNT_Y - FLUORO_DEPTH * 0.45,
+    name: "FluorescentPooledLight",
+  });
 }
 
 /** 荧光灯经典闪烁：工频微颤 + 偶发瞬断 + 稀有长暗 */
@@ -617,9 +650,13 @@ function updateFluorescentFlicker(elapsed) {
     }
 
     var mul = Math.max(0.45, Math.min(1.08, buzz * dimMul));
-    if (f.light) f.light.intensity = f.baseIntensity * mul;
+    f.intensity = f.baseIntensity * mul;
     f.glowMat.emissiveIntensity = f.baseEmissive * mul;
     f.bloomMat.opacity = f.baseBloom * mul;
+  }
+
+  if (fluorescentLightPool) {
+    fluorescentLightPool.update(fps.player.x, fps.player.z, fluorescentFixtures);
   }
 }
 
@@ -721,11 +758,10 @@ function tryJump() {
 }
 
 function updatePlayerPhysics(dt) {
-  updateBackroomsPlayerPhysics(fps, dt, {
-    gravity: GRAVITY,
-    bodyHeight: BODY_HEIGHT,
-    ceilingY: WALL_HEIGHT,
-  });
+  _physOpts.gravity = GRAVITY;
+  _physOpts.bodyHeight = BODY_HEIGHT;
+  _physOpts.ceilingY = WALL_HEIGHT;
+  updateBackroomsPlayerPhysics(fps, dt, _physOpts);
 }
 
 function getCameraEyeY() {
@@ -1039,10 +1075,9 @@ function init() {
     window.innerHeight,
     level0GfxProfile
   );
-  renderer.shadowMap.enabled = level0GfxProfile.shadows;
-  if (level0GfxProfile.shadows) {
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  }
+  // L0 只有 hemi/ambient/点光，开 shadowMap 无平行光投射源，恒关
+  renderer.shadowMap.enabled = false;
+  applyBackroomsToneMapping(renderer);
 
   var levelRoot = new THREE.Group();
   levelRoot.name = "BackroomsLevel0";
@@ -1128,16 +1163,15 @@ function startLoop() {
     }
     var moving = isPlayerMoving();
     var sprinting = isSprintHeld() && moving;
-    var zoneEnv = level0Zones ? level0Zones.getSurvivalEnv() : {};
+    var zoneEnv = level0Zones ? level0Zones.getSurvivalEnv() : _emptyZoneEnv;
 
     if (survival && !survival.dead) {
-      survival.update(dt, {
-        blackout: blackout,
-        nearLandmark: isNearCreepyLandmark(),
-        sprinting: sprinting,
-        skipPassiveSanity: zoneEnv.skipPassiveSanity,
-        sanityDrainPerSec: zoneEnv.sanityDrainPerSec,
-      });
+      _survCtx.blackout = blackout;
+      _survCtx.nearLandmark = isNearCreepyLandmark();
+      _survCtx.sprinting = sprinting;
+      _survCtx.skipPassiveSanity = zoneEnv.skipPassiveSanity;
+      _survCtx.sanityDrainPerSec = zoneEnv.sanityDrainPerSec;
+      survival.update(dt, _survCtx);
     }
 
     updatePlayerPhysics(dt);

@@ -1046,20 +1046,33 @@ function sharedChunkPlaneGeo(size) {
   return _sharedChunkPlaneGeo;
 }
 
+function isUnderNamedAncestor(obj, name) {
+  var p = obj;
+  while (p) {
+    if (p.name === name) return true;
+    p = p.parent;
+  }
+  return false;
+}
+
 function disposeChunkMeshResources(group) {
   var chunkPlane = _sharedChunkPlaneGeo;
   var wallGeo = sharedWallGeo();
   var chestGeo = sharedChestGeo();
   var pickGeo = sharedChestPickGeo();
+  var panelGeo = sharedPanelGeo();
   group.traverse(function (child) {
     if (!child.isMesh) return;
+    // clone(true) 与 _chestTemplate 共享 geometry，不可 dispose
+    if (isUnderNamedAncestor(child, "QuantumPirateChest")) return;
     var geo = child.geometry;
     if (
       geo &&
       geo !== chunkPlane &&
       geo !== wallGeo &&
       geo !== chestGeo &&
-      geo !== pickGeo
+      geo !== pickGeo &&
+      geo !== panelGeo
     ) {
       geo.dispose();
     }
@@ -1341,7 +1354,8 @@ function loadChunk(cx, cz, ctx) {
       if (shouldSpawnChest(gCol, gRow)) {
         (function (wx, wz) {
           ensureChestTemplate(ctx.loadGltf, function (template) {
-            if (!ctx.chunks.has(key)) return;
+            // key 可能已 unload 再 reload；必须校验仍是同一 record，避免向旧 group 注入孤立碰撞体
+            if (ctx.chunks.get(key) !== record) return;
             var chestEntry = spawnChestInstance(
               group,
               wx,

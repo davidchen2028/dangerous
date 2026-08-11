@@ -1,6 +1,14 @@
 /**
  * 后室 — 圆形玩家 vs AABB 碰撞（含体内弹出）
+ *
+ * 热路径一律回填模块级复用对象，避免每帧数千次 {x,z} 分配触发 GC。
+ * 调用方必须立即拷贝 .x/.z，不可长期持有返回引用。
  */
+
+/** @type {{ x: number, z: number }} */
+const _pushOut = { x: 0, z: 0 };
+/** @type {{ x: number, z: number }} */
+const _resolveOut = { x: 0, z: 0 };
 
 export function pushOutCircleAABB(px, pz, radius, box) {
   var closestX = Math.max(box.minX, Math.min(px, box.maxX));
@@ -11,16 +19,17 @@ export function pushOutCircleAABB(px, pz, radius, box) {
   var r2 = radius * radius;
 
   if (distSq > r2) {
-    return { x: px, z: pz };
+    _pushOut.x = px;
+    _pushOut.z = pz;
+    return _pushOut;
   }
 
   if (distSq > 1e-8) {
     var dist = Math.sqrt(distSq);
     var push = radius - dist;
-    return {
-      x: px + (dx / dist) * push,
-      z: pz + (dz / dist) * push,
-    };
+    _pushOut.x = px + (dx / dist) * push;
+    _pushOut.z = pz + (dz / dist) * push;
+    return _pushOut;
   }
 
   var penL = px + radius - box.minX;
@@ -34,7 +43,9 @@ export function pushOutCircleAABB(px, pz, radius, box) {
   else if (minPen === penB) pz -= penB;
   else pz += penF;
 
-  return { x: px, z: pz };
+  _pushOut.x = px;
+  _pushOut.z = pz;
+  return _pushOut;
 }
 
 export function circleOverlapsAabb(px, pz, radius, box) {
@@ -56,6 +67,7 @@ export function circleOverlapsAny(px, pz, radius, colliders) {
  * @param {object[]} colliders
  * @param {number} [nearPad=8]
  * @param {number} [maxIter=8]
+ * @returns {{ x: number, z: number }} 模块级复用对象，立即拷贝字段
  */
 export function resolveCircleAgainstColliders(px, pz, radius, colliders, nearPad, maxIter) {
   nearPad = nearPad == null ? 8 : nearPad;
@@ -89,7 +101,9 @@ export function resolveCircleAgainstColliders(px, pz, radius, colliders, nearPad
     if (!moved) break;
   }
 
-  return { x: px, z: pz };
+  _resolveOut.x = px;
+  _resolveOut.z = pz;
+  return _resolveOut;
 }
 
 /** 玩家到 AABB 最近距离（用于交互判定） */

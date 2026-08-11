@@ -24,6 +24,11 @@ import {
 import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
+import {
+  resolveBackroomsGfxProfile,
+  applyBackroomsRendererSize,
+  applyBackroomsToneMapping,
+} from "./backrooms-gfx-profile.js";
 import { pickCrosshairInteract, getCameraAimRay } from "./backrooms-interact-aim.js";
 import {
   BLOCK_SIZE,
@@ -109,6 +114,13 @@ let inBallPit = false;
 const fps = createBackroomsFpsState({
   player: { x: 0, z: 0, radius: 0.34, speed: 4.2 },
 });
+
+/** 每帧复用，避免 update 循环字面量分配 */
+const _survCtx = { sprinting: false };
+const _physOpts = {
+  gravity: DEFAULT_GRAVITY,
+  ceilingY: L283_WALL_H,
+};
 
 function megBaseCenterForExit() {
   var gCol = Math.floor(SPAWN_WORLD.x / BLOCK_SIZE);
@@ -293,8 +305,8 @@ function tryTableAlmond(tableId) {
     showLootToast("这张桌子已经搜过了");
     return;
   }
-  markTableSearched(tableId);
   if (almondAlreadyTaken()) {
+    markTableSearched(tableId);
     showLootToast("空的");
     return;
   }
@@ -303,6 +315,7 @@ function tryTableAlmond(tableId) {
     showLootToast("背包已满");
     return;
   }
+  markTableSearched(tableId);
   markAlmondTaken();
   showLootToast("获得杏仁水 ×1（本层限一次）");
 }
@@ -347,6 +360,16 @@ function exitToLevel57() {
   grantLevelPass("l57", fps.yaw);
   queueEnterLevelNumber(57);
   window.location.href = "backrooms-level57.html";
+}
+
+function exitToLevel8() {
+  if (transitionLock) return;
+  transitionLock = true;
+  saveBackroomsSurvival(survival);
+  grantLevelPass("l8", fps.yaw);
+  queueEnterLevelNumber(8);
+  // 爬满 15 秒立即传送，不再等待 toast/动画延迟
+  window.location.href = "backrooms-level8.html";
 }
 
 function enterPipeMode() {
@@ -471,13 +494,12 @@ function updatePipeCrawl(dt) {
   fps.player.z = world.pipe.startZ + pipeProgress;
   fps.player.x = world.pipe.startX;
 
-  if (forward > 0) {
-    pipeCrawlT += dt;
-  }
+  // 进入管道后持续计时，不依赖前进键或当前爬行位置
+  pipeCrawlT += dt;
 
   if (!l8Announced && pipeCrawlT >= world.pipe.l8Seconds) {
     l8Announced = true;
-    showLootToast("Level 8 尚未制作 · 此出口不可用");
+    exitToLevel8();
   }
 }
 
@@ -523,9 +545,10 @@ function init() {
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);
   camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 90);
-  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  var gfx = resolveBackroomsGfxProfile();
+  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
+  applyBackroomsRendererSize(renderer, window.innerWidth, window.innerHeight, gfx);
+  applyBackroomsToneMapping(renderer);
 
   var root = new THREE.Group();
   scene.add(root);
@@ -581,7 +604,8 @@ function init() {
     var moving = isBackroomsPlayerMoving(fps);
     var sprinting = isBackroomsSprintHeld(fps) && moving && moveMode === "walk";
     if (survival && !survival.dead) {
-      survival.update(dt, { sprinting: sprinting });
+      _survCtx.sprinting = sprinting;
+      survival.update(dt, _survCtx);
     }
 
     if (moveMode === "pipe") {
@@ -590,10 +614,9 @@ function init() {
       fps.grounded = true;
       fps.feetY = 0;
     } else {
-      updateBackroomsPlayerPhysics(fps, dt, {
-        gravity: DEFAULT_GRAVITY,
-        ceilingY: L283_WALL_H,
-      });
+      _physOpts.gravity = DEFAULT_GRAVITY;
+      _physOpts.ceilingY = L283_WALL_H;
+      updateBackroomsPlayerPhysics(fps, dt, _physOpts);
       if ((!survival || !survival.dead) && !isInventoryOpen()) {
         var mul =
           survival && sprinting

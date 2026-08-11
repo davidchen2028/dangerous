@@ -3,7 +3,13 @@
  * URL: ?gfx=low | ?gfx=high · localStorage: backrooms_gfx_tier
  */
 
+import * as THREE from "three";
+
 export const GFX_STORAGE_KEY = "backrooms_gfx_tier";
+
+/** 全关卡统一 ACES，避免切换时 HDR / emissive 表现跳变 */
+export const BACKROOMS_TONE_MAPPING = THREE.ACESFilmicToneMapping;
+export const BACKROOMS_TONE_MAPPING_EXPOSURE = 0.95;
 
 /** @returns {"auto" | "low" | "high"} */
 export function getBackroomsGfxTierOverride() {
@@ -31,7 +37,9 @@ function isLikelySafari() {
  *   antialias: boolean,
  *   pixelRatio: number,
  *   shadows: boolean,
+ *   shadowMapSize: number,
  *   fluorescentPointLights: boolean,
+ *   pointLightBudget: number,
  *   aimPickEveryNFrames: number,
  * }}
  */
@@ -52,8 +60,12 @@ export function resolveBackroomsGfxProfile() {
     tier: low ? "low" : "high",
     antialias: !low,
     pixelRatio: Math.min(dpr, pixelCap),
-    shadows: false,
+    // 阴影预算：low（Retina/Safari）关闭，high 开启。无投影光源的关卡仍应显式关闭。
+    shadows: !low,
+    shadowMapSize: low ? 512 : 2048,
     fluorescentPointLights: !low,
+    // 场景同时存在的点光上限：超过 8 个前向渲染的逐片元开销就压不住了
+    pointLightBudget: low ? 3 : 6,
     aimPickEveryNFrames: low ? 2 : 1,
   };
 }
@@ -63,4 +75,15 @@ export function applyBackroomsRendererSize(renderer, width, height, profile) {
   var p = profile || resolveBackroomsGfxProfile();
   renderer.setPixelRatio(p.pixelRatio);
   renderer.setSize(width, height, false);
+}
+
+/**
+ * 统一 HDR tone mapping（ACES）。假 bloom（Additive MeshBasic）可单独 toneMapped:false。
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {number} [exposure]
+ */
+export function applyBackroomsToneMapping(renderer, exposure) {
+  renderer.toneMapping = BACKROOMS_TONE_MAPPING;
+  renderer.toneMappingExposure =
+    exposure != null ? exposure : BACKROOMS_TONE_MAPPING_EXPOSURE;
 }

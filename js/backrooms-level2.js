@@ -27,6 +27,11 @@ import {
 } from "./backrooms-level2-world.js";
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
 import {
+  resolveBackroomsGfxProfile,
+  applyBackroomsRendererSize,
+  applyBackroomsToneMapping,
+} from "./backrooms-gfx-profile.js";
+import {
   pickCrosshairInteract,
   getCameraAimRay,
 } from "./backrooms-interact-aim.js";
@@ -97,6 +102,14 @@ const BODY_HEIGHT = 1.85;
 
 const AIM_INTERACT_MAX = 4.2;
 const AIM_DOOR_MAX = 3.4;
+
+/** 每帧复用，避免 update 循环字面量分配 */
+const _survCtx = { sprinting: false };
+const _physOpts = {
+  gravity: DEFAULT_GRAVITY,
+  bodyHeight: BODY_HEIGHT,
+  ceilingY: CORRIDOR_HEIGHT,
+};
 
 let renderer = null;
 let camera = null;
@@ -426,9 +439,10 @@ function init() {
   scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);
 
   camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 220);
-  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  var gfx = resolveBackroomsGfxProfile();
+  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
+  applyBackroomsRendererSize(renderer, window.innerWidth, window.innerHeight, gfx);
+  applyBackroomsToneMapping(renderer);
 
   var root = new THREE.Group();
   root.name = "BackroomsLevel2";
@@ -477,14 +491,14 @@ function startLoop() {
     var sprinting = isBackroomsSprintHeld(fps) && moving;
 
     if (survival && !survival.dead) {
-      survival.update(dt, { sprinting: sprinting });
+      _survCtx.sprinting = sprinting;
+      survival.update(dt, _survCtx);
     }
 
-    updateBackroomsPlayerPhysics(fps, dt, {
-      gravity: DEFAULT_GRAVITY,
-      bodyHeight: BODY_HEIGHT,
-      ceilingY: CORRIDOR_HEIGHT,
-    });
+    _physOpts.gravity = DEFAULT_GRAVITY;
+    _physOpts.bodyHeight = BODY_HEIGHT;
+    _physOpts.ceilingY = CORRIDOR_HEIGHT;
+    updateBackroomsPlayerPhysics(fps, dt, _physOpts);
     if ((!survival || !survival.dead) && !isInventoryOpen()) {
       var speedMul =
         survival && sprinting

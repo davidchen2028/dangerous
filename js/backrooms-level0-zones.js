@@ -29,6 +29,8 @@ import {
 
 /** @typedef {"red" | "02" | "03"} Level0SubZoneId */
 
+const _survivalEnv = { skipPassiveSanity: false, sanityDrainPerSec: 0 };
+
 /**
  * @param {object} deps
  * @param {THREE.Scene} deps.scene
@@ -76,6 +78,42 @@ export function createLevel0ZoneManager(deps) {
   var level03State = null;
   /** @type {{ minX: number, maxX: number, minZ: number, maxZ: number } | null} */
   var blueHoleTrigger = null;
+
+  /** L0.2 过滤后的碰撞缓存：仅在墙倒塌 / 重建世界时刷新 */
+  /** @type {object[] | null} */
+  var level02ColliderCache = null;
+  /** @type {object[] | null} */
+  var level02ColliderCacheSrc = null;
+  var level02ColliderCacheGen = -1;
+
+  function invalidateLevel02ColliderCache() {
+    level02ColliderCache = null;
+    level02ColliderCacheSrc = null;
+    level02ColliderCacheGen = -1;
+  }
+
+  function getLevel02FilteredColliders() {
+    var raw = level02State.colliders;
+    var gen = raw._l02Gen | 0;
+    if (
+      level02ColliderCache &&
+      level02ColliderCacheSrc === raw &&
+      level02ColliderCacheGen === gen
+    ) {
+      return level02ColliderCache;
+    }
+    var out = level02ColliderCache || [];
+    out.length = 0;
+    var i;
+    for (i = 0; i < raw.length; i++) {
+      if (raw[i].ghost || raw[i].fallen) continue;
+      out.push(raw[i]);
+    }
+    level02ColliderCache = out;
+    level02ColliderCacheSrc = raw;
+    level02ColliderCacheGen = gen;
+    return out;
+  }
 
   function syncHudTitle() {
     if (!deps.onHudTitleChange) return;
@@ -148,7 +186,9 @@ export function createLevel0ZoneManager(deps) {
 
   function rebuildLevel02World() {
     stopLevel02Hazards();
+    invalidateLevel02ColliderCache();
     if (level02State && level02State.group && deps.scene) {
+      if (level02State.disposeLights) level02State.disposeLights();
       deps.scene.remove(level02State.group);
     }
     level02State = buildLevel02World(deps.scene, {
@@ -362,6 +402,7 @@ export function createLevel0ZoneManager(deps) {
       leaveActiveSubZone({ restorePlayer: false, rebuild: false });
       stopLevel02Hazards();
       if (level02State && level02State.group && deps.scene) {
+        if (level02State.disposeLights) level02State.disposeLights();
         deps.scene.remove(level02State.group);
       }
       if (level03State && level03State.group && deps.scene) {
@@ -371,6 +412,7 @@ export function createLevel0ZoneManager(deps) {
         deps.scene.remove(redRoomState.group);
       }
       if (level02FxRoot && deps.scene) deps.scene.remove(level02FxRoot);
+      invalidateLevel02ColliderCache();
       level02State = null;
       level03State = null;
       redRoomState = null;
@@ -409,14 +451,7 @@ export function createLevel0ZoneManager(deps) {
         return level03State.colliders;
       }
       if (activeId === "02" && level02State && level02State.colliders) {
-        var raw = level02State.colliders;
-        var out = [];
-        var i;
-        for (i = 0; i < raw.length; i++) {
-          if (raw[i].ghost || raw[i].fallen) continue;
-          out.push(raw[i]);
-        }
-        return out;
+        return getLevel02FilteredColliders();
       }
       return deps.wallColliders;
     },
@@ -427,7 +462,11 @@ export function createLevel0ZoneManager(deps) {
     },
 
     updateLevel02Hazards: function updateLevel02Hazards(dt) {
-      if (activeId !== "02" || !level02Hazards) return;
+      if (activeId !== "02") return;
+      if (level02State && level02State.updateLights) {
+        level02State.updateLights(deps.fps.player.x, deps.fps.player.z);
+      }
+      if (!level02Hazards) return;
       var survival = deps.getSurvival();
       try {
         level02Hazards.update(
@@ -476,10 +515,10 @@ export function createLevel0ZoneManager(deps) {
     },
 
     getSurvivalEnv: function getSurvivalEnv() {
-      return {
-        skipPassiveSanity: activeId === "red",
-        sanityDrainPerSec: activeId === "red" ? RED_ROOM_SANITY_DRAIN_PER_SEC : 0,
-      };
+      _survivalEnv.skipPassiveSanity = activeId === "red";
+      _survivalEnv.sanityDrainPerSec =
+        activeId === "red" ? RED_ROOM_SANITY_DRAIN_PER_SEC : 0;
+      return _survivalEnv;
     },
 
     isColdDamageZone: function isColdDamageZone() {

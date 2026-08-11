@@ -23,6 +23,11 @@ import {
   useNightVisionPotionFromBackpack,
 } from "./backrooms-night-vision.js";
 import {
+  resolveBackroomsGfxProfile,
+  applyBackroomsRendererSize,
+  applyBackroomsToneMapping,
+} from "./backrooms-gfx-profile.js";
+import {
   addMegPoints,
   getMegPoints,
   updateMegPointsDisplay,
@@ -124,6 +129,20 @@ const GRAVITY = 32;
 const JUMP_SPEED = 9;
 const EYE_HEIGHT = 1.65;
 const BODY_HEIGHT = 1.85;
+
+/** 每帧复用，避免 update 循环字面量分配 */
+const _survCtx = {
+  blackout: false,
+  nearLandmark: false,
+  sprinting: false,
+  sanityDrainPerSec: 0,
+};
+const _physOpts = {
+  gravity: GRAVITY,
+  bodyHeight: BODY_HEIGHT,
+  ceilingY: WAREHOUSE_HEIGHT,
+};
+const _physStub = { feetY: 0, velY: 0, grounded: true };
 
 let renderer = null;
 let camera = null;
@@ -1503,18 +1522,19 @@ function updatePlayerPhysics(dt) {
     updateCorridorFallToL2(dt);
   }
   if (isCorridorL2SequenceActive()) return;
-  var stub = { feetY: feetY, velY: velY, grounded: grounded };
-  updateBackroomsPlayerPhysics(stub, dt, {
-    gravity: GRAVITY,
-    bodyHeight: BODY_HEIGHT,
-    ceilingY:
-      level1_1Zones && level1_1Zones.isActive()
-        ? level1_1Zones.getCeilingY()
-        : WAREHOUSE_HEIGHT,
-  });
-  feetY = stub.feetY;
-  velY = stub.velY;
-  grounded = stub.grounded;
+  _physStub.feetY = feetY;
+  _physStub.velY = velY;
+  _physStub.grounded = grounded;
+  _physOpts.gravity = GRAVITY;
+  _physOpts.bodyHeight = BODY_HEIGHT;
+  _physOpts.ceilingY =
+    level1_1Zones && level1_1Zones.isActive()
+      ? level1_1Zones.getCeilingY()
+      : WAREHOUSE_HEIGHT;
+  updateBackroomsPlayerPhysics(_physStub, dt, _physOpts);
+  feetY = _physStub.feetY;
+  velY = _physStub.velY;
+  grounded = _physStub.grounded;
 }
 
 function isTouchPrimaryDevice() {
@@ -1738,10 +1758,11 @@ function init() {
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);
   camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 90);
-  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1));
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  var gfx = resolveBackroomsGfxProfile();
+  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
+  applyBackroomsRendererSize(renderer, window.innerWidth, window.innerHeight, gfx);
   renderer.shadowMap.enabled = false;
+  applyBackroomsToneMapping(renderer);
 
   horror = createBackroomsHorrorSystem({
     blackoutChance: 0,
@@ -1873,12 +1894,11 @@ function startLoop() {
         level1_1Zones && level1_1Zones.isActive()
           ? level1_1Zones.getSanityDrainPerSec()
           : 0;
-      survival.update(dt, {
-        blackout: horrorResult.blackout,
-        nearLandmark: false,
-        sprinting: sprinting,
-        sanityDrainPerSec: sanityDrain,
-      });
+      _survCtx.blackout = horrorResult.blackout;
+      _survCtx.nearLandmark = false;
+      _survCtx.sprinting = sprinting;
+      _survCtx.sanityDrainPerSec = sanityDrain;
+      survival.update(dt, _survCtx);
     }
 
     updatePlayerPhysics(dt);

@@ -27,6 +27,7 @@ import {
   buildLevel3World,
   getLevel3SpawnWorld,
   updateLevel3FlickerLights,
+  resolveCircleAgainstLevel3Maze,
   WALL_H,
 } from "./backrooms-level3-world.js";
 import {
@@ -46,6 +47,12 @@ import {
   queueEnterLevelNumber,
 } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import {
+  resolveBackroomsGfxProfile,
+  applyBackroomsRendererSize,
+  applyBackroomsToneMapping,
+  BACKROOMS_TONE_MAPPING_EXPOSURE,
+} from "./backrooms-gfx-profile.js";
 import {
   createBackroomsFpsState,
   moveBackroomsPlayer,
@@ -89,12 +96,22 @@ const JUMP_SPEED = 8;
 const EYE_HEIGHT = 1.65;
 const BODY_HEIGHT = 1.85;
 
+/** 每帧复用，避免 update 循环字面量分配 */
+const _survCtx = { sprinting: false };
+const _physOpts = {
+  gravity: DEFAULT_GRAVITY,
+  bodyHeight: BODY_HEIGHT,
+  ceilingY: WALL_H,
+};
+
 let renderer = null;
 let camera = null;
 let scene = null;
 let survival = null;
 let mazeData = null;
 const wallColliders = [];
+/** 迷宫网格之外的少量墙体（挂壁管道），玩家碰撞时作为 extraColliders */
+let extraColliders = [];
 let flickerLights = [];
 let pipeHazards = [];
 /** @type {ReturnType<createLevel3DeathMoths> | null} */
@@ -174,7 +191,7 @@ function applyLevel3Vision(nv) {
       fillLight.groundColor.setHex(0x3d5263);
       fillLight.intensity = 0.55;
     }
-    renderer.toneMappingExposure = 0.95;
+    renderer.toneMappingExposure = BACKROOMS_TONE_MAPPING_EXPOSURE;
     if (wall) {
       wall.color.setHex(0x9aa4ae);
       wall.emissive.setHex(0x4a5560);
@@ -211,7 +228,7 @@ function applyLevel3Vision(nv) {
       fillLight.groundColor.setHex(0x141418);
       fillLight.intensity = 0.52;
     }
-    renderer.toneMappingExposure = 0.98;
+    renderer.toneMappingExposure = BACKROOMS_TONE_MAPPING_EXPOSURE;
     if (wall) {
       wall.color.setHex(0x3a3a44);
       wall.emissive.setHex(0x181820);
@@ -380,11 +397,10 @@ function init() {
   scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);
 
   camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 100);
-  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.98;
+  var gfx = resolveBackroomsGfxProfile();
+  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
+  applyBackroomsRendererSize(renderer, window.innerWidth, window.innerHeight, gfx);
+  applyBackroomsToneMapping(renderer);
 
   var root = new THREE.Group();
   scene.add(root);
@@ -396,6 +412,7 @@ function init() {
   for (ci = 0; ci < built.colliders.length; ci++) {
     wallColliders.push(built.colliders[ci]);
   }
+  extraColliders = built.extraColliders || [];
   flickerLights = built.flickerLights;
   level3Materials = built.materials;
 
@@ -463,24 +480,33 @@ function init() {
     var moving = isBackroomsPlayerMoving(fps);
     var sprinting = isBackroomsSprintHeld(fps) && moving;
     if (survival && !survival.dead) {
-      survival.update(dt, { sprinting: sprinting && !elevatorRising });
+      _survCtx.sprinting = sprinting && !elevatorRising;
+      survival.update(dt, _survCtx);
     }
     if (elevatorRising) {
       updateElevatorRise(dt);
       fps.velY = 0;
       fps.grounded = false;
     } else {
-      updateBackroomsPlayerPhysics(fps, dt, {
-        gravity: DEFAULT_GRAVITY,
-        bodyHeight: BODY_HEIGHT,
-        ceilingY: WALL_H,
-      });
+      _physOpts.gravity = DEFAULT_GRAVITY;
+      _physOpts.bodyHeight = BODY_HEIGHT;
+      _physOpts.ceilingY = WALL_H;
+      updateBackroomsPlayerPhysics(fps, dt, _physOpts);
       if ((!survival || !survival.dead) && !isInventoryOpen()) {
         var mul =
           survival && sprinting
             ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
             : 1;
         moveBackroomsPlayer(fps, dt, mul, function (nx, nz) {
+          if (mazeData && mazeData.grid) {
+            return resolveCircleAgainstLevel3Maze(
+              nx,
+              nz,
+              fps.player.radius,
+              mazeData.grid,
+              extraColliders
+            );
+          }
           return resolveBackroomsMoveCollisions(nx, nz, fps.player.radius, wallColliders, 14);
         });
       }

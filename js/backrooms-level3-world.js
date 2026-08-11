@@ -149,11 +149,22 @@ function createLevel2StyleFloorTexture() {
   return tex;
 }
 
+/** 热路径复用：调用方须立即拷贝字段，不可长期持有 */
+const _cellWorld = { x: 0, z: 0 };
+const _cellAabb = { kind: "wall", minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
+const _mazeResolveOut = { x: 0, z: 0 };
+
+/** @param {{ x: number, z: number }} [out] 省略则回填模块级 _cellWorld */
+function writeCellWorld(cx, cz, out) {
+  out = out || _cellWorld;
+  out.x = (cx - MAZE_W * 0.5) * CELL;
+  out.z = (cz - MAZE_H * 0.5) * CELL;
+  return out;
+}
+
+/** 建图等需要持久对象时分配新字面量 */
 function cellToWorld(cx, cz) {
-  return {
-    x: (cx - MAZE_W * 0.5) * CELL,
-    z: (cz - MAZE_H * 0.5) * CELL,
-  };
+  return writeCellWorld(cx, cz, { x: 0, z: 0 });
 }
 
 export function getLevel3SpawnWorld(mazeData) {
@@ -161,33 +172,62 @@ export function getLevel3SpawnWorld(mazeData) {
   return cellToWorld(c.x, c.z);
 }
 
-function cellAabb(cx, cz) {
-  var wpos = cellToWorld(cx, cz);
+/**
+ * @param {number} cx
+ * @param {number} cz
+ * @param {{ kind?: string, minX: number, maxX: number, minZ: number, maxZ: number }} [out]
+ */
+function writeCellAabb(cx, cz, out) {
+  out = out || _cellAabb;
+  var hx = (cx - MAZE_W * 0.5) * CELL;
+  var hz = (cz - MAZE_H * 0.5) * CELL;
   var h = CELL * 0.5;
-  return {
-    kind: "wall",
-    minX: wpos.x - h,
-    maxX: wpos.x + h,
-    minZ: wpos.z - h,
-    maxZ: wpos.z + h,
-  };
+  out.kind = "wall";
+  out.minX = hx - h;
+  out.maxX = hx + h;
+  out.minZ = hz - h;
+  out.maxZ = hz + h;
+  return out;
 }
 
-export function resolveCircleAgainstLevel3Maze(px, pz, radius, grid) {
-  var cx0 = Math.floor((px - radius) / CELL + MAZE_W * 0.5);
-  var cx1 = Math.floor((px + radius) / CELL + MAZE_W * 0.5);
-  var cz0 = Math.floor((pz - radius) / CELL + MAZE_H * 0.5);
-  var cz1 = Math.floor((pz + radius) / CELL + MAZE_H * 0.5);
+/** 建图时推入 colliders 数组，必须是独立对象 */
+function cellAabb(cx, cz) {
+  return writeCellAabb(cx, cz, {
+    kind: "wall",
+    minX: 0,
+    maxX: 0,
+    minZ: 0,
+    maxZ: 0,
+  });
+}
+
+/**
+ * 迷宫网格是天然的空间分区：只检测圆心所在的 3×3 邻近格，O(1)。
+ * extraColliders 为少量非网格墙体（如挂壁管道），逐帧全量但数量很小。
+ * @param {number} px
+ * @param {number} pz
+ * @param {number} radius
+ * @param {number[][]} grid
+ * @param {object[]} [extraColliders]
+ * @returns {{ x: number, z: number }} 模块级复用对象，立即拷贝字段
+ */
+export function resolveCircleAgainstLevel3Maze(px, pz, radius, grid, extraColliders) {
   var iter;
   var cx;
   var cz;
+  var ei;
+  var extraLen = extraColliders ? extraColliders.length : 0;
   for (iter = 0; iter < 6; iter++) {
     var moved = false;
+    var cx0 = Math.floor((px - radius) / CELL + MAZE_W * 0.5);
+    var cx1 = Math.floor((px + radius) / CELL + MAZE_W * 0.5);
+    var cz0 = Math.floor((pz - radius) / CELL + MAZE_H * 0.5);
+    var cz1 = Math.floor((pz + radius) / CELL + MAZE_H * 0.5);
     for (cz = cz0; cz <= cz1; cz++) {
       for (cx = cx0; cx <= cx1; cx++) {
         if (cz < 0 || cx < 0 || cz >= MAZE_H || cx >= MAZE_W) continue;
         if (grid[cz][cx] !== 1) continue;
-        var out = pushOutCircleAABB(px, pz, radius, cellAabb(cx, cz));
+        var out = pushOutCircleAABB(px, pz, radius, writeCellAabb(cx, cz));
         if (out.x !== px || out.z !== pz) {
           px = out.x;
           pz = out.z;
@@ -195,9 +235,21 @@ export function resolveCircleAgainstLevel3Maze(px, pz, radius, grid) {
         }
       }
     }
+    for (ei = 0; ei < extraLen; ei++) {
+      var ec = extraColliders[ei];
+      if (ec.ghost) continue;
+      var eo = pushOutCircleAABB(px, pz, radius, ec);
+      if (eo.x !== px || eo.z !== pz) {
+        px = eo.x;
+        pz = eo.z;
+        moved = true;
+      }
+    }
     if (!moved) break;
   }
-  return { x: px, z: pz };
+  _mazeResolveOut.x = px;
+  _mazeResolveOut.z = pz;
+  return _mazeResolveOut;
 }
 
 var PIPE_SPECS = [
@@ -415,6 +467,8 @@ export function buildLevel3World(mazeData) {
   });
 
   var wallColliders = [];
+  // 挂壁管道等非网格墙体单列一组：玩家/实体走迷宫网格查询时把它们作为 extraColliders
+  var extraColliders = [];
   var wallGeo = new THREE.BoxGeometry(CELL, WALL_H, CELL);
   var floorGeo = new THREE.BoxGeometry(CELL, 0.11, CELL);
   var wallCount = 0;
@@ -451,7 +505,7 @@ export function buildLevel3World(mazeData) {
         if (pipeSide && rng() < 0.22) {
           addWallMountedPipes(
             group,
-            wallColliders,
+            extraColliders,
             grid,
             x,
             z,
@@ -494,6 +548,7 @@ export function buildLevel3World(mazeData) {
   return {
     group: group,
     colliders: wallColliders,
+    extraColliders: extraColliders,
     flickerLights: flickerLights,
     pipeHazardSlots: pipeHazardSlots,
     decorPointLights: [],

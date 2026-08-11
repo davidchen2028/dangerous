@@ -34,6 +34,14 @@ const LEVEL_PROFILE = {
   283: { min: 19, max: 23, base: 21, swing: 1.8 },
   /** Level 4 — 明亮办公区（稳定日光灯，无 L0 式电流噪） */
   4: { min: 20, max: 24, base: 22, swing: 1.2 },
+  /** Level 8 — 阴冷潮湿的巨型洞穴 */
+  8: { min: 8, max: 13, base: 10.5, swing: 1.8 },
+  /** Level 9 — 寒冷的夜间郊区 */
+  9: { min: 6, max: 12, base: 9, swing: 2.1 },
+  /** Level 57 — 黄色房间 */
+  57: { min: 19, max: 23, base: 21, swing: 1.2 },
+  /** Level 75 — 金属管道区域 */
+  75: { min: 14, max: 19, base: 16.5, swing: 1.7 },
   /** Level 0.3 — 极寒 */
   "0.3": { min: -22, max: -18, base: -20, swing: 1.1 },
 };

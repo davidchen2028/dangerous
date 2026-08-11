@@ -3,6 +3,8 @@
  */
 import * as THREE from "three";
 import { isRedChannelCell } from "./backrooms-level0-red-room.js";
+import { resolveBackroomsGfxProfile } from "./backrooms-gfx-profile.js";
+import { createPointLightPool } from "./backrooms-point-light-pool.js";
 
 /** 须为 BACKROOMS_MATRIX 中的 1；邻接可走格在西侧 (col 1) */
 export const GRAY_DOOR_CELL = { row: 8, col: 2 };
@@ -370,15 +372,31 @@ export function buildLevel02World(parent, opts) {
   var amb = new THREE.AmbientLight(0xc8c8c4, 0.2);
   group.add(amb);
 
+  // 灯位只作为候选点，实际点光由 lightPool 复用最近的几盏（见 backrooms-point-light-pool.js）
+  /** @type {Array<{ x: number, y: number, z: number, intensity: number }>} */
+  var lightCandidates = [];
   for (row = 0; row < mapRows; row++) {
     for (col = 0; col < mapCols; col++) {
       if (matrix[row][col] !== 0) continue;
       if ((row + col) % 2 !== 0) continue;
-      var pl = new THREE.PointLight(0xe8e8e4, 0.38, 9, 1.5);
-      pl.position.set(cellCenterX(col), wallH - 0.25, cellCenterZ(row));
-      group.add(pl);
+      lightCandidates.push({
+        x: cellCenterX(col),
+        y: wallH - 0.25,
+        z: cellCenterZ(row),
+        intensity: 0.38,
+      });
     }
   }
+
+  var gfx = resolveBackroomsGfxProfile();
+  var lightPool = createPointLightPool(group, {
+    count: Math.min(gfx.pointLightBudget, lightCandidates.length),
+    color: 0xe8e8e4,
+    distance: 9,
+    decay: 1.5,
+    y: wallH - 0.25,
+    name: "Level02PooledLight",
+  });
 
   var hazardGroup = new THREE.Group();
   hazardGroup.name = "Level02Hazards";
@@ -391,6 +409,12 @@ export function buildLevel02World(parent, opts) {
     hazardGroup: hazardGroup,
     colliders: colliders,
     wallAnimTargets: wallAnimTargets,
+    updateLights: function updateLevel02Lights(px, pz) {
+      lightPool.update(px, pz, lightCandidates);
+    },
+    disposeLights: function disposeLevel02Lights() {
+      lightPool.dispose();
+    },
   };
 }
 
@@ -523,6 +547,7 @@ export function createLevel02EnterHazards(scene, ctx) {
     col.maxX = -1e9;
     col.minZ = 1e9;
     col.maxZ = -1e9;
+    if (collidersRef) collidersRef._l02Gen = (collidersRef._l02Gen | 0) + 1;
     if (!mover || wx == null || wz == null) return;
     var pr = mover.radius != null ? mover.radius : 0.32;
     var dx = mover.x - wx;

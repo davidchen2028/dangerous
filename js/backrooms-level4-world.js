@@ -2,6 +2,8 @@
  * Level 4 — 无限延伸的现代办公层（流式区块）
  */
 import * as THREE from "three";
+import { resolveBackroomsGfxProfile } from "./backrooms-gfx-profile.js";
+import { createPointLightPool } from "./backrooms-point-light-pool.js";
 
 export const L4_CHUNK_SIZE = 24;
 export const L4_WALL_H = 2.75;
@@ -59,6 +61,20 @@ function voidWindowTexture() {
 }
 
 var _mats = null;
+var _unitBoxGeo = null;
+var _unitPlaneGeo = null;
+var _instanceDummy = new THREE.Object3D();
+
+function sharedBoxGeometry() {
+  if (!_unitBoxGeo) _unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
+  return _unitBoxGeo;
+}
+
+function sharedPlaneGeometry() {
+  if (!_unitPlaneGeo) _unitPlaneGeo = new THREE.PlaneGeometry(1, 1);
+  return _unitPlaneGeo;
+}
+
 function sharedMaterials() {
   if (_mats) return _mats;
   var voidTex = voidWindowTexture();
@@ -77,7 +93,8 @@ function sharedMaterials() {
     lightPanel: new THREE.MeshStandardMaterial({
       color: 0xfffaf0,
       emissive: 0xfff6dc,
-      emissiveIntensity: 0.78,
+      // 远处区块已无自带点光，靠灯板自发光补偿亮度
+      emissiveIntensity: 1.05,
       roughness: 0.35,
     }),
     windowFrame: new THREE.MeshStandardMaterial({
@@ -126,12 +143,25 @@ function sharedMaterials() {
       roughness: 0.5,
       metalness: 0.25,
     }),
+    coolerLabel: new THREE.MeshStandardMaterial({
+      map: waterCoolerLabelTexture() || undefined,
+      color: _waterCoolerLabelTex ? 0xffffff : 0x2a3038,
+      roughness: 0.85,
+      metalness: 0,
+      transparent: true,
+      opacity: _waterCoolerLabelTex ? 1 : 0.9,
+    }),
+    invisiblePick: new THREE.MeshBasicMaterial({ visible: false }),
+    shaft: new THREE.MeshStandardMaterial({
+      color: 0x889098,
+      emissive: 0x334455,
+      emissiveIntensity: 0.25,
+      metalness: 0.35,
+      roughness: 0.55,
+    }),
   };
   return _mats;
 }
-
-var _deskGeo = null;
-var _chairSeatGeo = null;
 
 var _waterCoolerLabelTex = null;
 function waterCoolerLabelTexture() {
@@ -153,18 +183,108 @@ function waterCoolerLabelTexture() {
   return _waterCoolerLabelTex;
 }
 
-function addOfficeMonitor(group, wx, wy, wz, mats) {
-  var frame = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.42, 0.05), mats.monitor);
-  frame.position.set(wx, wy, wz);
-  tagShadowMesh(frame, true, false);
-  group.add(frame);
-  var screen = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.34, 0.018), mats.monitorScreen);
-  screen.position.set(wx, wy, wz + 0.028);
-  tagShadowMesh(screen, false, false);
-  group.add(screen);
+function queueInstance(batches, key, geometry, material, x, y, z, sx, sy, sz, rotY, cast, receive) {
+  var batch = batches[key];
+  if (!batch) {
+    batch = batches[key] = {
+      geometry: geometry,
+      material: material,
+      transforms: [],
+      castShadow: !!cast,
+      receiveShadow: !!receive,
+    };
+  }
+  batch.transforms.push({
+    x: x,
+    y: y,
+    z: z,
+    sx: sx,
+    sy: sy,
+    sz: sz,
+    rotY: rotY || 0,
+  });
 }
 
-function addChairWithLegs(group, colliders, wx, wz, mats) {
+function queueBox(batches, key, material, x, y, z, sx, sy, sz, rotY, cast, receive) {
+  queueInstance(
+    batches,
+    key,
+    sharedBoxGeometry(),
+    material,
+    x,
+    y,
+    z,
+    sx,
+    sy,
+    sz,
+    rotY,
+    cast,
+    receive
+  );
+}
+
+function queuePlane(batches, key, material, x, y, z, sx, sy, rotY) {
+  queueInstance(
+    batches,
+    key,
+    sharedPlaneGeometry(),
+    material,
+    x,
+    y,
+    z,
+    sx,
+    sy,
+    1,
+    rotY,
+    false,
+    false
+  );
+}
+
+function flushInstanceBatches(group, batches) {
+  var key;
+  for (key in batches) {
+    if (!Object.prototype.hasOwnProperty.call(batches, key)) continue;
+    var batch = batches[key];
+    var count = batch.transforms.length;
+    if (!count) continue;
+    var mesh = new THREE.InstancedMesh(batch.geometry, batch.material, count);
+    mesh.name = "L4Instances_" + key;
+    mesh.castShadow = batch.castShadow;
+    mesh.receiveShadow = batch.receiveShadow;
+    for (var i = 0; i < count; i++) {
+      var tr = batch.transforms[i];
+      _instanceDummy.position.set(tr.x, tr.y, tr.z);
+      _instanceDummy.rotation.set(0, tr.rotY, 0);
+      _instanceDummy.scale.set(tr.sx, tr.sy, tr.sz);
+      _instanceDummy.updateMatrix();
+      mesh.setMatrixAt(i, _instanceDummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+    group.add(mesh);
+  }
+}
+
+function addOfficeMonitor(batches, wx, wy, wz, mats) {
+  queueBox(batches, "monitor", mats.monitor, wx, wy, wz, 0.56, 0.42, 0.05, 0, true, false);
+  queueBox(
+    batches,
+    "monitorScreen",
+    mats.monitorScreen,
+    wx,
+    wy,
+    wz + 0.028,
+    0.46,
+    0.34,
+    0.018,
+    0,
+    false,
+    false
+  );
+}
+
+function addChairWithLegs(batches, colliders, wx, wz, mats) {
   var seatY = 0.48;
   var legH = 0.44;
   var legY = legH * 0.5;
@@ -177,16 +297,23 @@ function addChairWithLegs(group, colliders, wx, wz, mats) {
   ];
   var li;
   for (li = 0; li < offsets.length; li++) {
-    var leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, legH, 0.07), legMat);
-    leg.position.set(wx + offsets[li][0], legY, wz + 0.62 + offsets[li][1]);
-    tagShadowMesh(leg, true, false);
-    group.add(leg);
+    queueBox(
+      batches,
+      "chair",
+      legMat,
+      wx + offsets[li][0],
+      legY,
+      wz + 0.62 + offsets[li][1],
+      0.07,
+      legH,
+      0.07,
+      0,
+      true,
+      false
+    );
   }
 
-  var chair = new THREE.Mesh(_chairSeatGeo || new THREE.BoxGeometry(0.52, 0.08, 0.52), legMat);
-  chair.position.set(wx, seatY, wz + 0.62);
-  tagShadowMesh(chair, true, false);
-  group.add(chair);
+  queueBox(batches, "chair", legMat, wx, seatY, wz + 0.62, 0.52, 0.08, 0.52, 0, true, false);
   pushBoxCollider(
     colliders,
     wx - 0.28,
@@ -194,10 +321,7 @@ function addChairWithLegs(group, colliders, wx, wz, mats) {
     wz + 0.62 - 0.28,
     wz + 0.62 + 0.28
   );
-  var chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.55, 0.06), legMat);
-  chairBack.position.set(wx, 0.78, wz + 0.86);
-  tagShadowMesh(chairBack, true, false);
-  group.add(chairBack);
+  queueBox(batches, "chair", legMat, wx, 0.78, wz + 0.86, 0.48, 0.55, 0.06, 0, true, false);
   pushBoxCollider(
     colliders,
     wx - 0.26,
@@ -223,28 +347,45 @@ function tagShadowMesh(mesh, cast, receive) {
   mesh.receiveShadow = !!receive;
 }
 
-function addChunkCeilingGlow(group, ox, oz) {
-  var glow = new THREE.PointLight(0xfff6dc, 0.38, L4_CHUNK_SIZE * 0.92, 1.4);
-  glow.position.set(ox, L4_WALL_H - 0.42, oz);
-  group.add(glow);
+/** 区块顶灯只登记候选灯位，真正的点光由 ctx.lightPool 复用最近的几盏 */
+function registerChunkCeilingGlow(ctx, ox, oz) {
+  var cand = {
+    x: ox,
+    y: L4_WALL_H - 0.42,
+    z: oz,
+    intensity: 0.38,
+    distance: L4_CHUNK_SIZE * 0.92,
+  };
+  ctx.lightCandidates.push(cand);
+  return cand;
 }
 
-function addFluorescentGrid(group, cx, cz, mats) {
-  var panelGeo = new THREE.BoxGeometry(1.85, 0.06, 0.42);
+function addFluorescentGrid(batches, cx, cz, mats) {
   var ox = cx * L4_CHUNK_SIZE;
   var oz = cz * L4_CHUNK_SIZE;
   var ix;
   var iz;
   for (ix = -1; ix <= 1; ix++) {
     for (iz = -1; iz <= 1; iz++) {
-      var panel = new THREE.Mesh(panelGeo, mats.lightPanel);
-      panel.position.set(ox + ix * 6.5, L4_WALL_H - 0.08, oz + iz * 6.5);
-      group.add(panel);
+      queueBox(
+        batches,
+        "lightPanel",
+        mats.lightPanel,
+        ox + ix * 6.5,
+        L4_WALL_H - 0.08,
+        oz + iz * 6.5,
+        1.85,
+        0.06,
+        0.42,
+        0,
+        false,
+        false
+      );
     }
   }
 }
 
-function addWindowWall(group, colliders, wx, wz, rotY, along, mats) {
+function addWindowWall(batches, colliders, wx, wz, rotY, along, mats) {
   var segLen = 7.2;
   var winH = 1.35;
   var winY = 1.05;
@@ -252,15 +393,32 @@ function addWindowWall(group, colliders, wx, wz, rotY, along, mats) {
   var i;
   for (i = 0; i < 3; i++) {
     var base = (i - 1) * segLen;
-    var frame = new THREE.Mesh(
-      new THREE.BoxGeometry(along ? segLen : frameT, winH + 0.35, along ? frameT : segLen),
-      mats.windowFrame
-    );
-    var voidPane = new THREE.Mesh(new THREE.PlaneGeometry(segLen - 0.35, winH), mats.windowVoid);
     if (along) {
-      frame.position.set(wx + base, winY, wz);
-      voidPane.position.set(wx + base, winY, wz + 0.07);
-      voidPane.rotation.y = rotY;
+      queueBox(
+        batches,
+        "windowFrame",
+        mats.windowFrame,
+        wx + base,
+        winY,
+        wz,
+        segLen,
+        winH + 0.35,
+        frameT,
+        0,
+        false,
+        false
+      );
+      queuePlane(
+        batches,
+        "windowVoid",
+        mats.windowVoid,
+        wx + base,
+        winY,
+        wz + 0.07,
+        segLen - 0.35,
+        winH,
+        rotY
+      );
       pushBoxCollider(
         colliders,
         wx + base - segLen * 0.5,
@@ -269,9 +427,31 @@ function addWindowWall(group, colliders, wx, wz, rotY, along, mats) {
         wz + 0.35
       );
     } else {
-      frame.position.set(wx, winY, wz + base);
-      voidPane.position.set(wx + 0.07, winY, wz + base);
-      voidPane.rotation.y = rotY;
+      queueBox(
+        batches,
+        "windowFrame",
+        mats.windowFrame,
+        wx,
+        winY,
+        wz + base,
+        frameT,
+        winH + 0.35,
+        segLen,
+        0,
+        false,
+        false
+      );
+      queuePlane(
+        batches,
+        "windowVoid",
+        mats.windowVoid,
+        wx + 0.07,
+        winY,
+        wz + base,
+        segLen - 0.35,
+        winH,
+        rotY
+      );
       pushBoxCollider(
         colliders,
         wx - 0.35,
@@ -280,19 +460,24 @@ function addWindowWall(group, colliders, wx, wz, rotY, along, mats) {
         wz + base + segLen * 0.5
       );
     }
-    group.add(frame);
-    group.add(voidPane);
   }
 }
 
-function addDeskStation(group, colliders, wx, wz, mats, rng) {
-  if (!_deskGeo) _deskGeo = new THREE.BoxGeometry(DESK_W, DESK_H, DESK_D);
-  if (!_chairSeatGeo) _chairSeatGeo = new THREE.BoxGeometry(0.52, 0.08, 0.52);
-
-  var desk = new THREE.Mesh(_deskGeo, mats.desk);
-  desk.position.set(wx, DESK_H * 0.5, wz);
-  tagShadowMesh(desk, true, true);
-  group.add(desk);
+function addDeskStation(batches, colliders, wx, wz, mats, rng) {
+  queueBox(
+    batches,
+    "desk",
+    mats.desk,
+    wx,
+    DESK_H * 0.5,
+    wz,
+    DESK_W,
+    DESK_H,
+    DESK_D,
+    0,
+    true,
+    true
+  );
   pushBoxCollider(
     colliders,
     wx - DESK_W * 0.5,
@@ -301,11 +486,11 @@ function addDeskStation(group, colliders, wx, wz, mats, rng) {
     wz + DESK_D * 0.5
   );
 
-  addChairWithLegs(group, colliders, wx, wz, mats);
+  addChairWithLegs(batches, colliders, wx, wz, mats);
 
   var monY = DESK_H + 0.22;
   var monZ = wz - 0.18;
-  addOfficeMonitor(group, wx, monY, monZ, mats);
+  addOfficeMonitor(batches, wx, monY, monZ, mats);
   pushBoxCollider(
     colliders,
     wx - 0.28,
@@ -315,10 +500,20 @@ function addDeskStation(group, colliders, wx, wz, mats, rng) {
   );
 
   if (rng() < 0.35) {
-    var cab = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.05, 0.48), mats.cabinet);
-    cab.position.set(wx + DESK_W * 0.5 + 0.35, 0.525, wz + 0.15);
-    tagShadowMesh(cab, true, true);
-    group.add(cab);
+    queueBox(
+      batches,
+      "cabinet",
+      mats.cabinet,
+      wx + DESK_W * 0.5 + 0.35,
+      0.525,
+      wz + 0.15,
+      0.42,
+      1.05,
+      0.48,
+      0,
+      true,
+      true
+    );
     pushBoxCollider(
       colliders,
       wx + DESK_W * 0.5 + 0.1,
@@ -329,42 +524,38 @@ function addDeskStation(group, colliders, wx, wz, mats, rng) {
   }
 }
 
-function addWaterCooler(group, colliders, interactRoots, wx, wz, mats, coolerId) {
-  var body = new THREE.Mesh(new THREE.BoxGeometry(0.38, 1.15, 0.38), mats.cooler);
-  body.position.set(wx, 0.575, wz);
-  tagShadowMesh(body, true, true);
-  group.add(body);
-
-  var labelTex = waterCoolerLabelTexture();
-  var labelMat = new THREE.MeshStandardMaterial({
-    map: labelTex || undefined,
-    color: labelTex ? 0xffffff : 0x2a3038,
-    roughness: 0.85,
-    metalness: 0,
-    transparent: true,
-    opacity: labelTex ? 1 : 0.9,
-  });
-  var label = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.16), labelMat);
-  label.position.set(wx, 0.72, wz + 0.2);
-  group.add(label);
+function addWaterCooler(group, batches, colliders, interactRoots, wx, wz, mats, coolerId) {
+  queueBox(batches, "cooler", mats.cooler, wx, 0.575, wz, 0.38, 1.15, 0.38, 0, true, true);
+  queuePlane(batches, "coolerLabel", mats.coolerLabel, wx, 0.72, wz + 0.2, 0.32, 0.16, 0);
 
   pushBoxCollider(colliders, wx - 0.22, wx + 0.22, wz - 0.22, wz + 0.22);
 
   var pick = new THREE.Mesh(
-    new THREE.BoxGeometry(0.48, 1.28, 0.48),
-    new THREE.MeshBasicMaterial({ visible: false })
+    sharedBoxGeometry(),
+    mats.invisiblePick
   );
   pick.position.set(wx, 0.64, wz);
+  pick.scale.set(0.48, 1.28, 0.48);
   pick.userData.brInteract = { kind: "l4_water_cooler", id: coolerId };
   group.add(pick);
   interactRoots.push(pick);
 }
 
-function addWhiteboard(group, colliders, wx, wz, mats) {
-  var board = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 0.05), mats.whiteboard);
-  board.position.set(wx, 1.45, wz);
-  tagShadowMesh(board, true, false);
-  group.add(board);
+function addWhiteboard(batches, colliders, wx, wz, mats) {
+  queueBox(
+    batches,
+    "whiteboard",
+    mats.whiteboard,
+    wx,
+    1.45,
+    wz,
+    1.6,
+    0.9,
+    0.05,
+    0,
+    true,
+    false
+  );
   pushBoxCollider(colliders, wx - 0.82, wx + 0.82, wz - 0.12, wz + 0.12);
 }
 
@@ -373,6 +564,7 @@ function loadChunk(cx, cz, ctx) {
   if (ctx.chunks.has(key)) return;
 
   var mats = sharedMaterials();
+  var batches = Object.create(null);
   var group = new THREE.Group();
   group.name = "L4Chunk_" + cx + "_" + cz;
   ctx.chunksRoot.add(group);
@@ -381,33 +573,29 @@ function loadChunk(cx, cz, ctx) {
   var oz = cz * L4_CHUNK_SIZE;
   var half = L4_CHUNK_SIZE * 0.5;
 
-  var floor = new THREE.Mesh(
-    new THREE.BoxGeometry(L4_CHUNK_SIZE, 0.12, L4_CHUNK_SIZE),
-    mats.carpet
-  );
+  var floor = new THREE.Mesh(sharedBoxGeometry(), mats.carpet);
   floor.position.set(ox, 0.06, oz);
+  floor.scale.set(L4_CHUNK_SIZE, 0.12, L4_CHUNK_SIZE);
   tagShadowMesh(floor, false, true);
   group.add(floor);
 
-  var ceiling = new THREE.Mesh(
-    new THREE.BoxGeometry(L4_CHUNK_SIZE, 0.1, L4_CHUNK_SIZE),
-    mats.ceiling
-  );
+  var ceiling = new THREE.Mesh(sharedBoxGeometry(), mats.ceiling);
   ceiling.position.set(ox, L4_WALL_H, oz);
+  ceiling.scale.set(L4_CHUNK_SIZE, 0.1, L4_CHUNK_SIZE);
   tagShadowMesh(ceiling, false, false);
   group.add(ceiling);
 
   var colliders = [];
   var chunkInteractRoots = [];
 
-  addFluorescentGrid(group, cx, cz, mats);
-  addChunkCeilingGlow(group, ox, oz);
+  addFluorescentGrid(batches, cx, cz, mats);
+  var lightCand = registerChunkCeilingGlow(ctx, ox, oz);
 
   if (Math.abs(cx) % 2 === 0) {
-    addWindowWall(group, colliders, ox - half + 0.15, oz, Math.PI * 0.5, false, mats);
+    addWindowWall(batches, colliders, ox - half + 0.15, oz, Math.PI * 0.5, false, mats);
   }
   if (Math.abs(cz) % 2 === 0) {
-    addWindowWall(group, colliders, ox, oz - half + 0.15, 0, true, mats);
+    addWindowWall(batches, colliders, ox, oz - half + 0.15, 0, true, mats);
   }
 
   var rng = mulberry32((cx * 73856093) ^ (cz * 19349663));
@@ -425,32 +613,35 @@ function loadChunk(cx, cz, ctx) {
   var si;
   for (si = 0; si < slots.length; si++) {
     if (rng() < 0.12) continue;
-    addDeskStation(group, colliders, ox + slots[si][0], oz + slots[si][1], mats, rng);
+    addDeskStation(batches, colliders, ox + slots[si][0], oz + slots[si][1], mats, rng);
   }
 
   if (rng() < 0.55) {
     var cwx = ox + half - 1.2;
     var cwz = oz - half + 1.2;
-    addWaterCooler(group, colliders, chunkInteractRoots, cwx, cwz, mats, key + "_cooler");
+    addWaterCooler(
+      group,
+      batches,
+      colliders,
+      chunkInteractRoots,
+      cwx,
+      cwz,
+      mats,
+      key + "_cooler"
+    );
   }
-  if (rng() < 0.45) addWhiteboard(group, colliders, ox - 2, oz + half - 0.2, mats);
+  if (rng() < 0.45) addWhiteboard(batches, colliders, ox - 2, oz + half - 0.2, mats);
 
   if (cx === 0 && cz === 0) {
-    var shaft = new THREE.Mesh(
-      new THREE.BoxGeometry(2.1, 2.6, 2.1),
-      new THREE.MeshStandardMaterial({
-        color: 0x889098,
-        emissive: 0x334455,
-        emissiveIntensity: 0.25,
-        metalness: 0.35,
-        roughness: 0.55,
-      })
-    );
+    var shaft = new THREE.Mesh(sharedBoxGeometry(), mats.shaft);
     shaft.position.set(ox, 1.3, oz - 1);
+    shaft.scale.set(2.1, 2.6, 2.1);
     tagShadowMesh(shaft, true, true);
     group.add(shaft);
     pushBoxCollider(colliders, ox - 1.08, ox + 1.08, oz - 1 - 1.08, oz - 1 + 1.08);
   }
+
+  flushInstanceBatches(group, batches);
 
   var i;
   for (i = 0; i < chunkInteractRoots.length; i++) {
@@ -458,7 +649,19 @@ function loadChunk(cx, cz, ctx) {
   }
   for (i = 0; i < colliders.length; i++) ctx.colliders.push(colliders[i]);
 
-  ctx.chunks.set(key, { group: group, colliders: colliders, interactRoots: chunkInteractRoots });
+  ctx.chunks.set(key, {
+    group: group,
+    colliders: colliders,
+    interactRoots: chunkInteractRoots,
+    lightCandidate: lightCand,
+  });
+}
+
+function disposeChunkMeshResources(group) {
+  // 所有固定 geometry/material 都是模块级共享资源；这里只释放 InstancedMesh 的实例缓冲。
+  group.traverse(function (child) {
+    if (child.isInstancedMesh && child.dispose) child.dispose();
+  });
 }
 
 function unloadChunk(key, ctx) {
@@ -477,7 +680,12 @@ function unloadChunk(key, ctx) {
     var idx = ctx.colliders.indexOf(c);
     if (idx >= 0) ctx.colliders.splice(idx, 1);
   }
+  if (record.lightCandidate) {
+    var li = ctx.lightCandidates.indexOf(record.lightCandidate);
+    if (li >= 0) ctx.lightCandidates.splice(li, 1);
+  }
   if (record.group.parent) record.group.parent.remove(record.group);
+  disposeChunkMeshResources(record.group);
   ctx.chunks.delete(key);
 }
 
@@ -504,7 +712,7 @@ function updateStreaming(px, pz, ctx) {
   for (var i = 0; i < toRemove.length; i++) unloadChunk(toRemove[i], ctx);
 }
 
-export function buildLevel4World(root) {
+export function buildLevel4World(root, gfxProfile) {
   var chunksRoot = new THREE.Group();
   chunksRoot.name = "Level4OfficeChunks";
   root.add(chunksRoot);
@@ -517,6 +725,7 @@ export function buildLevel4World(root) {
     chunks: chunks,
     colliders: colliders,
     interactRoots: interactRoots,
+    lightCandidates: [],
   };
 
   var ambient = new THREE.AmbientLight(0xf2f4f8, 0.58);
@@ -524,19 +733,24 @@ export function buildLevel4World(root) {
   var hemi = new THREE.HemisphereLight(0xffffff, 0x9098a0, 0.36);
   root.add(hemi);
 
+  var gfx = gfxProfile || resolveBackroomsGfxProfile();
+
   var sunLight = new THREE.DirectionalLight(0xfff2e0, 0.52);
   sunLight.position.set(L4_SPAWN_X + 8, 16, L4_SPAWN_Z + 6);
-  sunLight.castShadow = true;
-  sunLight.shadow.mapSize.set(1024, 1024);
+  sunLight.castShadow = gfx.shadows;
+  // high=2048 / low=512；正交范围 ±16，光到地面约 19m，far 收至 20
+  var mapSize = gfx.shadowMapSize || 1024;
+  sunLight.shadow.mapSize.set(mapSize, mapSize);
   sunLight.shadow.bias = -0.00035;
   sunLight.shadow.normalBias = 0.02;
   sunLight.shadow.camera.near = 0.5;
-  sunLight.shadow.camera.far = 42;
+  sunLight.shadow.camera.far = 20;
   var shCam = sunLight.shadow.camera;
   shCam.left = -16;
   shCam.right = 16;
   shCam.top = 16;
   shCam.bottom = -16;
+  shCam.updateProjectionMatrix();
   root.add(sunLight);
   root.add(sunLight.target);
 
@@ -544,6 +758,16 @@ export function buildLevel4World(root) {
   var followFill = new THREE.PointLight(0xc8d0e0, 0.2, 7.5, 1.85);
   root.add(followKey);
   root.add(followFill);
+
+  // 两盏跟随灯已占掉预算，剩下的额度给区块顶灯池
+  var ceilingPool = createPointLightPool(root, {
+    count: Math.max(1, gfx.pointLightBudget - 2),
+    color: 0xfff6dc,
+    distance: L4_CHUNK_SIZE * 0.92,
+    decay: 1.4,
+    y: L4_WALL_H - 0.42,
+    name: "Level4CeilingPooledLight",
+  });
 
   updateStreaming(L4_SPAWN_X, L4_SPAWN_Z, ctx);
 
@@ -553,6 +777,7 @@ export function buildLevel4World(root) {
     sunLight.target.updateMatrixWorld();
     followKey.position.set(px, 2.15, pz);
     followFill.position.set(px + 0.35, 2.75, pz + 0.45);
+    ceilingPool.update(px, pz, ctx.lightCandidates);
   }
   syncLighting(L4_SPAWN_X, L4_SPAWN_Z);
 
@@ -568,6 +793,7 @@ export function buildLevel4World(root) {
       });
       var i;
       for (i = 0; i < keys.length; i++) unloadChunk(keys[i], ctx);
+      ceilingPool.dispose();
       if (chunksRoot.parent) chunksRoot.parent.remove(chunksRoot);
     },
     colliders: colliders,

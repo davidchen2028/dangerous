@@ -24,6 +24,11 @@ import {
 import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
+import {
+  resolveBackroomsGfxProfile,
+  applyBackroomsRendererSize,
+  applyBackroomsToneMapping,
+} from "./backrooms-gfx-profile.js";
 import { pickCrosshairInteract, getCameraAimRay } from "./backrooms-interact-aim.js";
 import { buildLevel57World, L57_WALL_H } from "./backrooms-level57-world.js";
 import {
@@ -83,6 +88,13 @@ let painterDialogueOpen = false;
 const fps = createBackroomsFpsState({
   player: { x: 0, z: 0, radius: 0.34, speed: 4.1 },
 });
+
+/** 每帧复用，避免 update 循环字面量分配 */
+const _survCtx = { sprinting: false };
+const _physOpts = {
+  gravity: DEFAULT_GRAVITY,
+  ceilingY: L57_WALL_H,
+};
 
 function showError(msg) {
   if (!errorEl) return;
@@ -216,6 +228,7 @@ function resolveInteract() {
 function interactLabel(data) {
   if (!data) return "";
   if (data.kind === "l57_painting") return "黄色房间画作 · 按 <kbd>Q</kbd> 切出";
+  if (data.kind === "l57_cave_painting") return "洞穴画作 · 按 <kbd>Q</kbd> 进入 Level 8";
   if (data.kind === "l57_painter") return "画家 · 按 <kbd>Q</kbd> 对话";
   return "";
 }
@@ -262,6 +275,16 @@ function exitToLevel1() {
   window.location.href = "backrooms-level1.html";
 }
 
+function exitToLevel8() {
+  if (transitionLock) return;
+  transitionLock = true;
+  showLootToast("穿过洞穴画作…");
+  saveBackroomsSurvival(survival);
+  grantLevelPass("l8", fps.yaw);
+  queueEnterLevelNumber(8);
+  window.location.href = "backrooms-level8.html";
+}
+
 function tryQAction() {
   if (isInventoryOpen() || !survival || survival.dead || painterDialogueOpen) return;
 
@@ -272,6 +295,10 @@ function tryQAction() {
   if (k === "l57_painting") {
     showLootToast("穿过画作…");
     window.setTimeout(exitToLevel0, 450);
+    return;
+  }
+  if (k === "l57_cave_painting") {
+    window.setTimeout(exitToLevel8, 450);
     return;
   }
   if (k === "l57_painter") {
@@ -350,9 +377,10 @@ function init() {
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);
   camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 60);
-  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  var gfx = resolveBackroomsGfxProfile();
+  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
+  applyBackroomsRendererSize(renderer, window.innerWidth, window.innerHeight, gfx);
+  applyBackroomsToneMapping(renderer);
 
   var root = new THREE.Group();
   scene.add(root);
@@ -408,13 +436,13 @@ function init() {
     var moving = isBackroomsPlayerMoving(fps);
     var sprinting = isBackroomsSprintHeld(fps) && moving;
     if (survival && !survival.dead) {
-      survival.update(dt, { sprinting: sprinting });
+      _survCtx.sprinting = sprinting;
+      survival.update(dt, _survCtx);
     }
 
-    updateBackroomsPlayerPhysics(fps, dt, {
-      gravity: DEFAULT_GRAVITY,
-      ceilingY: L57_WALL_H,
-    });
+    _physOpts.gravity = DEFAULT_GRAVITY;
+    _physOpts.ceilingY = L57_WALL_H;
+    updateBackroomsPlayerPhysics(fps, dt, _physOpts);
     if ((!survival || !survival.dead) && !isInventoryOpen() && !painterDialogueOpen) {
       var mul =
         survival && sprinting

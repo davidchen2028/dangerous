@@ -3,7 +3,7 @@
  */
 import * as THREE from "three";
 import { buildClumpFigure } from "./backrooms-clump.js";
-import { CORRIDOR_LENGTH } from "./backrooms-level2-world.js";
+import { CORRIDOR_LENGTH, CORRIDOR_WIDTH } from "./backrooms-level2-world.js";
 import {
   getLevel2SharedCorridorSpec,
   insetCorridorPosition,
@@ -313,12 +313,13 @@ export function createLevel1_1_4Clumps(parent, wallColliders) {
   );
 }
 
-/** L2：与死亡飞蛾同走廊，侧向偏移 2.4m */
+/** L2：与死亡飞蛾同走廊，侧向偏移保持在走廊半宽内，避免生成在墙外 */
 export function createLevel2Clump(parent, wallColliders) {
   var halfLen = CORRIDOR_LENGTH * 0.5;
   var spec = getLevel2SharedCorridorSpec(halfLen);
   var mothPos = insetCorridorPosition(spec, 14);
-  var beside = offsetBesideCorridor(mothPos, 2.4);
+  var lateral = Math.max(0.35, CORRIDOR_WIDTH * 0.5 - CLUMP_RADIUS - 0.08);
+  var beside = offsetBesideCorridor(mothPos, lateral);
   return createClumpSystem(
     parent,
     [
