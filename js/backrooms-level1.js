@@ -64,6 +64,7 @@ import {
   flashMegSaving,
   updateMegBaseAutoSave,
   consumeMegRespawnRedirectFlag,
+  consumeL283MegExitFlag,
   applyMegDeathState,
   MEG_RESPAWN_FLAG,
 } from "./backrooms-meg-checkpoint.js";
@@ -1356,8 +1357,35 @@ function tryLootChest() {
   showLootToast("搜索宝箱 · 杏仁水 ×" + added);
 }
 
+function getMovementColliders() {
+  if (level1_1Zones && level1_1Zones.isActive()) {
+    return wallColliders;
+  }
+  if (level1World && level1World.colliders && level1World.colliders.length) {
+    return level1World.colliders;
+  }
+  return wallColliders;
+}
+
+function movementNearPad() {
+  if (
+    level1World &&
+    level1World.isInsideMegBaseInterior &&
+    level1World.isInsideMegBaseInterior(player.x, player.z)
+  ) {
+    return 14;
+  }
+  return 10;
+}
+
 function resolvePlayerCollisions(px, pz) {
-  return resolveBackroomsMoveCollisions(px, pz, player.radius, wallColliders);
+  return resolveBackroomsMoveCollisions(
+    px,
+    pz,
+    player.radius,
+    getMovementColliders(),
+    movementNearPad()
+  );
 }
 
 function depenetratePlayer(maxIter) {
@@ -1365,7 +1393,7 @@ function depenetratePlayer(maxIter) {
     player.x,
     player.z,
     player.radius,
-    wallColliders,
+    getMovementColliders(),
     64,
     maxIter || 12
   );
@@ -1729,7 +1757,7 @@ function init() {
   level1World = buildBackroomsLevel1World(root, {
     horror: horror,
     onWallCollider: function (c) {
-      wallColliders.push(c);
+      if (wallColliders.indexOf(c) < 0) wallColliders.push(c);
     },
     onWallColliderRemove: function (c) {
       var idx = wallColliders.indexOf(c);
@@ -1803,7 +1831,10 @@ function init() {
   nextFlickerAt = performance.now() + 8000;
 
   initSurvivalHud();
-  if (consumeMegRespawnRedirectFlag()) {
+  if (consumeL283MegExitFlag()) {
+    if (level1World && level1World.ensureMegBase) level1World.ensureMegBase();
+    respawnAtMegBase();
+  } else if (consumeMegRespawnRedirectFlag()) {
     applyMegDeathState(survival);
     if (level1World && level1World.ensureMegBase) level1World.ensureMegBase();
     respawnAtMegBase();

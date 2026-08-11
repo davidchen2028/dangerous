@@ -34,6 +34,7 @@ import {
   updateLevel3PipeHazards,
 } from "./backrooms-level3-hazards.js";
 import { createLevel3DeathMoths } from "./backrooms-death-moth.js";
+import { createLevel3Clumps } from "./backrooms-clump-ai.js";
 import { bindLevel3HumOnGesture, startLevel3Hum, stopLevel3Hum } from "./backrooms-level3-audio.js";
 import {
   buildLevel3ElevatorShaft,
@@ -98,6 +99,8 @@ let flickerLights = [];
 let pipeHazards = [];
 /** @type {ReturnType<createLevel3DeathMoths> | null} */
 let level3DeathMoths = null;
+/** @type {ReturnType<createLevel3Clumps> | null} */
+let level3Clumps = null;
 let hazardVfxGroup = null;
 let lootToastUntil = 0;
 let ambientLight = null;
@@ -401,6 +404,7 @@ function init() {
   root.add(hazardVfxGroup);
   pipeHazards = createLevel3PipeHazards(built.pipeHazardSlots, hazardVfxGroup);
   level3DeathMoths = createLevel3DeathMoths(root, mazeData);
+  level3Clumps = createLevel3Clumps(root, mazeData);
 
   level3Elevator = buildLevel3ElevatorShaft(root);
 
@@ -495,6 +499,11 @@ function init() {
         pipeHazards: pipeHazards,
         mazeGrid: mazeData ? mazeData.grid : null,
         now: now,
+      });
+    }
+    if (level3Clumps && survival && !survival.dead) {
+      level3Clumps.update(dt, fps.player.x, fps.player.z, survival, showLootToast, {
+        mazeGrid: mazeData ? mazeData.grid : null,
       });
     }
     flickerFrame += 1;

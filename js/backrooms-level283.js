@@ -1,8 +1,13 @@
 /**
- * Backrooms Level 283 — 彩色走廊（由 L2 彩色门进入）
+ * Backrooms Level 283 — 派对房 · 休息区 · 管道 · 海洋球池
  */
 import * as THREE from "three";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
+import {
+  loadBackroomsSurvival,
+  registerBackroomsSurvivalPersist,
+  saveBackroomsSurvival,
+} from "./backrooms-survival-persist.js";
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
 import { toggleBackpack, isInventoryOpen, setInventoryOpenHandler } from "./backrooms-inventory.js";
 import { updateMegPointsDisplay } from "./backrooms-meg-points.js";
@@ -16,8 +21,26 @@ import {
   formatNightVisionRemaining,
   useNightVisionPotionFromBackpack,
 } from "./backrooms-night-vision.js";
-import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
-import { enforceLevelEntry } from "./backrooms-level-pass.js";
+import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
+import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import { raycastWallBlockDistance } from "./backrooms-collide.js";
+import { pickCrosshairInteract, getCameraAimRay } from "./backrooms-interact-aim.js";
+import {
+  BLOCK_SIZE,
+  CHUNK_CELLS,
+  MEG_BASE_CHUNK_OFFSET,
+  SPAWN_WORLD,
+} from "./backrooms-level1-world.js";
+import {
+  saveMegBaseCheckpoint,
+  defaultMegBaseSpawn,
+  setL283MegExitFlag,
+} from "./backrooms-meg-checkpoint.js";
+import {
+  buildLevel283World,
+  pointInZone,
+  L283_WALL_H,
+} from "./backrooms-level283-world.js";
 import {
   createBackroomsFpsState,
   moveBackroomsPlayer,
@@ -29,24 +52,30 @@ import {
   bindBackroomsFpsControls,
   bindBackroomsWindowResize,
   applyBackroomsCamera,
+  showBackroomsLootToast,
   DEFAULT_LOOK_SENS,
-  DEFAULT_EYE_HEIGHT,
   DEFAULT_GRAVITY,
 } from "./backrooms-fps-controller.js";
 
-const CORRIDOR_LEN = 36;
-const CORRIDOR_W = 3.2;
-const WALL_H = 3.2;
-const FOG_COLOR = 0x4a68a8;
-const FOG_NEAR = 6;
-const FOG_FAR = 48;
+const ALMOND_KEY = "backrooms_l283_almond_v1";
+const FOG_COLOR = 0xffeed8;
+const FOG_NEAR = 4;
+const FOG_FAR = 42;
 const JUMP_SPEED = 8;
 const EYE_HEIGHT = 1.65;
+const PIPE_EYE = 0.42;
+const AIM_MAX = 4.2;
+const BALL_SINK_RATE = 0.55;
+const BALL_SINK_TRIGGER = 1.35;
+const BALL_L4_CHANCE = 0.15;
 
 const canvas = document.getElementById("backroomsCanvas");
 const inputEl = document.getElementById("backroomsInput");
 const errorEl = document.getElementById("backroomsError");
 const hintEl = document.getElementById("backroomsHint");
+const interactHintEl = document.getElementById("backroomsInteractHint");
+const lootToastEl = document.getElementById("backroomsLootToast");
+const crosshairEl = document.getElementById("backroomsCrosshair");
 const megPointsEl = document.getElementById("backroomsMegPoints");
 const tempRootEl = document.getElementById("backroomsTemp");
 const tempFillEl = document.getElementById("backroomsTempFill");
@@ -55,37 +84,68 @@ const tempValueEl = document.getElementById("backroomsTempValue");
 let renderer = null;
 let camera = null;
 let scene = null;
+/** @type {ReturnType<buildLevel283World> | null} */
+let world = null;
 const wallColliders = [];
 let survival = null;
+let lootToastUntil = 0;
+let transitionLock = false;
+/** @type {THREE.Object3D[]} */
+let interactRoots = [];
+/** @type {{ data: object, distance: number } | null} */
+let currentAimPick = null;
+
+/** @type {"walk" | "pipe"} */
+let moveMode = "walk";
+let pipeCrawlT = 0;
+let pipeProgress = 0;
+let l8Announced = false;
+
+let ballSinkDepth = 0;
+let ballResolved = false;
+let inBallPit = false;
 
 const fps = createBackroomsFpsState({
-  player: { x: 0, z: CORRIDOR_LEN * 0.5 - 2, radius: 0.34, speed: 4.2 },
+  player: { x: 0, z: 0, radius: 0.34, speed: 4.2 },
 });
 
-function rainbowCanvas() {
-  var w = 128;
-  var h = 128;
-  var c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
-  var ctx = c.getContext("2d");
-  if (!ctx) return null;
-  var i;
-  for (i = 0; i < 8; i++) {
-    ctx.fillStyle = ["#ff5588", "#ffaa33", "#ffee55", "#55dd88", "#55bbff", "#8855ff", "#ff55cc", "#88ffff"][i];
-    ctx.fillRect(0, (h / 8) * i, w, h / 8 + 1);
+function megBaseCenterForExit() {
+  var gCol = Math.floor(SPAWN_WORLD.x / BLOCK_SIZE);
+  var gRow = Math.floor(SPAWN_WORLD.z / BLOCK_SIZE);
+  var cx = Math.floor(gCol / CHUNK_CELLS) + MEG_BASE_CHUNK_OFFSET.cx;
+  var cz = Math.floor(gRow / CHUNK_CELLS) + MEG_BASE_CHUNK_OFFSET.cz;
+  return {
+    x: (cx * CHUNK_CELLS + CHUNK_CELLS * 0.5) * BLOCK_SIZE,
+    z: (cz * CHUNK_CELLS + CHUNK_CELLS * 0.5) * BLOCK_SIZE,
+  };
+}
+
+function almondAlreadyTaken() {
+  try {
+    return sessionStorage.getItem(ALMOND_KEY) === "1";
+  } catch (err) {
+    return false;
   }
-  var tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(4, 8);
-  return tex;
+}
+
+function markAlmondTaken() {
+  try {
+    sessionStorage.setItem(ALMOND_KEY, "1");
+  } catch (err) {
+    /* ignore */
+  }
 }
 
 function showError(msg) {
   if (!errorEl) return;
   errorEl.hidden = false;
   errorEl.innerHTML = "<p><strong>Level 283 无法启动</strong></p><p>" + msg + "</p>";
+}
+
+function showLootToast(msg) {
+  showBackroomsLootToast(msg, { durationMs: 2600 });
+  lootToastUntil = performance.now() + 2600;
+  if (lootToastEl) lootToastEl.hidden = false;
 }
 
 function enforceEntryOrRedirect() {
@@ -105,52 +165,276 @@ function enforceEntryOrRedirect() {
   return true;
 }
 
-function buildCorridor(root) {
-  var len = CORRIDOR_LEN;
-  var halfW = CORRIDOR_W * 0.5;
-  var midZ = 0;
-  var group = new THREE.Group();
-  var map = rainbowCanvas();
-  var wallMat = new THREE.MeshStandardMaterial({
-    map: map || undefined,
-    color: 0xffffff,
-    emissive: 0x334466,
-    emissiveIntensity: 0.25,
-    roughness: 0.75,
-  });
-  var floorMat = new THREE.MeshStandardMaterial({
-    color: 0x3a5a88,
-    emissive: 0x223355,
-    emissiveIntensity: 0.35,
-    roughness: 0.85,
-  });
-
-  group.add(new THREE.Mesh(new THREE.BoxGeometry(CORRIDOR_W, 0.12, len), floorMat));
-  group.children[0].position.set(0, 0.06, midZ);
-  group.add(new THREE.Mesh(new THREE.BoxGeometry(CORRIDOR_W, 0.1, len), wallMat));
-  group.children[1].position.set(0, WALL_H, midZ);
-
-  function side(x, c) {
-    var m = new THREE.Mesh(new THREE.BoxGeometry(0.12, WALL_H, len), wallMat);
-    m.position.set(x, WALL_H * 0.5, midZ);
-    group.add(m);
-    wallColliders.push(c);
-  }
-  side(-halfW, { kind: "wall", minX: -halfW - 0.12, maxX: -halfW, minZ: -len * 0.5, maxZ: len * 0.5 });
-  side(halfW, { kind: "wall", minX: halfW, maxX: halfW + 0.12, minZ: -len * 0.5, maxZ: len * 0.5 });
-
-  root.add(group);
-  root.add(new THREE.AmbientLight(0xaaccff, 0.85));
-  var pl = new THREE.PointLight(0xffeedd, 1.2, 14, 1.3);
-  pl.position.set(0, 2, 0);
-  root.add(pl);
-}
-
 function syncLookUi() {
   if (!hintEl) return;
   var nv = isNightVisionActive() ? " · 夜视 <strong>" + formatNightVisionRemaining() + "</strong>" : "";
+  if (moveMode === "pipe") {
+    hintEl.innerHTML =
+      "管道爬行 · <kbd>W</kbd>/<kbd>S</kbd> 前进后退 · 退回入口按 <kbd>Q</kbd> 木门 · 爬满 15 秒…" + nv;
+    return;
+  }
   hintEl.innerHTML =
-    "Level 283 · <kbd>WASD</kbd> 移动 · <kbd>B</kbd> 背包" + nv;
+    "Level 283 · <kbd>WASD</kbd> 移动 · <kbd>Q</kbd> 交互 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包" +
+    nv;
+}
+
+function updateLootToast(now) {
+  if (!lootToastEl || lootToastEl.hidden) return;
+  if (now >= lootToastUntil) lootToastEl.hidden = true;
+}
+
+function resolveL283Interact() {
+  if (currentAimPick && currentAimPick.distance <= AIM_MAX) {
+    return currentAimPick.data;
+  }
+  return null;
+}
+
+function refreshAimPick() {
+  if (!camera || moveMode === "pipe") {
+    currentAimPick = null;
+    return;
+  }
+  var aim = getCameraAimRay(camera, AIM_MAX);
+  var block = raycastWallBlockDistance(
+    aim.origin,
+    aim.direction,
+    AIM_MAX,
+    wallColliders,
+    0,
+    L283_WALL_H
+  );
+  currentAimPick = pickCrosshairInteract(camera, interactRoots, AIM_MAX, block);
+}
+
+function interactLabel(data) {
+  if (!data) return "";
+  if (data.kind === "l283_table") {
+    return almondAlreadyTaken() ? "桌子（已搜过）" : "桌子 · 按 <kbd>Q</kbd> 获得杏仁水";
+  }
+  if (data.kind === "l283_painting") return "小丑画作 · 按 <kbd>Q</kbd> 调查";
+  if (data.kind === "l283_floor_exit") return "休息区地板 · 按 <kbd>Q</kbd> 切出";
+  if (data.kind === "l283_pipe_enter") return "管道 · 按 <kbd>Q</kbd> 爬入";
+  if (data.kind === "l283_pipe_door") return "木门 · 按 <kbd>Q</kbd> 前往 Level 0";
+  return "";
+}
+
+function updateInteractHint() {
+  if (!interactHintEl) return;
+  if (isInventoryOpen() || !survival || survival.dead) {
+    interactHintEl.hidden = true;
+    return;
+  }
+  if (moveMode === "pipe" && world) {
+    if (pipeProgress <= 2) {
+      interactHintEl.innerHTML = "管道口木门 · 按 <kbd>Q</kbd> 前往 Level 0";
+      interactHintEl.hidden = false;
+      return;
+    }
+    interactHintEl.hidden = true;
+    return;
+  }
+  var data = resolveL283Interact();
+  if (!data) {
+    interactHintEl.hidden = true;
+    return;
+  }
+  var label = interactLabel(data);
+  if (!label) {
+    interactHintEl.hidden = true;
+    return;
+  }
+  interactHintEl.innerHTML = label;
+  interactHintEl.hidden = false;
+}
+
+function updateCrosshair() {
+  if (!crosshairEl) return;
+  var hide = isInventoryOpen() || !survival || survival.dead;
+  crosshairEl.classList.toggle("backrooms-crosshair--hidden", hide);
+  crosshairEl.classList.toggle(
+    "backrooms-crosshair--interact",
+    !hide &&
+      (!!resolveL283Interact() || (moveMode === "pipe" && pipeProgress <= 2))
+  );
+}
+
+function tryTableAlmond() {
+  if (almondAlreadyTaken()) {
+    showLootToast("这张桌子已经搜过了");
+    return;
+  }
+  if (!survival) return;
+  if (!survival.addItem({ id: "almond_water", name: "杏仁水" })) {
+    showLootToast("背包已满");
+    return;
+  }
+  markAlmondTaken();
+  showLootToast("获得杏仁水 ×1（本层限一次）");
+}
+
+function exitToLevel0() {
+  if (transitionLock) return;
+  transitionLock = true;
+  saveBackroomsSurvival(survival);
+  grantLevelPass("clip", fps.yaw);
+  queueEnterLevelNumber(0);
+  window.location.href = "backrooms-level0.html";
+}
+
+function exitToMegBase() {
+  if (transitionLock) return;
+  transitionLock = true;
+  showLootToast("切出休息区 · 前往 M.E.G 基地…");
+  saveBackroomsSurvival(survival);
+  var center = megBaseCenterForExit();
+  var sp = defaultMegBaseSpawn(center);
+  saveMegBaseCheckpoint(sp);
+  grantLevelPass("clip", sp.yaw);
+  setL283MegExitFlag();
+  queueEnterLevelNumber(1);
+  window.location.href = "backrooms-level1.html";
+}
+
+function exitToLevel4() {
+  if (transitionLock) return;
+  transitionLock = true;
+  saveBackroomsSurvival(survival);
+  grantLevelPass("l4", fps.yaw);
+  queueEnterLevelNumber(4);
+  window.location.href = "backrooms-level4.html";
+}
+
+function enterPipeMode() {
+  if (!world || moveMode === "pipe") return;
+  moveMode = "pipe";
+  pipeCrawlT = 0;
+  pipeProgress = 0;
+  l8Announced = false;
+  fps.player.x = world.pipe.startX;
+  fps.player.z = world.pipe.startZ;
+  fps.feetY = 0;
+  fps.velY = 0;
+  fps.grounded = true;
+  if (world.pipeGroup) world.pipeGroup.visible = true;
+  syncLookUi();
+  showLootToast("爬进管道 · 退回入口可开木门 · 持续爬行 15 秒…");
+}
+
+function leavePipeMode() {
+  moveMode = "walk";
+  pipeCrawlT = 0;
+  if (world && world.pipeGroup) world.pipeGroup.visible = false;
+  syncLookUi();
+}
+
+function tryWoodDoor() {
+  if (!world) return;
+  showLootToast("穿过木门…");
+  if (moveMode === "pipe") leavePipeMode();
+  window.setTimeout(exitToLevel0, 400);
+}
+
+function tryPipeDoor() {
+  if (!world || moveMode !== "pipe") return;
+  if (pipeProgress > 2) return;
+  tryWoodDoor();
+}
+
+function tryQAction() {
+  if (isInventoryOpen() || !survival || survival.dead) return;
+
+  if (moveMode === "pipe") {
+    tryPipeDoor();
+    return;
+  }
+
+  var data = resolveL283Interact();
+  if (!data) return;
+  var k = data.kind;
+
+  if (k === "l283_table") {
+    tryTableAlmond();
+    return;
+  }
+  if (k === "l283_painting") {
+    showLootToast("Level 57 尚未制作 · 此出口不可用");
+    return;
+  }
+  if (k === "l283_floor_exit") {
+    exitToMegBase();
+    return;
+  }
+  if (k === "l283_pipe_enter") {
+    enterPipeMode();
+    return;
+  }
+  if (k === "l283_pipe_door") {
+    tryWoodDoor();
+  }
+}
+
+function updateBallPit(dt) {
+  if (!world || !survival || survival.dead || moveMode === "pipe") return;
+
+  var px = fps.player.x;
+  var pz = fps.player.z;
+  inBallPit = pointInZone(world.zones.ballPit, px, pz);
+
+  if (!inBallPit) {
+    if (ballSinkDepth > 0) {
+      ballSinkDepth = Math.max(0, ballSinkDepth - dt * 1.2);
+      fps.feetY = -ballSinkDepth * 0.35;
+    }
+    if (ballSinkDepth <= 0.01) {
+      ballSinkDepth = 0;
+      ballResolved = false;
+      fps.feetY = 0;
+    }
+    return;
+  }
+
+  var sinking = inBallPit && !ballResolved;
+  if (sinking) {
+    var rate = fps.grounded ? 1 : 0.7;
+    ballSinkDepth += dt * BALL_SINK_RATE * rate;
+    fps.feetY = -ballSinkDepth * 0.42;
+    fps.velY = Math.min(fps.velY, 0);
+    fps.grounded = true;
+  }
+
+  if (!ballResolved && ballSinkDepth >= BALL_SINK_TRIGGER) {
+    ballResolved = true;
+    if (Math.random() < BALL_L4_CHANCE) {
+      showLootToast("海洋球深处… 你被抛入 Level 4！");
+      window.setTimeout(exitToLevel4, 700);
+    } else {
+      showLootToast("海洋球吞噬了你…");
+      survival.takeDamage(9999);
+    }
+  }
+}
+
+function updatePipeCrawl(dt) {
+  if (!world || moveMode !== "pipe") return;
+
+  var forward = 0;
+  if (fps.move.forward) forward += 1;
+  if (fps.move.back) forward -= 1;
+
+  pipeProgress += forward * world.pipe.crawlSpeed * dt;
+  pipeProgress = Math.max(0, Math.min(world.pipe.length, pipeProgress));
+  fps.player.z = world.pipe.startZ + pipeProgress;
+  fps.player.x = world.pipe.startX;
+
+  if (forward > 0) {
+    pipeCrawlT += dt;
+  }
+
+  if (!l8Announced && pipeCrawlT >= world.pipe.l8Seconds) {
+    l8Announced = true;
+    showLootToast("Level 8 尚未制作 · 此出口不可用");
+  }
 }
 
 function bindControls() {
@@ -163,12 +447,20 @@ function bindControls() {
       return isInventoryOpen();
     },
     onJump: function () {
+      if (moveMode === "pipe") return;
       tryBackroomsJump(fps, JUMP_SPEED);
     },
     onKeyDown: function (e) {
       if (e.code === "KeyB" && !e.repeat) {
         e.preventDefault();
         toggleBackpack();
+        return true;
+      }
+      if (e.code === "KeyQ" || e.key === "q" || e.key === "Q") {
+        if (!e.repeat) {
+          e.preventDefault();
+          tryQAction();
+        }
         return true;
       }
       return false;
@@ -178,7 +470,6 @@ function bindControls() {
     },
   });
   bindBackroomsWindowResize(renderer, camera);
-  syncLookUi();
 }
 
 function init() {
@@ -194,16 +485,31 @@ function init() {
 
   var root = new THREE.Group();
   scene.add(root);
-  buildCorridor(root);
+  world = buildLevel283World(root);
+  wallColliders.length = 0;
+  var i;
+  for (i = 0; i < world.colliders.length; i++) {
+    wallColliders.push(world.colliders[i]);
+  }
+  interactRoots = world.interactRoots.slice();
+
+  fps.player.x = world.spawnX;
+  fps.player.z = world.spawnZ;
+  fps.yaw = world.spawnYaw;
 
   survival = new BackroomsSurvival();
   survival.mountHud(document.querySelector(".backrooms-hud") || document.body);
+  loadBackroomsSurvival(survival);
+  registerBackroomsSurvivalPersist(survival);
   setInventoryOpenHandler(function (open) {
     if (open && document.pointerLockElement && document.exitPointerLock) {
       document.exitPointerLock();
     }
   });
   registerBackroomsInventoryUseHandlers(survival, {
+    onAlmondWaterUsed: function () {
+      showLootToast("杏仁水 · +15 血量 · +25 理智");
+    },
     onNightVisionPotion: function () {
       if (useNightVisionPotionFromBackpack()) syncLookUi();
     },
@@ -219,30 +525,50 @@ function init() {
   });
   updateMegPointsDisplay(megPointsEl);
   bindControls();
+  syncLookUi();
 
   var clock = new THREE.Clock();
   function frame() {
     requestAnimationFrame(frame);
     var now = performance.now();
     var dt = Math.min(clock.getDelta(), 0.05);
+    updateLootToast(now);
+
     var moving = isBackroomsPlayerMoving(fps);
-    var sprinting = isBackroomsSprintHeld(fps) && moving;
+    var sprinting = isBackroomsSprintHeld(fps) && moving && moveMode === "walk";
     if (survival && !survival.dead) {
       survival.update(dt, { sprinting: sprinting });
     }
-    updateBackroomsPlayerPhysics(fps, dt, { gravity: DEFAULT_GRAVITY });
-    if ((!survival || !survival.dead) && !isInventoryOpen()) {
-      var mul =
-        survival && sprinting
-          ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
-          : 1;
-      moveBackroomsPlayer(fps, dt, mul, function (nx, nz) {
-        return resolveBackroomsMoveCollisions(nx, nz, fps.player.radius, wallColliders);
+
+    if (moveMode === "pipe") {
+      updatePipeCrawl(dt);
+      fps.velY = 0;
+      fps.grounded = true;
+      fps.feetY = 0;
+    } else {
+      updateBackroomsPlayerPhysics(fps, dt, {
+        gravity: DEFAULT_GRAVITY,
+        ceilingY: L283_WALL_H,
       });
+      if ((!survival || !survival.dead) && !isInventoryOpen()) {
+        var mul =
+          survival && sprinting
+            ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
+            : 1;
+        moveBackroomsPlayer(fps, dt, mul, function (nx, nz) {
+          return resolveBackroomsMoveCollisions(nx, nz, fps.player.radius, wallColliders);
+        });
+      }
+      updateBallPit(dt);
     }
-    applyBackroomsCamera(fps, camera, EYE_HEIGHT);
+
+    refreshAimPick();
+    updateInteractHint();
+    updateCrosshair();
+    applyBackroomsCamera(fps, camera, moveMode === "pipe" ? PIPE_EYE : EYE_HEIGHT);
     updateBackroomsTemperature(dt, now);
     updateBackroomsHeatDamage(survival, now);
+    syncLookUi();
     renderer.render(scene, camera);
   }
   frame();

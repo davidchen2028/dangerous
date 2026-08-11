@@ -64,6 +64,11 @@ export function getLevel2SharedCorridorSpec(halfLen) {
   return readSpawnSpec(halfLen);
 }
 
+/** 当前 L2 实体（笑靥/飞蛾/肢团）所在走廊臂 — 门不得刷在此臂 */
+export function getLevel2EntityCorridorArm(halfLen) {
+  return readSpawnSpec(halfLen).arm;
+}
+
 /** 从走廊末端向十字中心偏移 */
 export function insetCorridorPosition(spec, inset) {
   var x = spec.x;

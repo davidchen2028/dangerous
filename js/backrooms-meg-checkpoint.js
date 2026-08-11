@@ -325,6 +325,26 @@ export function consumeMegRespawnRedirectFlag() {
   }
 }
 
+export const L283_MEG_EXIT_FLAG = "backrooms_l283_meg_exit_v1";
+
+export function setL283MegExitFlag() {
+  try {
+    sessionStorage.setItem(L283_MEG_EXIT_FLAG, "1");
+  } catch (err) {
+    /* ignore */
+  }
+}
+
+export function consumeL283MegExitFlag() {
+  try {
+    if (sessionStorage.getItem(L283_MEG_EXIT_FLAG) !== "1") return false;
+    sessionStorage.removeItem(L283_MEG_EXIT_FLAG);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
 export function prepareMegRespawnL1Entry() {
   try {
     sessionStorage.setItem(MEG_RESPAWN_FLAG, "1");

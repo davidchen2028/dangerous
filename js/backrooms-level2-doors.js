@@ -2,6 +2,7 @@
  * Level 2 — 随机门（L3 普通门 / L283 彩色门）
  */
 import * as THREE from "three";
+import { getLevel2EntityCorridorArm } from "./backrooms-level2-xiaoye.js";
 
 var _doorBoxScratch = new THREE.Box3();
 
@@ -23,12 +24,24 @@ function mulberry32(seed) {
   };
 }
 
-function pickDistinctArms(rng) {
-  var arms = ["pz", "nz", "px", "nx"];
+function pickDistinctArms(rng, halfLen) {
+  var blocked = getLevel2EntityCorridorArm(halfLen);
+  var arms = ["pz", "nz", "px", "nx"].filter(function (a) {
+    return a !== blocked;
+  });
+  if (arms.length < 2) {
+    arms = ["nz", "nx"];
+  }
   var i = Math.floor(rng() * arms.length);
   var j = Math.floor(rng() * (arms.length - 1));
   if (j >= i) j += 1;
   return { a: arms[i], b: arms[j] };
+}
+
+function layoutConflictsWithEntities(layout, halfLen) {
+  if (!layout || !layout.l3 || !layout.l283) return true;
+  var entityArm = getLevel2EntityCorridorArm(halfLen);
+  return layout.l3.arm === entityArm || layout.l283.arm === entityArm;
 }
 
 function armPosition(rng, halfLen, hubEdge) {
@@ -44,16 +57,18 @@ export function getOrCreateLevel2DoorLayout(halfLen, hubEdge) {
     if (raw) {
       var parsed = JSON.parse(raw);
       if (parsed && parsed.l3 && parsed.l283) {
-      if (!parsed.l3Dest) {
-        parsed.l3Dest = mulberry32((parsed.seed | 0) + 7919)() < 0.3 ? "l4" : "l3";
-        try {
-          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-        } catch (err0) {
-          /* ignore */
+        if (!parsed.l3Dest) {
+          parsed.l3Dest = mulberry32((parsed.seed | 0) + 7919)() < 0.3 ? "l4" : "l3";
+          try {
+            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+          } catch (err0) {
+            /* ignore */
+          }
+        }
+        if (!layoutConflictsWithEntities(parsed, halfLen)) {
+          return parsed;
         }
       }
-      return parsed;
-    }
     }
   } catch (err) {
     /* ignore */
@@ -61,7 +76,7 @@ export function getOrCreateLevel2DoorLayout(halfLen, hubEdge) {
 
   var seed = (Date.now() ^ (Math.random() * 1e9)) | 0;
   var rng = mulberry32(seed);
-  var pair = pickDistinctArms(rng);
+  var pair = pickDistinctArms(rng, halfLen);
   var layout = {
     seed: seed,
     l3Dest: rng() < 0.3 ? "l4" : "l3",

@@ -23,6 +23,10 @@ import {
   createLevel1_1_3DeathMoths,
   createLevel1_1_4DeathMoths,
 } from "./backrooms-death-moth.js";
+import {
+  createLevel1_1_3Clump,
+  createLevel1_1_4Clumps,
+} from "./backrooms-clump-ai.js";
 import { showEnterLevelBanner } from "./backrooms-level-enter.js";
 
 /**
@@ -55,6 +59,10 @@ export function createLevel1_1ZoneManager(deps) {
   var corridor3DeathMoths = null;
   /** @type {ReturnType<createLevel1_1_4DeathMoths> | null} */
   var corridor4DeathMoths = null;
+  /** @type {ReturnType<createLevel1_1_3Clump> | null} */
+  var corridor3Clump = null;
+  /** @type {ReturnType<createLevel1_1_4Clumps> | null} */
+  var corridor4Clumps = null;
   var homeEndingTriggered = false;
   var savedCameraFar = 90;
   /** @type {{ x: number, z: number, yaw: number, pitch: number, roll: number, feetY: number } | null} */
@@ -288,13 +296,17 @@ export function createLevel1_1ZoneManager(deps) {
   }
 
   function restoreL1Colliders() {
+    if (!l1ColliderBackup) {
+      if (deps.ensureMegBase) deps.ensureMegBase();
+      return;
+    }
     deps.wallColliders.length = 0;
-    if (!l1ColliderBackup) return;
     var i;
     for (i = 0; i < l1ColliderBackup.length; i++) {
       deps.wallColliders.push(l1ColliderBackup[i]);
     }
     l1ColliderBackup = null;
+    if (deps.ensureMegBase) deps.ensureMegBase();
   }
 
   function teleportTo(sp) {
@@ -340,10 +352,12 @@ export function createLevel1_1ZoneManager(deps) {
         onChest: chestCb,
       });
       corridor3DeathMoths = createLevel1_1_3DeathMoths(world3.corridor, world3.colliders);
+      corridor3Clump = createLevel1_1_3Clump(world3.corridor, world3.colliders);
     }
     if (!world4) {
       world4 = buildLevel1_1_4World(deps.level1Root);
       corridor4DeathMoths = createLevel1_1_4DeathMoths(world4.corridor, world4.colliders);
+      corridor4Clumps = createLevel1_1_4Clumps(world4.corridor, world4.colliders);
     }
     return world;
   }
@@ -856,6 +870,19 @@ export function createLevel1_1ZoneManager(deps) {
           );
         }
       }
+      if (subZone === "corridor3" && corridor3Clump) {
+        var survival3c = deps.getSurvival();
+        if (survival3c && !survival3c.dead) {
+          corridor3Clump.update(
+            dt,
+            deps.fps.x,
+            deps.fps.z,
+            survival3c,
+            deps.showToast,
+            { wallColliders: deps.wallColliders }
+          );
+        }
+      }
       if (subZone === "corridor4" && corridor4DeathMoths && !homeEndingTriggered) {
         var survival4 = deps.getSurvival();
         if (survival4 && !survival4.dead) {
@@ -866,6 +893,19 @@ export function createLevel1_1ZoneManager(deps) {
             survival4,
             deps.showToast,
             { wallColliders: deps.wallColliders, now: now }
+          );
+        }
+      }
+      if (subZone === "corridor4" && corridor4Clumps && !homeEndingTriggered) {
+        var survival4c = deps.getSurvival();
+        if (survival4c && !survival4c.dead) {
+          corridor4Clumps.update(
+            dt,
+            deps.fps.x,
+            deps.fps.z,
+            survival4c,
+            deps.showToast,
+            { wallColliders: deps.wallColliders }
           );
         }
       }
@@ -1087,6 +1127,8 @@ export function createLevel1_1ZoneManager(deps) {
       corridor2DeathMoth = null;
       corridor3DeathMoths = null;
       corridor4DeathMoths = null;
+      corridor3Clump = null;
+      corridor4Clumps = null;
       if (world && world.group.parent) world.group.parent.remove(world.group);
       if (world2 && world2.group.parent) world2.group.parent.remove(world2.group);
       if (world3 && world3.group.parent) world3.group.parent.remove(world3.group);

@@ -37,6 +37,7 @@ import {
 } from "./backrooms-level2-doors.js";
 import { createLevel2Xiaoye } from "./backrooms-level2-xiaoye.js";
 import { createLevel2DeathMoth } from "./backrooms-death-moth.js";
+import { createLevel2Clump } from "./backrooms-clump-ai.js";
 import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
@@ -120,6 +121,8 @@ let interactRoots = [];
 let level2Xiaoye = null;
 /** @type {ReturnType<createLevel2DeathMoth> | null} */
 let level2DeathMoth = null;
+/** @type {ReturnType<createLevel2Clump> | null} */
+let level2Clump = null;
 /** @type {{ data: object, distance: number } | null} */
 let currentAimPick = null;
 let transitionLock = false;
@@ -222,7 +225,9 @@ function tryDoorQAction() {
   var id = getAimDoorId();
   if (!id || !level2Doors) return;
   if (id === "l283") {
-    showLootToast("作者未制作");
+    if (tryOpenLevel2Door(level2Doors, id)) {
+      showLootToast("彩色门已打开 · 穿过进入 Level 283");
+    }
     return;
   }
   if (tryOpenLevel2Door(level2Doors, id)) {
@@ -242,7 +247,7 @@ function updateDoorHint() {
     return;
   }
   if (id === "l283") {
-    doorHintEl.innerHTML = '彩色门 · 按 <kbd>Q</kbd>（未开放）';
+    doorHintEl.innerHTML = '彩色门 · 按 <kbd>Q</kbd> 打开 · 通往 Level 283';
   } else {
     doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开未上锁的门 · 通往深处';
   }
@@ -264,6 +269,10 @@ function tryLevelTransition() {
       grantLevelPass("l3", fps.yaw);
       queueEnterLevelNumber(3);
       window.location.href = "backrooms-level3.html";
+    } else if (dest === "l283") {
+      grantLevelPass("l283", fps.yaw);
+      queueEnterLevelNumber(283);
+      window.location.href = "backrooms-level283.html";
     }
   } catch (err) {
     transitionLock = false;
@@ -439,6 +448,7 @@ function init() {
   interactRoots = built.interactRoots || [];
   level2Xiaoye = createLevel2Xiaoye(root);
   level2DeathMoth = createLevel2DeathMoth(root, wallColliders);
+  level2Clump = createLevel2Clump(root, wallColliders);
   applyLevel2NightVisionLighting(isNightVisionActive());
 
   initSurvivalHud();
@@ -496,6 +506,11 @@ function startLoop() {
       level2DeathMoth.update(dt, fps.player.x, fps.player.z, survival, showLootToast, {
         wallColliders: wallColliders,
         now: now,
+      });
+    }
+    if (level2Clump && survival && !survival.dead) {
+      level2Clump.update(dt, fps.player.x, fps.player.z, survival, showLootToast, {
+        wallColliders: wallColliders,
       });
     }
 

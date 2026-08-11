@@ -238,8 +238,8 @@ function syncMegBaseColliders(ctx) {
     if (!c || c.ghost) continue;
     if (ctx.colliders.indexOf(c) < 0) {
       ctx.colliders.push(c);
-      if (ctx.onWallCollider) ctx.onWallCollider(c);
     }
+    if (ctx.onWallCollider) ctx.onWallCollider(c);
   }
 }
 
@@ -635,7 +635,7 @@ function buildMegAlphaBase(root, ctx) {
   var doorThick = 0.14;
   var doorY0 = doorH * 0.5;
   var doorY1 = bh + doorH * 0.35;
-  var wallPad = 0.1;
+  var wallPad = 0.22;
 
   function megWall(minX, maxX, minZ, maxZ) {
     registerMegCollider(

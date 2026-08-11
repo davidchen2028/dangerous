@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>飞蛾建模预览 — 普通 vs 死亡（2×）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0c; color: #e8e4dc; font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+    canvas { display: block; width: 100%; height: 100%; }
+    .ui {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 1.25rem 1.5rem;
+    }
+    .ui h1 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      color: rgba(255,255,255,0.92);
+    }
+    .ui p.sub {
+      margin-top: 0.35rem;
+      font-size: 0.78rem;
+      color: rgba(200,196,188,0.72);
+    }
+    .labels {
+      display: flex;
+      justify-content: center;
+      gap: min(28vw, 9rem);
+      padding-bottom: 0.5rem;
+    }
+    .label {
+      text-align: center;
+      min-width: 8rem;
+    }
+    .label strong {
+      display: block;
+      font-size: 0.88rem;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.2rem;
+    }
+    .label span {
+      font-size: 0.72rem;
+      color: rgba(180,176,168,0.75);
+    }
+    .label--death strong { color: #e87050; }
+    .hint {
+      font-size: 0.68rem;
+      color: rgba(140,136,128,0.65);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="ui">
+    <div>
+      <h1>飞蛾建模预览</h1>
+      <p class="sub">死亡飞蛾 = 普通飞蛾 2 倍（翼展 0.42m → 0.84m）</p>
+    </div>
+    <div>
+      <div class="labels">
+        <div class="label">
+          <strong>普通飞蛾</strong>
+          <span>scale 1 · 翼展 0.42m</span>
+        </div>
+        <div class="label label--death">
+          <strong>死亡飞蛾</strong>
+          <span>scale 2 · 翼展 0.84m</span>
+        </div>
+      </div>
+      <p class="hint">鼠标拖拽旋转视角 · 滚轮缩放</p>
+    </div>
+  </div>
+  <script type="importmap">
+  { "imports": { "three": "./js/vendor/three.module.min.js" } }
+  </script>
+  <script type="module">
+  import * as THREE from "three";
+  import {
+    buildNormalMothFigure,
+    buildDeathMothFigure,
+    MOTH_BASE_WINGSPAN,
+    MOTH_DEATH_SCALE,
+  } from "./js/backrooms-moth.js";
+
+  var canvas = document.getElementById("canvas");
+  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x121018);
+  scene.fog = new THREE.Fog(0x121018, 4, 14);
+
+  var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.05, 40);
+  var orbitYaw = 0.4;
+  var orbitPitch = 0.28;
+  var orbitDist = 2.35;
+  var dragId = null;
+  var lastX = 0;
+  var lastY = 0;
+
+  function updateCamera() {
+    var cp = Math.cos(orbitPitch);
+    camera.position.set(
+      Math.sin(orbitYaw) * cp * orbitDist,
+      Math.sin(orbitPitch) * orbitDist + 0.08,
+      Math.cos(orbitYaw) * cp * orbitDist
+    );
+    camera.lookAt(0, 0.1, 0);
+  }
+  updateCamera();
+
+  canvas.addEventListener("pointerdown", function (e) {
+    dragId = e.pointerId;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", function (e) {
+    if (dragId !== e.pointerId) return;
+    orbitYaw -= (e.clientX - lastX) * 0.008;
+    orbitPitch += (e.clientY - lastY) * 0.006;
+    orbitPitch = Math.max(-0.2, Math.min(1.1, orbitPitch));
+    lastX = e.clientX;
+    lastY = e.clientY;
+    updateCamera();
+  });
+  canvas.addEventListener("pointerup", function (e) {
+    if (dragId !== e.pointerId) return;
+    dragId = null;
+    try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  });
+  canvas.addEventListener(
+    "wheel",
+    function (e) {
+      e.preventDefault();
+      orbitDist = Math.max(1.1, Math.min(5, orbitDist + e.deltaY * 0.002));
+      updateCamera();
+    },
+    { passive: false }
+  );
+
+  scene.add(new THREE.AmbientLight(0xd8d0c8, 0.55));
+  var key = new THREE.DirectionalLight(0xfff5ea, 1.1);
+  key.position.set(2, 4, 3);
+  scene.add(key);
+  var fill = new THREE.DirectionalLight(0x8866aa, 0.35);
+  fill.position.set(-2, 1, -2);
+  scene.add(fill);
+  var rim = new THREE.PointLight(0xff6644, 0.5, 8);
+  rim.position.set(1.2, 0.8, -1);
+  scene.add(rim);
+
+  var stage = new THREE.Group();
+  scene.add(stage);
+
+  var grid = new THREE.GridHelper(4, 16, 0x333038, 0x222028);
+  grid.position.y = 0;
+  stage.add(grid);
+
+  var pedL = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.04, 0.05, 0.08, 16),
+    new THREE.MeshStandardMaterial({ color: 0x2a2830, roughness: 0.9 })
+  );
+  pedL.position.set(-0.55, 0.04, 0);
+  stage.add(pedL);
+
+  var pedR = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.06, 0.075, 0.08, 16),
+    new THREE.MeshStandardMaterial({ color: 0x3a2020, roughness: 0.9 })
+  );
+  pedR.position.set(0.55, 0.04, 0);
+  stage.add(pedR);
+
+  var normalMoth = buildNormalMothFigure();
+  normalMoth.group.position.set(-0.55, 0.14, 0);
+  normalMoth.group.rotation.y = 0.35;
+  stage.add(normalMoth.group);
+
+  var deathMoth = buildDeathMothFigure();
+  deathMoth.group.position.set(0.55, 0.14, 0);
+  deathMoth.group.rotation.y = -0.35;
+  stage.add(deathMoth.group);
+
+  var refGeo = new THREE.BoxGeometry(MOTH_BASE_WINGSPAN, 0.004, 0.004);
+  var refMat = new THREE.MeshBasicMaterial({ color: 0x44aa66, transparent: true, opacity: 0.55 });
+  var refL = new THREE.Mesh(refGeo, refMat);
+  refL.position.set(-0.55, 0.02, 0.22);
+  stage.add(refL);
+  var refR = new THREE.Mesh(refGeo, refMat);
+  refR.scale.x = MOTH_DEATH_SCALE;
+  refR.position.set(0.55, 0.02, 0.22);
+  stage.add(refR);
+
+  var clock = new THREE.Clock();
+  function frame() {
+    requestAnimationFrame(frame);
+    var t = clock.getElapsedTime();
+    normalMoth.update(t);
+    deathMoth.update(t);
+    renderer.render(scene, camera);
+  }
+  frame();
+
+  window.addEventListener("resize", function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+  });
+  </script>
+</body>
+</html>
