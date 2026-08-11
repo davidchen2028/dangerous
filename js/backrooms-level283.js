@@ -58,6 +58,7 @@ import {
 } from "./backrooms-fps-controller.js";
 
 const ALMOND_KEY = "backrooms_l283_almond_v1";
+const TABLE_SEARCH_KEY = "backrooms_l283_tables_v1";
 const FOG_COLOR = 0xffeed8;
 const FOG_NEAR = 4;
 const FOG_FAR = 42;
@@ -131,6 +132,31 @@ function almondAlreadyTaken() {
 function markAlmondTaken() {
   try {
     sessionStorage.setItem(ALMOND_KEY, "1");
+  } catch (err) {
+    /* ignore */
+  }
+}
+
+function getSearchedTables() {
+  try {
+    var raw = sessionStorage.getItem(TABLE_SEARCH_KEY);
+    if (!raw) return {};
+    var parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function isTableSearched(tableId) {
+  return !!getSearchedTables()[String(tableId)];
+}
+
+function markTableSearched(tableId) {
+  try {
+    var map = getSearchedTables();
+    map[String(tableId)] = true;
+    sessionStorage.setItem(TABLE_SEARCH_KEY, JSON.stringify(map));
   } catch (err) {
     /* ignore */
   }
@@ -210,9 +236,11 @@ function refreshAimPick() {
 function interactLabel(data) {
   if (!data) return "";
   if (data.kind === "l283_table") {
-    return almondAlreadyTaken() ? "桌子（已搜过）" : "桌子 · 按 <kbd>Q</kbd> 获得杏仁水";
+    if (isTableSearched(data.tableId)) return "桌子（已搜过）";
+    if (almondAlreadyTaken()) return "桌子 · 按 <kbd>Q</kbd> 搜索";
+    return "桌子 · 按 <kbd>Q</kbd> 获得杏仁水";
   }
-  if (data.kind === "l283_painting") return "小丑画作 · 按 <kbd>Q</kbd> 调查";
+  if (data.kind === "l283_painting") return "小丑画作 · 按 <kbd>Q</kbd> 进入 Level 57";
   if (data.kind === "l283_floor_exit") return "休息区地板 · 按 <kbd>Q</kbd> 切出";
   if (data.kind === "l283_pipe_enter") return "管道 · 按 <kbd>Q</kbd> 爬入";
   if (data.kind === "l283_pipe_door") return "木门 · 按 <kbd>Q</kbd> 前往 Level 0";
@@ -259,9 +287,15 @@ function updateCrosshair() {
   );
 }
 
-function tryTableAlmond() {
-  if (almondAlreadyTaken()) {
+function tryTableAlmond(tableId) {
+  if (tableId == null) return;
+  if (isTableSearched(tableId)) {
     showLootToast("这张桌子已经搜过了");
+    return;
+  }
+  markTableSearched(tableId);
+  if (almondAlreadyTaken()) {
+    showLootToast("空的");
     return;
   }
   if (!survival) return;
@@ -303,6 +337,16 @@ function exitToLevel4() {
   grantLevelPass("l4", fps.yaw);
   queueEnterLevelNumber(4);
   window.location.href = "backrooms-level4.html";
+}
+
+function exitToLevel57() {
+  if (transitionLock) return;
+  transitionLock = true;
+  showLootToast("穿过画作… 进入 Level 57");
+  saveBackroomsSurvival(survival);
+  grantLevelPass("l57", fps.yaw);
+  queueEnterLevelNumber(57);
+  window.location.href = "backrooms-level57.html";
 }
 
 function enterPipeMode() {
@@ -354,11 +398,11 @@ function tryQAction() {
   var k = data.kind;
 
   if (k === "l283_table") {
-    tryTableAlmond();
+    tryTableAlmond(data.tableId);
     return;
   }
   if (k === "l283_painting") {
-    showLootToast("Level 57 尚未制作 · 此出口不可用");
+    exitToLevel57();
     return;
   }
   if (k === "l283_floor_exit") {

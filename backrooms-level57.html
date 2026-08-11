@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-  <title>后室 Level 283</title>
+  <title>后室 Level 57</title>
   <link rel="stylesheet" href="css/backrooms-level0.css?v=17">
   <link rel="stylesheet" href="css/backrooms-survival.css?v=3">
 </head>
-<body class="backrooms-level1 backrooms-level2 backrooms-level283">
-  <canvas id="backroomsCanvas" aria-label="后室 Level 283"></canvas>
+<body class="backrooms-level1 backrooms-level57">
+  <canvas id="backroomsCanvas" aria-label="后室 Level 57"></canvas>
   <div id="backroomsInput" class="backrooms-input" aria-hidden="true"></div>
   <div class="backrooms-crosshair" id="backroomsCrosshair" aria-hidden="true"></div>
   <div class="backrooms-hud">
-    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level 283</p>
+    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level 57</p>
     <div class="backrooms-nav" aria-label="状态">
       <div class="backrooms-nav__row">
         <p class="backrooms-temp" id="backroomsTemp">
@@ -33,6 +33,11 @@
     <p class="backrooms-hud__loot" id="backroomsLootToast" hidden></p>
     <div class="backrooms-hud__error" id="backroomsError" hidden></div>
   </div>
+  <div class="backrooms-dialogue" id="backroomsDialogue" hidden role="dialog" aria-label="对话">
+    <p class="backrooms-dialogue__speaker" id="backroomsDialogueSpeaker">画家</p>
+    <p class="backrooms-dialogue__text" id="backroomsDialogueText"></p>
+    <p class="backrooms-dialogue__choices" id="backroomsDialogueChoices" hidden></p>
+  </div>
   <script type="importmap">
   {
     "imports": {
@@ -40,6 +45,6 @@
     }
   }
   </script>
-  <script type="module" src="js/backrooms-level283.js?v=8"></script>
+  <script type="module" src="js/backrooms-level57.js?v=4"></script>
 </body>
 </html>
