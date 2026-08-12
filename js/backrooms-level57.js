@@ -164,7 +164,7 @@ function openPainterDialogue() {
   document.body.classList.add("backrooms-dialogue-open");
   dialogueEl.hidden = false;
   if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "画家";
-  dialogueTextEl.textContent = "你要前往 Level 1 吗？";
+  dialogueTextEl.textContent = "你想去 Level 21 吗？";
   if (dialogueChoicesEl) {
     dialogueChoicesEl.hidden = false;
     dialogueChoicesEl.innerHTML =
@@ -193,7 +193,7 @@ function handlePainterChoice(choice) {
   if (!painterDialogueOpen) return;
   if (choice === "a") {
     closePainterDialogue();
-    exitToLevel1();
+    exitToLevel21();
     return;
   }
   if (choice === "b") {
@@ -265,14 +265,14 @@ function exitToLevel0() {
   window.location.href = "backrooms-level0.html";
 }
 
-function exitToLevel1() {
+function exitToLevel21() {
   if (transitionLock) return;
   transitionLock = true;
-  showLootToast("前往 Level 1…");
+  showLootToast("画家侧身让开，露出一扇门…");
   saveBackroomsSurvival(survival);
-  grantLevelPass("clip", fps.yaw);
-  queueEnterLevelNumber(1);
-  window.location.href = "backrooms-level1.html";
+  grantLevelPass("l21", fps.yaw);
+  queueEnterLevelNumber(21);
+  window.location.href = "backrooms-level21.html";
 }
 
 function exitToLevel8() {

@@ -14,6 +14,8 @@ const BUILDING_W = 16;
 const BUILDING_D = 14;
 const BACK_WALL_THICKNESS = 1;
 const BACK_WALL_X = BUILDING_X + BUILDING_W * 0.5;
+const L13_HIGHRISE_X = BUILDING_X;
+const L13_HIGHRISE_Z = 7;
 
 var _boxGeo = null;
 var _materials = null;
@@ -38,6 +40,18 @@ function materials() {
     buildingA: new THREE.MeshStandardMaterial({ color: 0x929da8, roughness: 0.84 }),
     buildingB: new THREE.MeshStandardMaterial({ color: 0xb4a895, roughness: 0.87 }),
     buildingC: new THREE.MeshStandardMaterial({ color: 0x858b91, roughness: 0.82 }),
+    highrise: new THREE.MeshStandardMaterial({
+      color: 0xe0bd32,
+      emissive: 0x4a3504,
+      emissiveIntensity: 0.12,
+      roughness: 0.78,
+    }),
+    darkDoor: new THREE.MeshStandardMaterial({
+      color: 0x11151a,
+      emissive: 0x050709,
+      emissiveIntensity: 0.08,
+      roughness: 0.95,
+    }),
     glass: new THREE.MeshStandardMaterial({
       color: 0xa9d8ee,
       emissive: 0x426a7d,
@@ -93,6 +107,48 @@ function addBuilding(group, entries, x, z, side, serial) {
   }
 }
 
+function addLevel13Highrise(group, entries) {
+  var mats = materials();
+  var height = 34;
+  addBox(
+    group,
+    mats.highrise,
+    L13_HIGHRISE_X,
+    height * 0.5,
+    L13_HIGHRISE_Z,
+    BUILDING_W,
+    height,
+    BUILDING_D
+  );
+  entries.push(
+    collider(
+      L13_HIGHRISE_X - BUILDING_W * 0.5,
+      L13_HIGHRISE_X + BUILDING_W * 0.5,
+      L13_HIGHRISE_Z - BUILDING_D * 0.5,
+      L13_HIGHRISE_Z + BUILDING_D * 0.5
+    )
+  );
+
+  var facadeX = L13_HIGHRISE_X - BUILDING_W * 0.5 - 0.05;
+  var floorY;
+  for (floorY = 5; floorY < height - 1; floorY += 3.2) {
+    addBox(group, mats.glass, facadeX, floorY, L13_HIGHRISE_Z, 0.08, 1.35, BUILDING_D - 2);
+  }
+  // 黑色门洞贴在临街立面；玩家靠近门洞自动进入。
+  addBox(group, mats.darkDoor, facadeX - 0.02, 1.55, L13_HIGHRISE_Z, 0.11, 3.1, 2.5);
+  var awning = addBox(
+    group,
+    mats.highrise,
+    facadeX - 1.2,
+    3.35,
+    L13_HIGHRISE_Z,
+    2.5,
+    0.22,
+    3.4
+  );
+  awning.rotation.z = -0.05;
+}
+
 function addSegment(root, index) {
   var mats = materials();
   var group = new THREE.Group();
@@ -117,7 +173,11 @@ function addSegment(root, index) {
   for (rowZ = z - 16; rowZ <= z + 16; rowZ += 16) {
     var serial = index * 13 + Math.round((rowZ - z) / 16);
     addBuilding(group, entries, -BUILDING_X, rowZ, -1, serial);
-    addBuilding(group, entries, BUILDING_X, rowZ + 7, 1, serial + 5);
+    if (index === 0 && rowZ === 0) {
+      addLevel13Highrise(group, entries);
+    } else {
+      addBuilding(group, entries, BUILDING_X, rowZ + 7, 1, serial + 5);
+    }
   }
 
   // 楼后空气墙：阻止玩家进入未生成、不可见的楼后空间。
@@ -192,6 +252,12 @@ export function buildLevel11World(root) {
     colliders: activeColliders,
     update: function (_px, pz) {
       updateStreaming(pz);
+    },
+    isLevel13Entrance: function (px, pz) {
+      return (
+        px >= L13_HIGHRISE_X - BUILDING_W * 0.5 - 1.35 &&
+        Math.abs(pz - L13_HIGHRISE_Z) <= 1.35
+      );
     },
   };
 }

@@ -48,6 +48,12 @@ const LEVEL_PROFILE = {
   10: { min: 16, max: 24, base: 20, swing: 2.8 },
   /** Level 11 — 明亮城市 */
   11: { min: 18, max: 25, base: 21.5, swing: 2.2 },
+  /** Level 13 — 酒店大厅与客房走廊 */
+  13: { min: 19, max: 23, base: 21, swing: 1.1 },
+  /** Level 14 — 红叶树林的黄昏 */
+  14: { min: 13, max: 19, base: 16, swing: 2.2 },
+  /** Level 21 — 静谧花园与十字走廊 */
+  21: { min: 17, max: 22, base: 19.5, swing: 1.6 },
   /** Level 57 — 黄色房间 */
   57: { min: 19, max: 23, base: 21, swing: 1.2 },
   /** Level 75 — 金属管道区域 */

@@ -202,6 +202,18 @@ function exitLevel10ToL11() {
   }, 450);
 }
 
+function exitLevel11ToL13() {
+  if (transitionLock) return;
+  transitionLock = true;
+  showToast("你走进了黄色高楼…");
+  if (survival) saveBackroomsSurvival(survival);
+  grantLevelPass("l13", fps.yaw);
+  queueEnterLevelNumber(13);
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level13.html";
+  }, 450);
+}
+
 function bindControls() {
   bindBackroomsFpsControls({
     canvas: canvas,
@@ -318,6 +330,17 @@ function init() {
       isLevel10ForkToL11(fps.player.x, fps.player.z)
     ) {
       exitLevel10ToL11();
+    }
+    if (
+      level === 11 &&
+      !transitionLock &&
+      survival &&
+      !survival.dead &&
+      levelWorld &&
+      levelWorld.isLevel13Entrance &&
+      levelWorld.isLevel13Entrance(fps.player.x, fps.player.z)
+    ) {
+      exitLevel11ToL13();
     }
     applyBackroomsCamera(fps, camera, 1.65);
     updateBackroomsTemperature(dt, now);

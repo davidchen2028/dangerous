@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <title>后室 Level 14</title>
+  <link rel="stylesheet" href="css/backrooms-level0.css?v=18">
+  <link rel="stylesheet" href="css/backrooms-survival.css?v=5">
+  <style>
+    .br-l14-intro {
+      position: fixed;
+      top: max(14px, env(safe-area-inset-top, 0px));
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 60;
+      width: min(92vw, 520px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      pointer-events: none;
+      text-align: center;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+
+    .br-l14-intro[hidden] {
+      display: none;
+    }
+
+    .br-l14-intro__text {
+      margin: 0;
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: 1px solid rgba(226, 180, 255, 0.35);
+      background: rgba(28, 10, 40, 0.72);
+      color: #f6e9ff;
+      font-size: clamp(17px, 4.6vw, 24px);
+      letter-spacing: 0.08em;
+      text-shadow: 0 2px 10px rgba(120, 40, 160, 0.6);
+    }
+
+    .br-l14-intro__text[hidden] {
+      display: none;
+    }
+
+    .br-l14-intro__image {
+      display: block;
+      width: 100%;
+      max-height: min(52vh, 380px);
+      object-fit: contain;
+      border-radius: 8px;
+      border: 1px solid rgba(226, 180, 255, 0.28);
+      background: rgba(10, 4, 16, 0.55);
+      box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+    }
+
+    .br-l14-intro__image[hidden] {
+      display: none;
+    }
+  </style>
+</head>
+<body class="backrooms-level1 backrooms-level14">
+  <canvas id="backroomsCanvas" aria-label="后室 Level 14"></canvas>
+  <div id="backroomsInput" class="backrooms-input" aria-hidden="true"></div>
+  <div class="backrooms-crosshair" id="backroomsCrosshair" aria-hidden="true"></div>
+  <div class="backrooms-hud">
+    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level 14</p>
+    <div class="backrooms-nav"><div class="backrooms-nav__row">
+      <p class="backrooms-temp" id="backroomsTemp"><span class="backrooms-temp__label">温度</span><span class="backrooms-temp__meter"><span class="backrooms-temp__fill" id="backroomsTempFill"></span></span><strong class="backrooms-temp__value" id="backroomsTempValue">—</strong></p>
+      <p class="backrooms-points"><span class="backrooms-points__label">积分点</span><strong class="backrooms-points__value" id="backroomsMegPoints">0</strong></p>
+    </div></div>
+    <p class="backrooms-hud__hint" id="backroomsHint">加载中…</p>
+    <p class="backrooms-hud__talk backrooms-hud__talk--door" id="backroomsInteractHint" hidden></p>
+    <p class="backrooms-hud__loot" id="backroomsLootToast" hidden></p>
+    <div class="backrooms-hud__error" id="backroomsError" hidden></div>
+  </div>
+  <div class="br-l14-intro" id="backroomsL14Intro" aria-live="polite">
+    <p class="br-l14-intro__text" id="backroomsL14IntroText" hidden></p>
+    <img class="br-l14-intro__image" id="backroomsL14IntroImage" alt="生存难度：等级 天堂" hidden>
+  </div>
+  <script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
+  <script type="module" src="js/backrooms-level14.js?v=3"></script>
+</body>
+</html>
