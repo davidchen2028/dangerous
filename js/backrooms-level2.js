@@ -43,6 +43,7 @@ import {
 import { createLevel2Xiaoye } from "./backrooms-level2-xiaoye.js";
 import { createLevel2DeathMoth } from "./backrooms-death-moth.js";
 import { createLevel2Clump } from "./backrooms-clump-ai.js";
+import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
 import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
@@ -136,6 +137,7 @@ let level2Xiaoye = null;
 let level2DeathMoth = null;
 /** @type {ReturnType<createLevel2Clump> | null} */
 let level2Clump = null;
+let firesalt = null;
 /** @type {{ data: object, distance: number } | null} */
 let currentAimPick = null;
 let transitionLock = false;
@@ -239,7 +241,7 @@ function tryDoorQAction() {
   if (!id || !level2Doors) return;
   if (id === "l283") {
     if (tryOpenLevel2Door(level2Doors, id)) {
-      showLootToast("彩色门已打开 · 穿过进入 Level 283");
+      showLootToast("彩色门已打开 · 可以穿过");
     }
     return;
   }
@@ -260,9 +262,9 @@ function updateDoorHint() {
     return;
   }
   if (id === "l283") {
-    doorHintEl.innerHTML = '彩色门 · 按 <kbd>Q</kbd> 打开 · 通往 Level 283';
+    doorHintEl.innerHTML = '彩色门 · 按 <kbd>Q</kbd> 打开';
   } else {
-    doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开未上锁的门 · 通往深处';
+    doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开未上锁的门';
   }
   doorHintEl.hidden = false;
 }
@@ -463,6 +465,11 @@ function init() {
   level2Xiaoye = createLevel2Xiaoye(root);
   level2DeathMoth = createLevel2DeathMoth(root, wallColliders);
   level2Clump = createLevel2Clump(root, wallColliders);
+  firesalt = createBackroomsFiresaltController({
+    scene: scene,
+    camera: camera,
+    showToast: showLootToast,
+  });
   applyLevel2NightVisionLighting(isNightVisionActive());
 
   initSurvivalHud();
@@ -527,6 +534,7 @@ function startLoop() {
         wallColliders: wallColliders,
       });
     }
+    if (firesalt) firesalt.update(dt);
 
     if (crosshairEl) {
       var hide = isInventoryOpen() || !survival || survival.dead;

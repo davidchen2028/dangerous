@@ -1,10 +1,11 @@
 /**
- * Level 9 / 75 基础场景（后续可独立扩展）
+ * Level 10 / 11 / 75 基础目的地场景（后续可独立扩展）
  */
 import * as THREE from "three";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
 import {
   loadBackroomsSurvival,
+  saveBackroomsSurvival,
   registerBackroomsSurvivalPersist,
 } from "./backrooms-survival-persist.js";
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
@@ -15,8 +16,8 @@ import {
   updateBackroomsTemperature,
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
-import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
-import { enforceLevelEntry } from "./backrooms-level-pass.js";
+import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
+import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -37,10 +38,20 @@ import {
   DEFAULT_LOOK_SENS,
   DEFAULT_GRAVITY,
 } from "./backrooms-fps-controller.js";
+import { buildLevel11World } from "./backrooms-level11-world.js";
 
-const level = Number(document.body.dataset.level || 9);
-const passId = level === 75 ? "l75" : "l9";
+const levelRaw = document.body.dataset.level || "9";
+const level = Number(levelRaw);
+const passId =
+  level === 75
+    ? "l75"
+    : level === 11
+      ? "l11"
+      : level === 10
+        ? "l10"
+        : "l9";
 const wallH = level === 75 ? 5 : 4;
+const levelLabel = String(level);
 const canvas = document.getElementById("backroomsCanvas");
 const inputEl = document.getElementById("backroomsInput");
 const hintEl = document.getElementById("backroomsHint");
@@ -54,7 +65,13 @@ let camera;
 let scene;
 let survival;
 let lootToastUntil = 0;
-const colliders = [];
+let colliders = [];
+let levelWorld = null;
+let transitionLock = false;
+
+/** L10 岔路：主路 z≈22 向右拐的小道尽头 → L11 */
+const L10_FORK_Z = 22;
+const L10_FORK_EXIT_X = 24;
 const fps = createBackroomsFpsState({
   player: { x: 0, z: 0, radius: 0.34, speed: 4.1 },
 });
@@ -131,6 +148,60 @@ function buildLevel75(root) {
   root.add(new THREE.AmbientLight(0x64707c, 0.55));
 }
 
+function buildLevel10(root) {
+  var field = new THREE.MeshStandardMaterial({ color: 0xb6a85b, roughness: 1 });
+  var path = new THREE.MeshStandardMaterial({ color: 0xb9ad92, roughness: 0.96 });
+  var trail = new THREE.MeshStandardMaterial({ color: 0xa89878, roughness: 0.94 });
+  var trailEnd = new THREE.MeshStandardMaterial({
+    color: 0x8a9aa8,
+    emissive: 0x2a4050,
+    emissiveIntensity: 0.18,
+    roughness: 0.9,
+  });
+  var barn = new THREE.MeshStandardMaterial({ color: 0x9c5541, roughness: 0.9 });
+
+  addBox(root, 90, 0.16, 90, 0, 0, 0, field);
+  // 主土路（沿 +Z）
+  addBox(root, 4, 0.08, 90, 0, 0.1, 0, path);
+  // 岔路：在 z=22 向 +X 拐出的窄小道
+  addBox(root, 28, 0.09, 2.2, 14, 0.11, L10_FORK_Z, trail);
+  // 岔口衔接（主路与小道交汇处略宽）
+  addBox(root, 5.2, 0.095, 5.2, 0, 0.105, L10_FORK_Z, trail);
+  // 小道尽头：色调偏城市灰蓝，暗示出口
+  addBox(root, 4.5, 0.1, 3.2, L10_FORK_EXIT_X + 1.2, 0.12, L10_FORK_Z, trailEnd);
+
+  // 谷仓放左侧，避开右侧岔路
+  addBox(root, 11, 5, 8, -15, 2.5, 8, barn);
+  colliders.push(wallCollider(-20.5, -9.5, 4, 12));
+
+  // 田野边界，避免走出场景
+  colliders.push(wallCollider(-45.5, -44.5, -45, 45));
+  colliders.push(wallCollider(44.5, 45.5, -45, 45));
+  colliders.push(wallCollider(-45, 45, -45.5, -44.5));
+  colliders.push(wallCollider(-45, 45, 44.5, 45.5));
+
+  root.add(new THREE.HemisphereLight(0xeef8ff, 0x8b7b43, 1.45));
+  var sun = new THREE.DirectionalLight(0xfff1c6, 1.5);
+  sun.position.set(-18, 28, -12);
+  root.add(sun);
+}
+
+function isLevel10ForkToL11(px, pz) {
+  return px >= L10_FORK_EXIT_X && Math.abs(pz - L10_FORK_Z) <= 1.7;
+}
+
+function exitLevel10ToL11() {
+  if (transitionLock) return;
+  transitionLock = true;
+  showToast("小道尽头，空气变得像城市…");
+  if (survival) saveBackroomsSurvival(survival);
+  grantLevelPass("l11", fps.yaw);
+  queueEnterLevelNumber(11);
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level11.html";
+  }, 450);
+}
+
 function bindControls() {
   bindBackroomsFpsControls({
     canvas: canvas,
@@ -158,10 +229,15 @@ function init() {
   }
   showEnterLevelBannerIfQueued();
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(level === 75 ? 0x303840 : 0x030509);
-  scene.fog = level === 75
-    ? new THREE.Fog(0x303840, 8, 42)
-    : new THREE.FogExp2(0x030509, 0.04);
+  var outdoor = level === 10 || level === 11;
+  var bg = level === 75 ? 0x303840 : outdoor ? 0xa7d9ed : 0x030509;
+  scene.background = new THREE.Color(bg);
+  scene.fog =
+    level === 75
+      ? new THREE.Fog(bg, 8, 42)
+      : outdoor
+        ? new THREE.Fog(bg, 55, 130)
+        : new THREE.FogExp2(bg, 0.04);
   camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 80);
   var gfx = resolveBackroomsGfxProfile();
   renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
@@ -170,6 +246,11 @@ function init() {
   var root = new THREE.Group();
   scene.add(root);
   if (level === 75) buildLevel75(root);
+  else if (level === 11) {
+    levelWorld = buildLevel11World(root);
+    colliders = levelWorld.colliders;
+  }
+  else if (level === 10) buildLevel10(root);
   else buildLevel9(root);
 
   survival = new BackroomsSurvival();
@@ -182,7 +263,9 @@ function init() {
   registerBackroomsInventoryUseHandlers(survival, {
     onAlmondWaterUsed: function () { showToast("杏仁水 · +15 血量 · +25 理智"); },
   });
-  installMegCheckpointDeathHooks(survival, function () { return { level: level }; });
+  installMegCheckpointDeathHooks(survival, function () {
+    return { level: level };
+  });
   initBackroomsTemperature(level, {
     rootEl: tempRootEl,
     fillEl: tempFillEl,
@@ -190,8 +273,15 @@ function init() {
   });
   updateMegPointsDisplay(megPointsEl);
   if (hintEl) {
-    hintEl.innerHTML =
-      "Level " + level + " · <kbd>WASD</kbd> 移动 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包";
+    if (level === 10) {
+      hintEl.innerHTML =
+        "Level 10 · 沿土路前进 · 留意岔路小道 · <kbd>WASD</kbd> 移动 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包";
+    } else {
+      hintEl.innerHTML =
+        "Level " +
+        levelLabel +
+        " · <kbd>WASD</kbd> 移动 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包";
+    }
   }
   bindControls();
 
@@ -202,6 +292,9 @@ function init() {
     var dt = Math.min(clock.getDelta(), 0.05);
     var moving = isBackroomsPlayerMoving(fps);
     var sprinting = isBackroomsSprintHeld(fps) && moving;
+    if (levelWorld && levelWorld.update) {
+      levelWorld.update(fps.player.x, fps.player.z);
+    }
     if (survival && !survival.dead) {
       _survCtx.sprinting = sprinting;
       survival.update(dt, _survCtx);
@@ -209,13 +302,22 @@ function init() {
     _physOpts.gravity = DEFAULT_GRAVITY;
     _physOpts.ceilingY = wallH;
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen()) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock) {
       var mul = survival && sprinting
         ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
         : 1;
       moveBackroomsPlayer(fps, dt, mul, function (nx, nz) {
         return resolveBackroomsMoveCollisions(nx, nz, fps.player.radius, colliders);
       });
+    }
+    if (
+      level === 10 &&
+      !transitionLock &&
+      survival &&
+      !survival.dead &&
+      isLevel10ForkToL11(fps.player.x, fps.player.z)
+    ) {
+      exitLevel10ToL11();
     }
     applyBackroomsCamera(fps, camera, 1.65);
     updateBackroomsTemperature(dt, now);
@@ -231,6 +333,6 @@ try {
   console.error("[Backrooms destination]", err);
   if (errorEl) {
     errorEl.hidden = false;
-    errorEl.textContent = "Level " + level + " 无法启动：" + (err.message || String(err));
+    errorEl.textContent = "Level " + levelLabel + " 无法启动：" + (err.message || String(err));
   }
 }

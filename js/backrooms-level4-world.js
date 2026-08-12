@@ -159,8 +159,63 @@ function sharedMaterials() {
       metalness: 0.35,
       roughness: 0.55,
     }),
+    stair: new THREE.MeshStandardMaterial({
+      color: 0x6e6558,
+      roughness: 0.82,
+      metalness: 0.08,
+    }),
+    stairRail: new THREE.MeshStandardMaterial({
+      color: 0x8a9098,
+      roughness: 0.55,
+      metalness: 0.35,
+    }),
+    stairVoid: new THREE.MeshBasicMaterial({
+      color: 0x050608,
+    }),
+    vending: new THREE.MeshStandardMaterial({
+      color: 0xc45a4a,
+      roughness: 0.45,
+      metalness: 0.28,
+    }),
+    vendingGlass: new THREE.MeshStandardMaterial({
+      color: 0x9ec4d8,
+      transparent: true,
+      opacity: 0.45,
+      roughness: 0.2,
+      metalness: 0.1,
+      depthWrite: false,
+    }),
+    vendingLabel: new THREE.MeshStandardMaterial({
+      map: vendingLabelTexture() || undefined,
+      color: _vendingLabelTex ? 0xffffff : 0x222222,
+      roughness: 0.7,
+      metalness: 0,
+    }),
   };
   return _mats;
+}
+
+var _vendingLabelTex = null;
+function vendingLabelTexture() {
+  if (_vendingLabelTex) return _vendingLabelTex;
+  var canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 96;
+  var ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#f4f1ea";
+  ctx.fillRect(0, 0, 256, 96);
+  ctx.fillStyle = "#c45a4a";
+  ctx.fillRect(0, 0, 256, 10);
+  ctx.fillRect(0, 86, 256, 10);
+  ctx.fillStyle = "#1a1c20";
+  ctx.font = "bold 34px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("自动售货机", 128, 50);
+  _vendingLabelTex = new THREE.CanvasTexture(canvas);
+  _vendingLabelTex.colorSpace = THREE.SRGBColorSpace;
+  return _vendingLabelTex;
 }
 
 var _waterCoolerLabelTex = null;
@@ -559,6 +614,91 @@ function addWhiteboard(batches, colliders, wx, wz, mats) {
   pushBoxCollider(colliders, wx - 0.82, wx + 0.82, wz - 0.12, wz + 0.12);
 }
 
+/** 出生区块自动售货机 → Level 6.1 */
+function addVendingMachineToL61(group, colliders, interactRoots, vx, vz, mats) {
+  var body = new THREE.Mesh(sharedBoxGeometry(), mats.vending);
+  body.position.set(vx, 1.05, vz);
+  body.scale.set(1.15, 2.1, 0.85);
+  tagShadowMesh(body, true, true);
+  group.add(body);
+
+  var glass = new THREE.Mesh(sharedBoxGeometry(), mats.vendingGlass);
+  glass.position.set(vx, 1.15, vz + 0.4);
+  glass.scale.set(0.9, 1.45, 0.06);
+  group.add(glass);
+
+  var label = new THREE.Mesh(sharedBoxGeometry(), mats.vendingLabel);
+  label.position.set(vx, 2.05, vz + 0.44);
+  label.scale.set(0.95, 0.28, 0.04);
+  group.add(label);
+
+  // 窗口里几排“零食”色块
+  var snackColors = [0xe85d4c, 0xf0c040, 0x4caf7a, 0x5b7fd6];
+  var r;
+  var c;
+  for (r = 0; r < 3; r++) {
+    for (c = 0; c < 3; c++) {
+      var snack = new THREE.Mesh(
+        sharedBoxGeometry(),
+        new THREE.MeshStandardMaterial({
+          color: snackColors[(r + c) % snackColors.length],
+          roughness: 0.6,
+        })
+      );
+      snack.position.set(vx - 0.28 + c * 0.28, 0.75 + r * 0.38, vz + 0.28);
+      snack.scale.set(0.2, 0.22, 0.16);
+      group.add(snack);
+    }
+  }
+
+  pushBoxCollider(colliders, vx - 0.62, vx + 0.62, vz - 0.48, vz + 0.48);
+
+  var pick = new THREE.Mesh(sharedBoxGeometry(), mats.invisiblePick);
+  pick.position.set(vx, 1.1, vz);
+  pick.scale.set(1.35, 2.3, 1.1);
+  pick.userData.brInteract = { kind: "l4_vending_l61" };
+  group.add(pick);
+  interactRoots.push(pick);
+}
+
+/** 出生区块向下楼梯 → Level 6 */
+function addStairsDownToL6(group, colliders, interactRoots, sx, sz, mats) {
+  var hole = new THREE.Mesh(sharedBoxGeometry(), mats.stairVoid);
+  hole.position.set(sx, 0.02, sz);
+  hole.scale.set(2.4, 0.08, 3.4);
+  group.add(hole);
+
+  var step;
+  for (step = 0; step < 6; step++) {
+    var tread = new THREE.Mesh(sharedBoxGeometry(), mats.stair);
+    tread.position.set(sx, -0.18 - step * 0.22, sz - 1.1 + step * 0.42);
+    tread.scale.set(1.8, 0.14, 0.4);
+    tagShadowMesh(tread, true, true);
+    group.add(tread);
+  }
+
+  var railL = new THREE.Mesh(sharedBoxGeometry(), mats.stairRail);
+  railL.position.set(sx - 1.05, 0.55, sz);
+  railL.scale.set(0.08, 1.1, 3.2);
+  tagShadowMesh(railL, true, false);
+  group.add(railL);
+  var railR = new THREE.Mesh(sharedBoxGeometry(), mats.stairRail);
+  railR.position.set(sx + 1.05, 0.55, sz);
+  railR.scale.set(0.08, 1.1, 3.2);
+  tagShadowMesh(railR, true, false);
+  group.add(railR);
+
+  pushBoxCollider(colliders, sx - 1.2, sx - 0.95, sz - 1.7, sz + 1.7);
+  pushBoxCollider(colliders, sx + 0.95, sx + 1.2, sz - 1.7, sz + 1.7);
+
+  var pick = new THREE.Mesh(sharedBoxGeometry(), mats.invisiblePick);
+  pick.position.set(sx, 0.7, sz);
+  pick.scale.set(2.2, 1.5, 3.2);
+  pick.userData.brInteract = { kind: "l4_stairs_down" };
+  group.add(pick);
+  interactRoots.push(pick);
+}
+
 function loadChunk(cx, cz, ctx) {
   var key = chunkKey(cx, cz);
   if (ctx.chunks.has(key)) return;
@@ -639,6 +779,10 @@ function loadChunk(cx, cz, ctx) {
     tagShadowMesh(shaft, true, true);
     group.add(shaft);
     pushBoxCollider(colliders, ox - 1.08, ox + 1.08, oz - 1 - 1.08, oz - 1 + 1.08);
+    // 电梯井东侧：通往 Level 6 的向下楼梯
+    addStairsDownToL6(group, colliders, chunkInteractRoots, ox + 4.2, oz + 1.2, mats);
+    // 出生区西侧：写着“自动售货机”，Q 切入 Level 6.1
+    addVendingMachineToL61(group, colliders, chunkInteractRoots, ox - 8.2, oz + 3.5, mats);
   }
 
   flushInstanceBatches(group, batches);

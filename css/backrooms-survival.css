@@ -228,11 +228,209 @@ body.backrooms-dead #backroomsCanvas {
   line-height: 1.45;
 }
 
-body.backrooms-pack-open #backroomsCanvas,
-body.backrooms-pack-open .backrooms-input {
+/* —— 底部快捷栏（6 格） —— */
+.br-hotbar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.br-hotbar__slots {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 2px solid rgba(240, 200, 60, 0.92);
+  background: rgba(8, 14, 28, 0.55);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.br-hotbar__cell {
+  width: 46px;
+  height: 46px;
+  border-radius: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.br-hotbar__cell--filled {
+  border-color: rgba(116, 185, 255, 0.5);
+  background: rgba(42, 78, 118, 0.55);
+}
+
+.br-hotbar__cell--active {
+  border-width: 3px;
+  border-color: rgba(255, 220, 90, 0.98);
+  box-shadow: 0 0 0 1px rgba(255, 200, 60, 0.55), inset 0 0 10px rgba(255, 210, 80, 0.18);
+}
+
+.br-hotbar__cell--filled.br-hotbar__cell--active {
+  border-color: rgba(255, 220, 90, 0.98);
+}
+
+.br-hotbar__hint {
+  margin: 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.72);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+
+.br-hotbar__hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  margin: 0 1px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.4);
+  font-size: 10px;
+}
+
+.br-slot--dragging {
+  opacity: 0.45;
+}
+
+.br-slot--drop {
+  outline: 2px dashed rgba(255, 210, 80, 0.85);
+  outline-offset: -2px;
+}
+
+@media (max-width: 720px) {
+  .br-hotbar {
+    bottom: calc(168px + env(safe-area-inset-bottom, 0px));
+  }
+  .br-hotbar__cell {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+body.backrooms-pack-open .br-hotbar,
+body.backrooms-settings-open .br-hotbar {
+  z-index: 6;
+}
+
+body.backrooms-dialogue-open .br-hotbar,
+body.backrooms-home-ending-open .br-hotbar {
+  opacity: 0.2;
   pointer-events: none;
 }
 
-body.backrooms-pack-open .br-pack {
+body.backrooms-pack-open #backroomsCanvas,
+body.backrooms-pack-open .backrooms-input,
+body.backrooms-settings-open #backroomsCanvas,
+body.backrooms-settings-open .backrooms-input {
+  pointer-events: none;
+}
+
+body.backrooms-pack-open .br-pack,
+body.backrooms-settings-open .br-settings {
   pointer-events: auto;
+}
+
+/* —— 设置（P） —— */
+.br-settings {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.br-settings[hidden] {
+  display: none !important;
+}
+
+.br-settings__panel {
+  pointer-events: auto;
+  width: min(280px, 86vw);
+  padding: 16px 18px 14px;
+  border-radius: 10px;
+  background: rgba(8, 10, 14, 0.92);
+  border: 1px solid rgba(255, 198, 120, 0.24);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.58);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.br-settings__title {
+  margin: 0 0 12px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.88;
+}
+
+.br-settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.38);
+  cursor: pointer;
+  user-select: none;
+}
+
+.br-settings__row:hover {
+  background: rgba(40, 52, 70, 0.55);
+}
+
+.br-settings__row--on {
+  border-color: rgba(255, 210, 80, 0.7);
+  background: rgba(72, 58, 20, 0.45);
+}
+
+.br-settings__label {
+  font-size: 14px;
+}
+
+.br-settings__state {
+  font-size: 12px;
+  min-width: 1.6em;
+  text-align: right;
+  opacity: 0.75;
+}
+
+.br-settings__row--on .br-settings__state {
+  color: rgba(255, 220, 100, 0.98);
+  opacity: 1;
+}
+
+.br-settings__foot {
+  margin: 12px 0 0;
+  font-size: 11px;
+  opacity: 0.72;
+  line-height: 1.45;
+}
+
+.br-settings__foot kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  margin: 0 1px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.4);
+  font-size: 10px;
 }

@@ -29,8 +29,8 @@ import {
   applyBackroomsRendererSize,
   applyBackroomsToneMapping,
 } from "./backrooms-gfx-profile.js";
-import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
-import { enforceLevelEntry } from "./backrooms-level-pass.js";
+import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
+import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { refreshLevel1_1OutpostChestsOnFirstL4Visit } from "./backrooms-level1-1-chests.js";
 import {
   createBackroomsFpsState,
@@ -59,6 +59,7 @@ const inputEl = document.getElementById("backroomsInput");
 const errorEl = document.getElementById("backroomsError");
 const hintEl = document.getElementById("backroomsHint");
 const waterHintEl = document.getElementById("backroomsWaterHint");
+const interactHintEl = document.getElementById("backroomsInteractHint");
 const lootToastEl = document.getElementById("backroomsLootToast");
 const crosshairEl = document.getElementById("backroomsCrosshair");
 const megPointsEl = document.getElementById("backroomsMegPoints");
@@ -98,6 +99,7 @@ let interactRoots = [];
 /** @type {{ data: object, distance: number } | null} */
 let currentAimPick = null;
 let lootToastUntil = 0;
+let transitionLock = false;
 
 function showError(msg) {
   if (!errorEl) return;
@@ -161,17 +163,48 @@ function isAimWaterCooler() {
   return currentAimPick.distance <= AIM_INTERACT_MAX;
 }
 
+function isAimStairsDown() {
+  if (!currentAimPick || !currentAimPick.data) return false;
+  if (currentAimPick.data.kind !== "l4_stairs_down") return false;
+  return currentAimPick.distance <= AIM_INTERACT_MAX;
+}
+
+function isAimVendingL61() {
+  if (!currentAimPick || !currentAimPick.data) return false;
+  if (currentAimPick.data.kind !== "l4_vending_l61") return false;
+  return currentAimPick.distance <= AIM_INTERACT_MAX;
+}
+
 function updateWaterHint() {
   if (!waterHintEl) return;
-  if (isInventoryOpen() || !survival || survival.dead) {
+  if (isInventoryOpen() || !survival || survival.dead || transitionLock) {
     waterHintEl.hidden = true;
     return;
   }
   waterHintEl.hidden = !isAimWaterCooler();
 }
 
+function updateInteractHint() {
+  if (!interactHintEl) return;
+  if (isInventoryOpen() || !survival || survival.dead || transitionLock) {
+    interactHintEl.hidden = true;
+    return;
+  }
+  if (isAimStairsDown()) {
+    interactHintEl.hidden = false;
+    interactHintEl.innerHTML = "按 <kbd>Q</kbd> 沿楼梯下行";
+    return;
+  }
+  if (isAimVendingL61()) {
+    interactHintEl.hidden = false;
+    interactHintEl.innerHTML = "按 <kbd>Q</kbd> 切入自动售货机";
+    return;
+  }
+  interactHintEl.hidden = true;
+}
+
 function tryWaterCoolerQ() {
-  if (isInventoryOpen() || !survival || survival.dead) return;
+  if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
   if (!isAimWaterCooler()) return;
   if (!survival.addItem({ id: "almond_water", name: "杏仁水" })) {
     showLootToast("背包已满");
@@ -179,6 +212,42 @@ function tryWaterCoolerQ() {
   }
   saveBackroomsSurvival(survival);
   showLootToast("接了一瓶杏仁水");
+}
+
+function exitToLevel6() {
+  if (transitionLock) return;
+  transitionLock = true;
+  showLootToast("你走下楼梯——黑暗吞没了灯光…");
+  saveBackroomsSurvival(survival);
+  grantLevelPass("l6", fps.yaw);
+  queueEnterLevelNumber(6);
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level6.html";
+  }, 550);
+}
+
+function exitToLevel61() {
+  if (transitionLock) return;
+  transitionLock = true;
+  showLootToast("你挤进了自动售货机…");
+  saveBackroomsSurvival(survival);
+  grantLevelPass("l6_1", fps.yaw);
+  queueEnterLevelNumber("6.1");
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level6-1.html";
+  }, 550);
+}
+
+function tryStairsQ() {
+  if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
+  if (!isAimStairsDown()) return;
+  exitToLevel6();
+}
+
+function tryVendingQ() {
+  if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
+  if (!isAimVendingL61()) return;
+  exitToLevel61();
 }
 
 function bindControls() {
@@ -201,7 +270,9 @@ function bindControls() {
       }
       if (e.code === "KeyQ" && !e.repeat) {
         e.preventDefault();
-        tryWaterCoolerQ();
+        if (isAimStairsDown()) tryStairsQ();
+        else if (isAimVendingL61()) tryVendingQ();
+        else tryWaterCoolerQ();
         return true;
       }
       return false;
@@ -285,7 +356,7 @@ function init() {
     _physOpts.bodyHeight = BODY_HEIGHT;
     _physOpts.ceilingY = L4_WALL_H;
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen()) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock) {
       var mul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
@@ -297,11 +368,14 @@ function init() {
     if (level4World) level4World.update(fps.player.x, fps.player.z);
     updateAimPick();
     updateWaterHint();
+    updateInteractHint();
     applyBackroomsCamera(fps, camera, EYE_HEIGHT);
     if (crosshairEl) {
+      var hideXh = isInventoryOpen() || !survival || survival.dead;
+      crosshairEl.classList.toggle("backrooms-crosshair--hidden", hideXh);
       crosshairEl.classList.toggle(
-        "backrooms-crosshair--hidden",
-        isInventoryOpen() || !survival || survival.dead
+        "backrooms-crosshair--interact",
+        !hideXh && (isAimWaterCooler() || isAimStairsDown() || isAimVendingL61())
       );
     }
     updateBackroomsTemperature(dt, performance.now());

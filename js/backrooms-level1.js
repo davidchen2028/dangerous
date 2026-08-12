@@ -27,6 +27,7 @@ import {
   applyBackroomsRendererSize,
   applyBackroomsToneMapping,
 } from "./backrooms-gfx-profile.js";
+import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
 import {
   addMegPoints,
   getMegPoints,
@@ -147,6 +148,7 @@ const _physStub = { feetY: 0, velY: 0, grounded: true };
 let renderer = null;
 let camera = null;
 let scene = null;
+let firesalt = null;
 /** @type {ReturnType<buildBackroomsLevel1World> | null} */
 let level1World = null;
 /** @type {ReturnType<createLevel1_1ZoneManager> | null} */
@@ -180,13 +182,13 @@ let megDialogueOpen = false;
 let megDialogueKind = null;
 let level11TourStep = 0;
 
-const LEVEL11_SD_IMAGES = {
-  variable: "img/backrooms/level11/sd-variable.png",
-  class0: "img/backrooms/level11/sd-class0.png?v=2",
-  class2: "img/backrooms/level11/sd-class2.png",
-  class4: "img/backrooms/level11/sd-class4.png",
-  deadzone: "img/backrooms/level11/sd-deadzone.png",
-  na: "img/backrooms/level11/sd-na.png",
+const LEVEL1_1_SD_IMAGES = {
+  variable: "img/backrooms/level1-1/sd-variable.png",
+  class0: "img/backrooms/level1-1/sd-class0.png",
+  class2: "img/backrooms/level1-1/sd-class2.png",
+  class4: "img/backrooms/level1-1/sd-class4.png",
+  deadzone: "img/backrooms/level1-1/sd-deadzone.png",
+  na: "img/backrooms/level1-1/sd-na.png",
 };
 /** @type {{ data: object, distance: number } | null} */
 let currentAimPick = null;
@@ -550,7 +552,7 @@ function openLevel11Dialogue() {
   document.body.classList.add("backrooms-dialogue-open");
   dialogueEl.hidden = false;
   if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "M.E.G 人员";
-  dialogueTextEl.textContent = "你想去 1.1 吗？";
+  dialogueTextEl.textContent = "你想去 Level 1.1 吗？";
   setDialogueImage(null);
   setDialogueChoicesLevel11();
   if (level11HintEl) level11HintEl.hidden = true;
@@ -580,7 +582,7 @@ function applyLevel11TourStep() {
   }
   if (step === 1) {
     dialogueTextEl.textContent = "";
-    setDialogueImage(LEVEL11_SD_IMAGES.variable);
+    setDialogueImage(LEVEL1_1_SD_IMAGES.variable);
     setDialogueContinueQ();
     return;
   }
@@ -592,7 +594,7 @@ function applyLevel11TourStep() {
   }
   if (step === 3) {
     dialogueTextEl.textContent = "";
-    setDialogueImage(LEVEL11_SD_IMAGES.class0);
+    setDialogueImage(LEVEL1_1_SD_IMAGES.class0);
     setDialogueContinueQ();
     return;
   }
@@ -604,7 +606,7 @@ function applyLevel11TourStep() {
   }
   if (step === 5) {
     dialogueTextEl.textContent = "";
-    setDialogueImage(LEVEL11_SD_IMAGES.class2);
+    setDialogueImage(LEVEL1_1_SD_IMAGES.class2);
     setDialogueContinueQ();
     return;
   }
@@ -616,7 +618,7 @@ function applyLevel11TourStep() {
   }
   if (step === 7) {
     dialogueTextEl.textContent = "";
-    setDialogueImage(LEVEL11_SD_IMAGES.class4);
+    setDialogueImage(LEVEL1_1_SD_IMAGES.class4);
     setDialogueContinueQ();
     return;
   }
@@ -628,7 +630,7 @@ function applyLevel11TourStep() {
   }
   if (step === 9) {
     dialogueTextEl.textContent = "";
-    setDialogueImage(LEVEL11_SD_IMAGES.deadzone);
+    setDialogueImage(LEVEL1_1_SD_IMAGES.deadzone);
     setDialogueContinueQ();
     return;
   }
@@ -640,7 +642,7 @@ function applyLevel11TourStep() {
   }
   if (step === 11) {
     dialogueTextEl.textContent = "";
-    setDialogueImage(LEVEL11_SD_IMAGES.na);
+    setDialogueImage(LEVEL1_1_SD_IMAGES.na);
     setDialogueContinueQ();
     return;
   }
@@ -1129,7 +1131,7 @@ function updateMegDoorHint() {
       return;
     }
     if (isAimingLevel1_1WallForCut()) {
-      doorHintEl.innerHTML = "按 <kbd>Q</kbd> 切出 · 返回 L1 基地门口";
+      doorHintEl.innerHTML = "按 <kbd>Q</kbd> 切出";
       doorHintEl.hidden = false;
       return;
     }
@@ -1152,9 +1154,9 @@ function updateMegDoorHint() {
         isAimKind("level1_1_12_door");
       if (atCorridor12) {
         if (level1_1World && level1_1World.isCorridor12DoorOpen()) {
-          doorHintEl.innerHTML = "按 <kbd>Q</kbd> 进入 L1.1-2 · 或走进门洞";
+          doorHintEl.innerHTML = "按 <kbd>Q</kbd> 进入 · 或走进门洞";
         } else {
-          doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开 L1.1-2 门';
+          doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开门';
         }
         doorHintEl.hidden = false;
         return;
@@ -1179,9 +1181,9 @@ function updateMegDoorHint() {
         isAimKind("level1_1_23_door");
       if (atCorridor23) {
         if (level1_1World2 && level1_1World2.isCorridor23DoorOpen()) {
-          doorHintEl.innerHTML = "按 <kbd>Q</kbd> 进入 L1.1-3 · 门开后会自动传送";
+          doorHintEl.innerHTML = "按 <kbd>Q</kbd> 进入 · 门开后会自动传送";
         } else {
-          doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开 L1.1-3 门（尽头 · 见「→ L1.1-3」标牌）';
+          doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开门';
         }
         doorHintEl.hidden = false;
         return;
@@ -1206,9 +1208,9 @@ function updateMegDoorHint() {
         isAimKind("level1_1_34_door");
       if (atCorridor14) {
         if (level1_1World3 && level1_1World3.isCorridor14DoorOpen()) {
-          doorHintEl.innerHTML = "按 <kbd>Q</kbd> 进入 L1.1-4 · 或走进门洞";
+          doorHintEl.innerHTML = "按 <kbd>Q</kbd> 进入 · 或走进门洞";
         } else {
-          doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开 L1.1-4 门';
+          doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开门';
         }
         doorHintEl.hidden = false;
         return;
@@ -1216,7 +1218,7 @@ function updateMegDoorHint() {
     }
     if (level1_1Zones.getSubZone() === "corridor4") {
       if (level1_1Zones.isNearCorridor33Return(player.x, player.z)) {
-        doorHintEl.innerHTML = "走进门洞 · 返回 L1.1-3";
+        doorHintEl.innerHTML = "走进门洞 · 返回";
         doorHintEl.hidden = false;
         return;
       }
@@ -1788,6 +1790,11 @@ function init() {
   if (level1World.ensureMegBase) level1World.ensureMegBase();
   industrialLights = level1World.industrialLights;
   megGuideNpc = level1World.megGuideNpc || null;
+  firesalt = createBackroomsFiresaltController({
+    scene: scene,
+    camera: camera,
+    showToast: showLootToast,
+  });
 
   level1_1Zones = createLevel1_1ZoneManager({
     scene: scene,
@@ -1945,6 +1952,7 @@ function startLoop() {
     updateBackroomsTemperature(dt, now);
     updateBackroomsHeatDamage(survival, now);
     syncLookUi();
+    if (firesalt) firesalt.update(dt);
     renderer.render(scene, camera);
   }
   frame();

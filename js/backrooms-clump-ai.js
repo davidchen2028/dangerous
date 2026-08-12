@@ -15,6 +15,11 @@ import {
   resolveCircleAgainstLevel3Maze,
 } from "./backrooms-level3-world.js";
 import { resolveBackroomsMoveCollisions } from "./backrooms-fps-controller.js";
+import {
+  BACKROOMS_ENTITY_HEALTH,
+  registerBackroomsEntityTarget,
+  unregisterBackroomsEntityTarget,
+} from "./backrooms-entity-health.js";
 
 export const CLUMP_POUNCE_DAMAGE = 45;
 export const CLUMP_POUNCE_COOLDOWN = 50;
@@ -107,7 +112,7 @@ function createClumpEntity(parent, spawn, opts) {
   if (spawn.rotY != null) group.rotation.y = spawn.rotY;
   parent.add(group);
 
-  return {
+  var clump = {
     figure: figure,
     group: group,
     homeX: spawn.x,
@@ -124,7 +129,20 @@ function createClumpEntity(parent, spawn, opts) {
     mode: "idle",
     lungeFromX: spawn.x,
     lungeFromZ: spawn.z,
+    dead: false,
   };
+  clump.health = registerBackroomsEntityTarget(group, {
+    kind: "clump",
+    name: "肢团",
+    maxHp: BACKROOMS_ENTITY_HEALTH.clump,
+    aimHeight: 0.7,
+    onDeath: function () {
+      clump.dead = true;
+      clump.mode = "dead";
+      clump.group.visible = false;
+    },
+  });
+  return clump;
 }
 
 function faceToward(clump, tx, tz) {
@@ -168,6 +186,7 @@ function applyPounceDamage(clump, survival, toastFn) {
 }
 
 function updateSingleClump(clump, dt, px, pz, survival, toastFn, opts) {
+  if (clump.dead) return;
   clump.animT += dt;
   clump.figure.update(clump.animT);
 
@@ -187,7 +206,7 @@ function updateSingleClump(clump, dt, px, pz, survival, toastFn, opts) {
     var lungeScale = 1 + ease * 0.35;
     clump.group.scale.setScalar(lungeScale);
     if (p >= 0.12 && p <= 0.55) {
-      applyPounceDamage(clump, survival, toastFn);
+      if (!opts.playerSafe) applyPounceDamage(clump, survival, toastFn);
     }
     if (clump.lungeLeft <= 0) {
       clump.mode = "cooldown";
@@ -213,7 +232,7 @@ function updateSingleClump(clump, dt, px, pz, survival, toastFn, opts) {
   var triggerSq = CLUMP_TRIGGER_DIST * CLUMP_TRIGGER_DIST;
   var toPlayerSq = distSq(clump.x, clump.z, px, pz);
 
-  if (toPlayerSq <= seeSq && survival && !survival.dead) {
+  if (!opts.playerSafe && toPlayerSq <= seeSq && survival && !survival.dead) {
     faceToward(clump, px, pz);
     if (toPlayerSq <= triggerSq && clump.cooldown <= 0) {
       clump.mode = "lunge";
@@ -278,6 +297,7 @@ function createClumpSystem(parent, spawns, opts) {
       var moveOpts = {
         mazeGrid: extra.mazeGrid != null ? extra.mazeGrid : opts.mazeGrid,
         wallColliders: extra.wallColliders != null ? extra.wallColliders : opts.wallColliders,
+        playerSafe: !!extra.playerSafe,
       };
       for (i = 0; i < clumps.length; i++) {
         updateSingleClump(clumps[i], dt, px, pz, survival, toastFn, moveOpts);
@@ -285,10 +305,18 @@ function createClumpSystem(parent, spawns, opts) {
     },
     dispose: function () {
       for (i = 0; i < clumps.length; i++) {
+        unregisterBackroomsEntityTarget(clumps[i].health);
         clumps[i].figure.dispose();
       }
     },
   };
+}
+
+/** 自定义关卡：按给定世界坐标生成肢团 */
+export function createClumpsAt(parent, spawns, wallColliders) {
+  return createClumpSystem(parent, spawns || [], {
+    wallColliders: wallColliders || null,
+  });
 }
 
 /** L1.1-3 走廊 1 只 */

@@ -480,6 +480,13 @@ body.backrooms-pointer-locked .backrooms-input {
   background: rgba(255, 210, 120, 0.95);
 }
 
+/* 火盐锁定实体：准星变黄 */
+.backrooms-crosshair--hostile::before,
+.backrooms-crosshair--hostile::after {
+  background: rgba(255, 220, 40, 1);
+  box-shadow: 0 0 6px rgba(255, 200, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.65);
+}
+
 body.backrooms-pack-open .backrooms-crosshair {
   display: none;
 }

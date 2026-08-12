@@ -4,7 +4,7 @@
 import { resetBackroomsRun } from "./backrooms-survival.js";
 
 export const LEVEL0_PAGE = "backrooms-level0.html";
-/** @typedef {"clip" | "l2" | "l3" | "l4" | "l8" | "l9" | "l57" | "l75" | "l283"} BackroomsLevelPassId */
+/** @typedef {"clip" | "l2" | "l3" | "l4" | "l6" | "l6_1" | "l7" | "l8" | "l9" | "l10" | "l11" | "l57" | "l75" | "l283"} BackroomsLevelPassId */
 
 /** @type {Record<BackroomsLevelPassId, { pass: string, yaw: string | null }>} */
 export const LEVEL_PASS_KEYS = {
@@ -12,10 +12,15 @@ export const LEVEL_PASS_KEYS = {
   l2: { pass: "backrooms_l2_pass", yaw: "backrooms_l2_yaw" },
   l3: { pass: "backrooms_l3_pass", yaw: "backrooms_l3_yaw" },
   l4: { pass: "backrooms_l4_pass", yaw: "backrooms_l4_yaw" },
+  l6: { pass: "backrooms_l6_pass", yaw: "backrooms_l6_yaw" },
+  l6_1: { pass: "backrooms_l6_1_pass", yaw: "backrooms_l6_1_yaw" },
+  l7: { pass: "backrooms_l7_pass", yaw: "backrooms_l7_yaw" },
   l283: { pass: "backrooms_l283_pass", yaw: "backrooms_l283_yaw" },
   l57: { pass: "backrooms_l57_pass", yaw: "backrooms_l57_yaw" },
   l8: { pass: "backrooms_l8_pass", yaw: "backrooms_l8_yaw" },
   l9: { pass: "backrooms_l9_pass", yaw: "backrooms_l9_yaw" },
+  l10: { pass: "backrooms_l10_pass", yaw: "backrooms_l10_yaw" },
+  l11: { pass: "backrooms_l11_pass", yaw: "backrooms_l11_yaw" },
   l75: { pass: "backrooms_l75_pass", yaw: "backrooms_l75_yaw" },
 };
 

@@ -164,7 +164,7 @@ function openPainterDialogue() {
   document.body.classList.add("backrooms-dialogue-open");
   dialogueEl.hidden = false;
   if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "画家";
-  dialogueTextEl.textContent = "你要去 L1 吗？";
+  dialogueTextEl.textContent = "你要前往 Level 1 吗？";
   if (dialogueChoicesEl) {
     dialogueChoicesEl.hidden = false;
     dialogueChoicesEl.innerHTML =
@@ -228,7 +228,7 @@ function resolveInteract() {
 function interactLabel(data) {
   if (!data) return "";
   if (data.kind === "l57_painting") return "黄色房间画作 · 按 <kbd>Q</kbd> 切出";
-  if (data.kind === "l57_cave_painting") return "洞穴画作 · 按 <kbd>Q</kbd> 进入 Level 8";
+  if (data.kind === "l57_cave_painting") return "洞穴画作 · 按 <kbd>Q</kbd> 穿过";
   if (data.kind === "l57_painter") return "画家 · 按 <kbd>Q</kbd> 对话";
   return "";
 }

@@ -36,6 +36,7 @@ import {
 } from "./backrooms-level3-hazards.js";
 import { createLevel3DeathMoths } from "./backrooms-death-moth.js";
 import { createLevel3Clumps } from "./backrooms-clump-ai.js";
+import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
 import { bindLevel3HumOnGesture, startLevel3Hum, stopLevel3Hum } from "./backrooms-level3-audio.js";
 import {
   buildLevel3ElevatorShaft,
@@ -118,6 +119,7 @@ let pipeHazards = [];
 let level3DeathMoths = null;
 /** @type {ReturnType<createLevel3Clumps> | null} */
 let level3Clumps = null;
+let firesalt = null;
 let hazardVfxGroup = null;
 let lootToastUntil = 0;
 let ambientLight = null;
@@ -295,7 +297,7 @@ function syncLookUi() {
   if (!hintEl) return;
   var nv = isNightVisionActive() ? " · 夜视 <strong>" + formatNightVisionRemaining() + "</strong>" : "";
   hintEl.innerHTML =
-    "发电站 · 迷宫<strong>中央通天光柱</strong> → Level 4 · <kbd>WASD</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>Space</kbd> 跳 · <kbd>B</kbd> 背包" +
+    "发电站 · 迷宫<strong>中央通天光柱</strong> · <kbd>WASD</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>Space</kbd> 跳 · <kbd>B</kbd> 背包" +
     nv;
 }
 
@@ -422,6 +424,11 @@ function init() {
   pipeHazards = createLevel3PipeHazards(built.pipeHazardSlots, hazardVfxGroup);
   level3DeathMoths = createLevel3DeathMoths(root, mazeData);
   level3Clumps = createLevel3Clumps(root, mazeData);
+  firesalt = createBackroomsFiresaltController({
+    scene: scene,
+    camera: camera,
+    showToast: showLootToast,
+  });
 
   level3Elevator = buildLevel3ElevatorShaft(root);
 
@@ -525,13 +532,20 @@ function init() {
         pipeHazards: pipeHazards,
         mazeGrid: mazeData ? mazeData.grid : null,
         now: now,
+        playerSafe:
+          elevatorRising ||
+          isNearLevel3Elevator(fps.player.x, fps.player.z, level3Elevator),
       });
     }
     if (level3Clumps && survival && !survival.dead) {
       level3Clumps.update(dt, fps.player.x, fps.player.z, survival, showLootToast, {
         mazeGrid: mazeData ? mazeData.grid : null,
+        playerSafe:
+          elevatorRising ||
+          isNearLevel3Elevator(fps.player.x, fps.player.z, level3Elevator),
       });
     }
+    if (firesalt) firesalt.update(dt);
     flickerFrame += 1;
     if ((flickerFrame & 1) === 0) {
       updateLevel3FlickerLights(flickerLights, now, flickerIntensityScale);

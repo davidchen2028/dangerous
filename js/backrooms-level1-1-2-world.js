@@ -257,7 +257,7 @@ export function buildLevel1_1_2World(parent, opts) {
     corridor23SignCtx.font = "bold 28px sans-serif";
     corridor23SignCtx.textAlign = "center";
     corridor23SignCtx.textBaseline = "middle";
-    corridor23SignCtx.fillText("→ L1.1-3", 128, 32);
+    corridor23SignCtx.fillText("→", 128, 32);
     var corridor23SignTex = new THREE.CanvasTexture(corridor23SignCanvas);
     corridor23SignTex.colorSpace = THREE.SRGBColorSpace;
     var corridor23Sign = new THREE.Mesh(

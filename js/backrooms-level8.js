@@ -9,7 +9,15 @@ import {
   saveBackroomsSurvival,
 } from "./backrooms-survival-persist.js";
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
-import { toggleBackpack, isInventoryOpen, setInventoryOpenHandler } from "./backrooms-inventory.js";
+import {
+  toggleBackpack,
+  isInventoryOpen,
+  setInventoryOpenHandler,
+  addFireSalt,
+  countUsedSlots,
+  removeRandomItems,
+  BACKPACK_CAPACITY,
+} from "./backrooms-inventory.js";
 import { updateMegPointsDisplay } from "./backrooms-meg-points.js";
 import {
   initBackroomsTemperature,
@@ -33,6 +41,7 @@ import {
 import { pickCrosshairInteract, getCameraAimRay } from "./backrooms-interact-aim.js";
 import { buildLevel8World, L8_WALL_H } from "./backrooms-level8-world.js";
 import { createLevel8Chickens } from "./backrooms-level8-chickens.js";
+import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
 import {
   createBackroomsFpsState,
   moveBackroomsPlayer,
@@ -56,6 +65,7 @@ const FOG_COLOR = 0x080a0d;
 const FOG_DENSITY = 0.025;
 const NV_FOG_COLOR = 0x3a4a58;
 const NV_FOG_DENSITY = 0.012;
+const FIRE_SALT_REWARD_KEY = "backrooms_l8_fire_salt_reward_v1";
 
 const canvas = document.getElementById("backroomsCanvas");
 const inputEl = document.getElementById("backroomsInput");
@@ -79,6 +89,7 @@ let currentAimPick = null;
 let transitionLock = false;
 let lootToastUntil = 0;
 let caveChickens = null;
+let firesalt = null;
 let lastNightVisionApplied = null;
 let lastNvHintSec = -1;
 const wallColliders = [];
@@ -240,7 +251,33 @@ function updateInteractUi() {
 function exitTo(levelId, levelNumber, page, toast) {
   if (transitionLock) return;
   transitionLock = true;
-  showLootToast(toast);
+  var saltAdded = 0;
+  var removedItems = [];
+  var firstExit = true;
+  try {
+    firstExit = sessionStorage.getItem(FIRE_SALT_REWARD_KEY) == null;
+  } catch (err) {
+    firstExit = true;
+  }
+  if (firstExit) {
+    var freeSlots = BACKPACK_CAPACITY - countUsedSlots();
+    removedItems = removeRandomItems(Math.max(0, 3 - freeSlots));
+    saltAdded = addFireSalt(3);
+    try {
+      sessionStorage.setItem(FIRE_SALT_REWARD_KEY, "1");
+    } catch (err2) {
+      /* ignore */
+    }
+  }
+  showLootToast(
+    toast +
+      (removedItems.length
+        ? " · 背包空间不足，随机遗失" + removedItems.length + "件物品"
+        : "") +
+      (saltAdded > 0
+        ? " · 背包里出现了" + saltAdded + "块火盐"
+        : "")
+  );
   saveBackroomsSurvival(survival);
   grantLevelPass(levelId, fps.yaw);
   queueEnterLevelNumber(levelNumber);
@@ -254,7 +291,7 @@ function tryQAction() {
   var data = resolveInteract();
   if (!data) return;
   if (data.kind === "l8_plank") {
-    exitTo("l9", 9, "backrooms-level9.html", "木板断裂——你跌入 Level 9…");
+    exitTo("l9", 9, "backrooms-level9.html", "木板断裂——你跌入了黑暗…");
     return;
   }
   if (data.kind === "l8_silver_pipe") {
@@ -304,6 +341,11 @@ function init() {
   scene.add(root);
   world = buildLevel8World(root);
   caveChickens = createLevel8Chickens(root);
+  firesalt = createBackroomsFiresaltController({
+    scene: scene,
+    camera: camera,
+    showToast: showLootToast,
+  });
   wallColliders.push.apply(wallColliders, world.colliders);
   interactRoots = world.interactRoots.slice();
   fps.player.x = world.spawnX;
@@ -371,6 +413,7 @@ function init() {
     if (caveChickens && !transitionLock) {
       caveChickens.update(dt, fps.player, survival, showLootToast);
     }
+    if (firesalt) firesalt.update(dt);
     refreshAimPick();
     updateInteractUi();
     applyBackroomsCamera(fps, camera, EYE_HEIGHT);

@@ -4,7 +4,9 @@
  */
 import {
   backpackSlots,
+  hotbarSlots,
   BACKPACK_CAPACITY,
+  HOTBAR_CAPACITY,
   renderGridPublic,
   resetBackpack,
 } from "./backrooms-inventory.js";
@@ -76,6 +78,7 @@ export function flashMegSaving(survival) {
 function persistBackpackFromSlots() {
   try {
     sessionStorage.setItem("backrooms_backpack_v1", JSON.stringify(backpackSlots));
+    sessionStorage.setItem("backrooms_hotbar_v1", JSON.stringify(hotbarSlots));
   } catch (err) {
     /* ignore */
   }
@@ -83,29 +86,47 @@ function persistBackpackFromSlots() {
 
 export function snapshotBackpackSlots() {
   var i;
-  var out = new Array(BACKPACK_CAPACITY);
+  var out = {
+    backpack: new Array(BACKPACK_CAPACITY),
+    hotbar: new Array(HOTBAR_CAPACITY),
+  };
   for (i = 0; i < BACKPACK_CAPACITY; i++) {
     var s = backpackSlots[i];
-    if (!s) {
-      out[i] = null;
-    } else {
-      out[i] = { id: s.id, name: s.name || s.id };
-    }
+    out.backpack[i] = !s ? null : { id: s.id, name: s.name || s.id };
+  }
+  for (i = 0; i < HOTBAR_CAPACITY; i++) {
+    var h = hotbarSlots[i];
+    out.hotbar[i] = !h ? null : { id: h.id, name: h.name || h.id };
   }
   return out;
 }
 
 export function restoreBackpackSnapshot(slots) {
-  if (!Array.isArray(slots) || slots.length !== BACKPACK_CAPACITY) return;
+  // 兼容旧快照：纯数组 = 仅背包
+  var backpack = Array.isArray(slots) ? slots : slots && slots.backpack;
+  var hotbar = slots && !Array.isArray(slots) ? slots.hotbar : null;
+  if (!Array.isArray(backpack) || backpack.length !== BACKPACK_CAPACITY) return;
   var i;
   for (i = 0; i < BACKPACK_CAPACITY; i++) {
-    var slot = slots[i];
+    var slot = backpack[i];
     if (slot == null) {
       backpackSlots[i] = null;
     } else if (slot && typeof slot.id === "string") {
       backpackSlots[i] = { id: slot.id, name: slot.name || slot.id };
     } else {
       backpackSlots[i] = null;
+    }
+  }
+  if (Array.isArray(hotbar) && hotbar.length === HOTBAR_CAPACITY) {
+    for (i = 0; i < HOTBAR_CAPACITY; i++) {
+      var hs = hotbar[i];
+      if (hs == null) {
+        hotbarSlots[i] = null;
+      } else if (hs && typeof hs.id === "string") {
+        hotbarSlots[i] = { id: hs.id, name: hs.name || hs.id };
+      } else {
+        hotbarSlots[i] = null;
+      }
     }
   }
   persistBackpackFromSlots();

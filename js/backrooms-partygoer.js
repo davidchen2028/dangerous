@@ -2,6 +2,11 @@
  * 派对客（Partygoer）— 黄色笑脸人形 + 红气球，程序化建模
  */
 import * as THREE from "three";
+import {
+  BACKROOMS_ENTITY_HEALTH,
+  registerBackroomsEntityTarget,
+  unregisterBackroomsEntityTarget,
+} from "./backrooms-entity-health.js";
 
 export const PARTYGOER_DEFAULT_SCALE = 1;
 /** 站立高约 2.15m */
@@ -225,5 +230,20 @@ export function spawnPartygoer(parent, spec) {
   fig.group.position.set(spec.x || 0, 0, spec.z || 0);
   if (spec.rotY != null) fig.group.rotation.y = spec.rotY;
   parent.add(fig.group);
+  var health = registerBackroomsEntityTarget(fig.group, {
+    kind: "partygoer",
+    name: "派对客",
+    maxHp: BACKROOMS_ENTITY_HEALTH.partygoer,
+    aimHeight: 1.2 * (spec.scale || 1),
+    onDeath: function () {
+      fig.group.visible = false;
+    },
+  });
+  var disposeFigure = fig.dispose;
+  fig.health = health;
+  fig.dispose = function () {
+    unregisterBackroomsEntityTarget(health);
+    disposeFigure();
+  };
   return fig;
 }

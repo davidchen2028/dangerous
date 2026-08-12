@@ -252,10 +252,10 @@ function interactLabel(data) {
     if (almondAlreadyTaken()) return "桌子 · 按 <kbd>Q</kbd> 搜索";
     return "桌子 · 按 <kbd>Q</kbd> 获得杏仁水";
   }
-  if (data.kind === "l283_painting") return "小丑画作 · 按 <kbd>Q</kbd> 进入 Level 57";
+  if (data.kind === "l283_painting") return "小丑画作 · 按 <kbd>Q</kbd> 穿过";
   if (data.kind === "l283_floor_exit") return "休息区地板 · 按 <kbd>Q</kbd> 切出";
   if (data.kind === "l283_pipe_enter") return "管道 · 按 <kbd>Q</kbd> 爬入";
-  if (data.kind === "l283_pipe_door") return "木门 · 按 <kbd>Q</kbd> 前往 Level 0";
+  if (data.kind === "l283_pipe_door") return "木门 · 按 <kbd>Q</kbd> 打开";
   return "";
 }
 
@@ -267,7 +267,7 @@ function updateInteractHint() {
   }
   if (moveMode === "pipe" && world) {
     if (pipeProgress <= 2) {
-      interactHintEl.innerHTML = "管道口木门 · 按 <kbd>Q</kbd> 前往 Level 0";
+      interactHintEl.innerHTML = "管道口木门 · 按 <kbd>Q</kbd> 打开";
       interactHintEl.hidden = false;
       return;
     }
@@ -355,7 +355,7 @@ function exitToLevel4() {
 function exitToLevel57() {
   if (transitionLock) return;
   transitionLock = true;
-  showLootToast("穿过画作… 进入 Level 57");
+  showLootToast("你穿过了画作…");
   saveBackroomsSurvival(survival);
   grantLevelPass("l57", fps.yaw);
   queueEnterLevelNumber(57);
@@ -473,7 +473,7 @@ function updateBallPit(dt) {
   if (!ballResolved && ballSinkDepth >= BALL_SINK_TRIGGER) {
     ballResolved = true;
     if (Math.random() < BALL_L4_CHANCE) {
-      showLootToast("海洋球深处… 你被抛入 Level 4！");
+      showLootToast("海洋球深处传来一股强大的拉力！");
       window.setTimeout(exitToLevel4, 700);
     } else {
       showLootToast("海洋球吞噬了你…");

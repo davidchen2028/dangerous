@@ -16,6 +16,11 @@ import {
 } from "./backrooms-level3-world.js";
 import { BURST_RADIUS } from "./backrooms-level3-hazards.js";
 import { resolveBackroomsMoveCollisions } from "./backrooms-fps-controller.js";
+import {
+  BACKROOMS_ENTITY_HEALTH,
+  registerBackroomsEntityTarget,
+  unregisterBackroomsEntityTarget,
+} from "./backrooms-entity-health.js";
 
 export const DEATH_MOTH_SPRAY_DAMAGE = 35;
 export const DEATH_MOTH_SPRAY_COOLDOWN = 10;
@@ -128,7 +133,7 @@ function createMothEntity(parent, spawn, opts) {
 
   var sprayVfx = createSprayVfx(parent);
 
-  return {
+  var moth = {
     figure: figure,
     group: group,
     sprayVfx: sprayVfx,
@@ -146,12 +151,29 @@ function createMothEntity(parent, spawn, opts) {
     animT: Math.random() * 10,
     mode: "idle",
   };
+  moth.health = registerBackroomsEntityTarget(group, {
+    kind: "death_moth",
+    name: "死亡飞蛾",
+    maxHp: BACKROOMS_ENTITY_HEALTH.death_moth,
+    aimHeight: 0,
+    onDeath: function () {
+      moth.dead = true;
+      moth.mode = "dead";
+      moth.group.visible = false;
+      if (moth.sprayVfx) moth.sprayVfx.visible = false;
+    },
+  });
+  return moth;
 }
 
 function killMoth(moth, toastFn, reason) {
   if (moth.dead) return;
   moth.dead = true;
   moth.mode = "dead";
+  if (moth.health) {
+    moth.health.hp = 0;
+    moth.health.alive = false;
+  }
   moth.group.visible = false;
   if (moth.sprayVfx) moth.sprayVfx.visible = false;
   if (toastFn && reason) toastFn(reason);
@@ -226,7 +248,7 @@ function updateSingleMoth(moth, dt, px, pz, survival, toastFn, opts) {
       moth.sprayVfx.scale.setScalar(pulse);
       moth.sprayVfx.material.opacity = 0.25 + (moth.sprayLeft / SPRAY_DURATION) * 0.45;
     }
-    if (!moth.sprayApplied && survival && !survival.dead) {
+    if (!opts.playerSafe && !moth.sprayApplied && survival && !survival.dead) {
       var sdx = px - moth.x;
       var sdz = pz - moth.z;
       if (sdx * sdx + sdz * sdz <= (DEATH_MOTH_SPRAY_RANGE + 0.8) * (DEATH_MOTH_SPRAY_RANGE + 0.8)) {
@@ -247,7 +269,7 @@ function updateSingleMoth(moth, dt, px, pz, survival, toastFn, opts) {
   var spraySq = DEATH_MOTH_SPRAY_RANGE * DEATH_MOTH_SPRAY_RANGE;
   var toPlayerSq = distSq(moth.x, moth.z, px, pz);
 
-  if (toPlayerSq <= seeSq) {
+  if (!opts.playerSafe && toPlayerSq <= seeSq) {
     faceToward(moth, px, pz);
     if (toPlayerSq <= spraySq && moth.cooldown <= 0) {
       moth.mode = "spray";
@@ -304,6 +326,7 @@ function createDeathMothSystem(parent, spawns, opts) {
         wallColliders: extra.wallColliders != null ? extra.wallColliders : opts.wallColliders,
         pipeHazards: extra.pipeHazards,
         now: extra.now,
+        playerSafe: !!extra.playerSafe,
       };
       for (i = 0; i < moths.length; i++) {
         updateSingleMoth(moths[i], dt, px, pz, survival, toastFn, moveOpts);
@@ -311,10 +334,18 @@ function createDeathMothSystem(parent, spawns, opts) {
     },
     dispose: function () {
       for (i = 0; i < moths.length; i++) {
+        unregisterBackroomsEntityTarget(moths[i].health);
         moths[i].figure.dispose();
       }
     },
   };
+}
+
+/** 自定义关卡：按给定世界坐标生成死亡飞蛾 */
+export function createDeathMothsAt(parent, spawns, wallColliders) {
+  return createDeathMothSystem(parent, spawns || [], {
+    wallColliders: wallColliders || null,
+  });
 }
 
 /** L2：与笑靥同一走廊 1 只 */

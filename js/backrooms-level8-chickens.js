@@ -3,6 +3,11 @@
  */
 import * as THREE from "three";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
+import {
+  BACKROOMS_ENTITY_HEALTH,
+  registerBackroomsEntityTarget,
+  unregisterBackroomsEntityTarget,
+} from "./backrooms-entity-health.js";
 
 export const L8_CHICKEN_COUNT = 3;
 export const L8_CHICKEN_DAMAGE = 20;
@@ -123,7 +128,7 @@ function createChicken(parent, spawn, index) {
     group.add(model);
   });
 
-  return {
+  var chicken = {
     group: group,
     homeX: spawn.x,
     homeZ: spawn.z,
@@ -136,7 +141,20 @@ function createChicken(parent, spawn, index) {
     targetZ: spawn.z,
     damageApplied: false,
     phase: index * 2.1,
+    dead: false,
   };
+  chicken.health = registerBackroomsEntityTarget(group, {
+    kind: "chicken",
+    name: "洞穴鸡",
+    maxHp: BACKROOMS_ENTITY_HEALTH.chicken,
+    aimHeight: 0.45,
+    onDeath: function () {
+      chicken.dead = true;
+      chicken.mode = "dead";
+      chicken.group.visible = false;
+    },
+  });
+  return chicken;
 }
 
 function startLeap(chicken, px, pz) {
@@ -165,6 +183,7 @@ function startFlyAway(chicken, px, pz) {
 }
 
 function updateChicken(chicken, dt, player, survival, toastFn) {
+  if (chicken.dead) return;
   chicken.phase += dt;
   if (chicken.cooldown > 0) chicken.cooldown = Math.max(0, chicken.cooldown - dt);
   var px = player.x;
@@ -244,6 +263,7 @@ export function createLevel8Chickens(parent) {
     },
     dispose: function () {
       for (var j = 0; j < chickens.length; j++) {
+        unregisterBackroomsEntityTarget(chickens[j].health);
         if (chickens[j].group.parent) chickens[j].group.parent.remove(chickens[j].group);
       }
       chickens.length = 0;

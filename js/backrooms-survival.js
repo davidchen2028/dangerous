@@ -50,7 +50,7 @@ export function resetBackroomsRun() {
 }
 
 /**
- * 各 Level 统一：杏仁水 / 药水仅背包双击，无 R 快捷键
+ * 各 Level 统一：杏仁水 / 药水可通过背包双击或快捷栏 R 使用
  * @param {BackroomsSurvival | null} survival
  * @param {{ onAlmondWaterUsed?: () => void, onNightVisionPotion?: () => void }} [options]
  */

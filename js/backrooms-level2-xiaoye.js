@@ -3,6 +3,11 @@
  */
 import * as THREE from "three";
 import { CORRIDOR_LENGTH, CORRIDOR_WIDTH } from "./backrooms-level2-world.js";
+import {
+  BACKROOMS_ENTITY_HEALTH,
+  registerBackroomsEntityTarget,
+  unregisterBackroomsEntityTarget,
+} from "./backrooms-entity-health.js";
 
 export const XIAOYE_STORAGE_KEY = "backrooms_l2_xiaoye_v1";
 export const XIAOYE_FULL_HEAL_KEY = "backrooms_l2_xiaoye_full_heal";
@@ -214,6 +219,17 @@ export function createLevel2Xiaoye(parent) {
   var lungeTargetZ = 0;
   var attacked = false;
   var cooldownLeft = 0;
+  var health = registerBackroomsEntityTarget(group, {
+    kind: "smiler",
+    name: "笑靥",
+    maxHp: BACKROOMS_ENTITY_HEALTH.smiler,
+    aimHeight: FACE_H * 0.42,
+    onDeath: function () {
+      phase = "gone";
+      group.visible = false;
+      clearXiaoyeSpawnSlot();
+    },
+  });
 
   function applyAttack(survival, toastFn) {
     if (attacked || !survival || survival.dead) return;
@@ -286,13 +302,14 @@ export function createLevel2Xiaoye(parent) {
   }
 
   function dispose() {
+    unregisterBackroomsEntityTarget(health);
     if (group.parent) group.parent.remove(group);
     if (faceTex) faceTex.dispose();
     faceMat.dispose();
     face.geometry.dispose();
   }
 
-  return { group: group, update: update, dispose: dispose };
+  return { group: group, health: health, update: update, dispose: dispose };
 }
 
 /**
@@ -339,6 +356,16 @@ export function createFixedXiaoye(parent, spec) {
   var lungeTargetZ = 0;
   var attacked = false;
   var cooldownLeft = 0;
+  var health = registerBackroomsEntityTarget(group, {
+    kind: "smiler",
+    name: "笑靥",
+    maxHp: BACKROOMS_ENTITY_HEALTH.smiler,
+    aimHeight: faceH * 0.42,
+    onDeath: function () {
+      phase = "gone";
+      group.visible = false;
+    },
+  });
 
   function applyAttack(survival, toastFn) {
     if (attacked || !survival || survival.dead) return;
@@ -404,11 +431,12 @@ export function createFixedXiaoye(parent, spec) {
   }
 
   function dispose() {
+    unregisterBackroomsEntityTarget(health);
     if (group.parent) group.parent.remove(group);
     if (faceTex) faceTex.dispose();
     faceMat.dispose();
     face.geometry.dispose();
   }
 
-  return { group: group, update: update, dispose: dispose };
+  return { group: group, health: health, update: update, dispose: dispose };
 }
