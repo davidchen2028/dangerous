@@ -32,6 +32,11 @@ html, body {
   text-shadow: 0 0 24px rgba(255, 255, 255, 0.12);
 }
 
+.br-home__version {
+  color: #e02424;
+  text-shadow: 0 0 22px rgba(224, 36, 36, 0.45);
+}
+
 .br-home__start {
   display: inline-flex;
   align-items: center;
