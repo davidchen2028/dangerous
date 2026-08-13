@@ -103,9 +103,10 @@ let dialogueOpen = false;
 let cutsceneActive = false;
 let cutsceneStage = 0;
 let cutsceneStageAt = 0;
-let overheadCamera = false;
+let cutsceneCamera = false;
 let explosionRoot = null;
-let explosionSphere = null;
+let explosionCloud = null;
+let explosionCore = null;
 let explosionRing = null;
 let explosionT = 0;
 let gateBarrier = null;
@@ -353,22 +354,116 @@ function spawnHostileClumps(root) {
   });
 }
 
+function makeSmokeTexture() {
+  var c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 64;
+  var ctx = c.getContext("2d");
+  var g = ctx.createRadialGradient(32, 32, 0, 32, 32, 30);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.5, "rgba(255,255,255,0.5)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(32, 32, 30, 0, Math.PI * 2);
+  ctx.fill();
+  return new THREE.CanvasTexture(c);
+}
+
 function buildExplosion(root) {
   explosionRoot = new THREE.Group();
   explosionRoot.visible = false;
   root.add(explosionRoot);
-  explosionSphere = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 30, 20),
+
+  var tex = makeSmokeTexture();
+  var TOP_Y = 150; // 颜色渐变参考高度
+  // 颜色按高度：底部橙红 #ff5a1a → 中部暖黄 #ffb04a → 顶部灰白 #d2d2d2
+  function pushColor(positions, colors, x, y, z) {
+    var t = Math.min(1, Math.max(0, y / TOP_Y));
+    var r, g, b;
+    if (t < 0.5) {
+      var k = t / 0.5;
+      r = 255;
+      g = 90 + k * 86;
+      b = 26 + k * 48;
+    } else {
+      var k = (t - 0.5) / 0.5;
+      r = 255 - k * 43;
+      g = 176 + k * 34;
+      b = 74 + k * 138;
+    }
+    positions.push(x, y, z);
+    colors.push(r / 255, g / 255, b / 255);
+  }
+
+  var positions = [];
+  var colors = [];
+
+  // 蘑菇头：扁椭球内随机分布粒子，形成蓬松云头
+  var headR = 44;
+  var headY = 116;
+  var headCount = 2600;
+  var i, x, y, z, len;
+  for (i = 0; i < headCount; i++) {
+    do {
+      x = Math.random() * 2 - 1;
+      y = Math.random() * 2 - 1;
+      z = Math.random() * 2 - 1;
+      len = Math.sqrt(x * x + y * y + z * z);
+    } while (len > 1);
+    pushColor(positions, colors, x * headR, headY + y * headR * 0.78, z * headR);
+  }
+
+  // 翻卷裙边：头部下沿外缘粒子向外、向下垂，形成蘑菇伞下卷
+  var skirtCount = 1000;
+  for (i = 0; i < skirtCount; i++) {
+    var a = Math.random() * Math.PI * 2;
+    var rr = headR * (0.7 + Math.random() * 0.45);
+    var drop = Math.random() * headR * 0.75;
+    pushColor(positions, colors, Math.cos(a) * rr, headY - drop, Math.sin(a) * rr);
+  }
+
+  // 茎：圆柱内粒子，由地面向头部收拢
+  var stemR = 7;
+  var stemTop = 100;
+  var stemCount = 1700;
+  for (i = 0; i < stemCount; i++) {
+    var aa = Math.random() * Math.PI * 2;
+    var rad = Math.sqrt(Math.random()) * stemR;
+    var yy = Math.random() * stemTop;
+    pushColor(positions, colors, Math.cos(aa) * rad, yy, Math.sin(aa) * rad);
+  }
+
+  var geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  explosionCloud = new THREE.Points(geo, new THREE.PointsMaterial({
+    size: 13,
+    map: tex,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+  }));
+  explosionRoot.add(explosionCloud);
+
+  // 爆心火球：茎底短促亮闪
+  explosionCore = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 24, 18),
     new THREE.MeshBasicMaterial({
-      color: 0xffe0a0,
+      color: 0xff6b22,
       transparent: true,
       opacity: 0.95,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     })
   );
-  explosionSphere.position.y = 15;
-  explosionRoot.add(explosionSphere);
+  explosionCore.position.y = 8;
+  explosionRoot.add(explosionCore);
+
+  // 地面冲击波环
   explosionRing = new THREE.Mesh(
     new THREE.TorusGeometry(1, 0.09, 10, 54),
     new THREE.MeshBasicMaterial({
@@ -615,7 +710,7 @@ function beginNightSequence() {
 
 function finishNightSequence() {
   cutsceneActive = false;
-  overheadCamera = false;
+  cutsceneCamera = false;
   nightEl.hidden = true;
   document.body.classList.remove("backrooms-c144-cutscene");
   if (explosionRoot) explosionRoot.visible = false;
@@ -645,7 +740,7 @@ function updateNightSequence(now, dt) {
     cutsceneStage = 2;
     cutsceneStageAt = now;
     nightEl.hidden = true;
-    overheadCamera = true;
+    cutsceneCamera = true;
     explosionT = 0;
     explosionRoot.visible = true;
     return;
@@ -653,10 +748,19 @@ function updateNightSequence(now, dt) {
   if (cutsceneStage === 2) {
     explosionT += dt;
     var progress = Math.min(1, explosionT / 4.2);
-    var radius = 3 + progress * 197;
-    explosionSphere.scale.setScalar(radius);
-    explosionSphere.material.opacity = 0.96 * (1 - progress * 0.78);
-    explosionRing.scale.setScalar(radius);
+    var ease = progress * progress * (3 - 2 * progress);
+    // 蘑菇云烟团：从地面冒出，整体放大并略上浮，后期渐淡
+    var cloudScale = 0.25 + ease * 0.95;
+    explosionCloud.scale.setScalar(cloudScale);
+    explosionCloud.position.y = ease * 8;
+    explosionCloud.material.opacity = 0.85 * (1 - progress * 0.5);
+    // 爆心火球：前 1.2s 快速膨胀并消散（引燃瞬间）
+    var coreP = Math.min(1, explosionT / 1.2);
+    explosionCore.scale.setScalar(6 + coreP * 34);
+    explosionCore.material.opacity = 0.95 * (1 - coreP);
+    // 地面冲击波环
+    var ringR = 3 + progress * 197;
+    explosionRing.scale.setScalar(ringR);
     explosionRing.material.opacity = 0.92 * (1 - progress);
     if (elapsed >= 6000) finishNightSequence();
   }
@@ -745,10 +849,11 @@ function bindControls() {
 }
 
 function applyCamera() {
-  if (overheadCamera) {
-    camera.position.set(0, 430, 1);
+  if (cutsceneCamera) {
+    // 正面远距离视角：从城区外侧仰视蘑菇云升起
+    camera.position.set(0, 85, 460);
     camera.rotation.order = "YXZ";
-    camera.rotation.set(-Math.PI * 0.5, 0, 0);
+    camera.lookAt(0, 65, 0);
     return;
   }
   applyBackroomsCamera(fps, camera, EYE_HEIGHT);
