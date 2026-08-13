@@ -10,7 +10,6 @@ import { getHpMax, getStaminaMax } from "./backrooms-royal-rations.js";
 
 export function saveBackroomsSurvival(survival) {
   if (!survival || survival.dead) return;
-  var now = performance.now();
   try {
     sessionStorage.setItem(
       SURVIVAL_STORAGE_KEY,
@@ -27,9 +26,8 @@ export function saveBackroomsSurvival(survival) {
 
 export function loadBackroomsSurvival(survival) {
   if (!survival) return false;
-  var now = performance.now();
-  var hpCap = getHpMax(now);
-  var staCap = getStaminaMax(now);
+  var hpCap = getHpMax();
+  var staCap = getStaminaMax();
   try {
     var raw = sessionStorage.getItem(SURVIVAL_STORAGE_KEY);
     if (!raw) return false;
@@ -51,8 +49,15 @@ export function registerBackroomsSurvivalPersist(survival) {
   boundSurvival = survival;
   if (typeof window === "undefined" || window.__backroomsSurvivalPersistBound) return;
   window.__backroomsSurvivalPersistBound = true;
-  window.addEventListener("pagehide", function () {
+  function flush() {
     saveBackroomsSurvival(boundSurvival);
+  }
+  // 切层是整页跳转：pagehide 之外再挂 visibilitychange / beforeunload，
+  // 避免个别浏览器漏触发导致血量、理智回退。
+  window.addEventListener("pagehide", flush);
+  window.addEventListener("beforeunload", flush);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") flush();
   });
 }
 

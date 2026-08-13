@@ -481,7 +481,7 @@ function init() {
       lootToastEl.hidden = true;
     }
 
-    var nv = isNightVisionActive(now);
+    var nv = isNightVisionActive();
     applyLevel3Vision(nv);
 
     var moving = isBackroomsPlayerMoving(fps);
@@ -563,7 +563,7 @@ function init() {
     }
 
     if (nv) {
-      var hintSec = Math.ceil(getNightVisionRemainingMs(now) / 1000);
+      var hintSec = Math.ceil(getNightVisionRemainingMs() / 1000);
       if (hintSec !== lastNvHintSec) {
         lastNvHintSec = hintSec;
         syncLookUi();

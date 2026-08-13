@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
 import {
   loadBackroomsSurvival,
+  saveBackroomsSurvival,
   registerBackroomsSurvivalPersist,
 } from "./backrooms-survival-persist.js";
 import { createBackroomsHorrorSystem } from "./backrooms-horror.js";
@@ -1241,7 +1242,13 @@ function updateMegDoorHint() {
     doorHintEl.hidden = true;
     return;
   }
-  if (isNearMegGuide() || isNearMegInteriorStaff() || isNearMegBackDoorStaff() || isNearMegRationsVendor() || isNearMegLevel11Staff()) {
+  if (
+    isNearMegGuide() ||
+    isNearMegInteriorStaff() ||
+    isNearMegBackDoorStaff() ||
+    isNearMegRationsVendor() ||
+    isNearMegLevel11Staff()
+  ) {
     doorHintEl.hidden = true;
     return;
   }
@@ -1282,8 +1289,11 @@ function updateMegInteriorTalkHint() {
     interiorTalkHintEl.hidden = true;
     return;
   }
-  interiorTalkHintEl.hidden =
-    !(isNearMegInteriorStaff() || isNearMegBackDoorStaff() || isNearMegRationsVendor());
+  interiorTalkHintEl.hidden = !(
+    isNearMegInteriorStaff() ||
+    isNearMegBackDoorStaff() ||
+    isNearMegRationsVendor()
+  );
 }
 
 function updateLevel11TalkHint() {
@@ -1508,6 +1518,7 @@ function updateCorridorFallToL2(dt) {
     roll = Math.sin(sinkProg * Math.PI * 3.2) * 1.05;
     if (feetY <= CORRIDOR_L2_SINK_DEPTH) {
       corridorL2FallState = "done";
+      saveBackroomsSurvival(survival);
       try {
         grantLevelPass("l2", yaw);
       } catch (err) {

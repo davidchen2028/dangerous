@@ -4,19 +4,19 @@
 import { resetBackroomsRun } from "./backrooms-survival.js";
 
 export const LEVEL0_PAGE = "backrooms-level0.html";
-/** @typedef {"clip" | "l2" | "l3" | "l4" | "l6" | "l6_1" | "l7" | "l8" | "l9" | "l10" | "l11" | "l13" | "l14" | "l21" | "l57" | "l75" | "l283"} BackroomsLevelPassId */
+/** @typedef {"clip" | "l0" | "l2" | "l3" | "l4" | "l6" | "l6_1" | "l7" | "l8" | "l9" | "l10" | "l11" | "l13" | "l14" | "l21" | "l37" | "l48" | "l57" | "l75" | "l119" | "l121" | "l283" | "l581" | "blue_channel" | "c144" | "c192" | "c370"} BackroomsLevelPassId */
 
 /** @type {Record<BackroomsLevelPassId, { pass: string, yaw: string | null }>} */
 export const LEVEL_PASS_KEYS = {
   clip: { pass: "backrooms_clip_pass", yaw: null },
+  /** 从其他层级切回 L0：持有此令牌表示延续本局，不清档 */
+  l0: { pass: "backrooms_l0_pass", yaw: "backrooms_l0_yaw" },
   l2: { pass: "backrooms_l2_pass", yaw: "backrooms_l2_yaw" },
   l3: { pass: "backrooms_l3_pass", yaw: "backrooms_l3_yaw" },
   l4: { pass: "backrooms_l4_pass", yaw: "backrooms_l4_yaw" },
   l6: { pass: "backrooms_l6_pass", yaw: "backrooms_l6_yaw" },
   l6_1: { pass: "backrooms_l6_1_pass", yaw: "backrooms_l6_1_yaw" },
   l7: { pass: "backrooms_l7_pass", yaw: "backrooms_l7_yaw" },
-  l283: { pass: "backrooms_l283_pass", yaw: "backrooms_l283_yaw" },
-  l57: { pass: "backrooms_l57_pass", yaw: "backrooms_l57_yaw" },
   l8: { pass: "backrooms_l8_pass", yaw: "backrooms_l8_yaw" },
   l9: { pass: "backrooms_l9_pass", yaw: "backrooms_l9_yaw" },
   l10: { pass: "backrooms_l10_pass", yaw: "backrooms_l10_yaw" },
@@ -24,7 +24,18 @@ export const LEVEL_PASS_KEYS = {
   l13: { pass: "backrooms_l13_pass", yaw: "backrooms_l13_yaw" },
   l14: { pass: "backrooms_l14_pass", yaw: "backrooms_l14_yaw" },
   l21: { pass: "backrooms_l21_pass", yaw: "backrooms_l21_yaw" },
+  l37: { pass: "backrooms_l37_pass", yaw: "backrooms_l37_yaw" },
+  l48: { pass: "backrooms_l48_pass", yaw: "backrooms_l48_yaw" },
+  l57: { pass: "backrooms_l57_pass", yaw: "backrooms_l57_yaw" },
   l75: { pass: "backrooms_l75_pass", yaw: "backrooms_l75_yaw" },
+  l119: { pass: "backrooms_l119_pass", yaw: "backrooms_l119_yaw" },
+  l121: { pass: "backrooms_l121_pass", yaw: "backrooms_l121_yaw" },
+  l283: { pass: "backrooms_l283_pass", yaw: "backrooms_l283_yaw" },
+  l581: { pass: "backrooms_l581_pass", yaw: "backrooms_l581_yaw" },
+  blue_channel: { pass: "backrooms_blue_channel_pass", yaw: "backrooms_blue_channel_yaw" },
+  c144: { pass: "backrooms_c144_pass", yaw: "backrooms_c144_yaw" },
+  c192: { pass: "backrooms_c192_pass", yaw: "backrooms_c192_yaw" },
+  c370: { pass: "backrooms_c370_pass", yaw: "backrooms_c370_yaw" },
 };
 
 function keysFor(levelId) {
@@ -116,6 +127,23 @@ export function enforceLevelEntry(levelId, applyYaw) {
   if (!guardBackroomsReloadOrContinue()) return false;
   if (!hasLevelPass(levelId)) return false;
   var yaw = consumeEntryYaw(levelId);
+  if (yaw != null && applyYaw) applyYaw(yaw);
+  return true;
+}
+
+/**
+ * Level 0 入场：带 l0 令牌表示由其他层级切入，沿用当前存档；
+ * 否则视为新开一局，由调用方清档。刷新一律当新局。
+ * @returns {boolean} 是否延续本局
+ */
+export function consumeLevel0CarryEntry(applyYaw) {
+  if (isBackroomsPageReload()) {
+    revokeLevelPass("l0");
+    return false;
+  }
+  if (!hasLevelPass("l0")) return false;
+  var yaw = consumeEntryYaw("l0");
+  revokeLevelPass("l0");
   if (yaw != null && applyYaw) applyYaw(yaw);
   return true;
 }

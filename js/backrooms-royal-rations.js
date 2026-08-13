@@ -1,5 +1,6 @@
 /**
  * 皇家口粮 — 10 分钟：血量上限 150、体力上限 200，使用后回满该上限内血量
+ * 截止时间同夜视，用 Date.now() 墙钟存储，避免切层后 performance.now() 归零导致续期。
  */
 export const ROYAL_RATIONS_BUFF_KEY = "backrooms_royal_rations_until";
 export const HP_MAX_DEFAULT = 100;
@@ -27,25 +28,23 @@ export function getRoyalRationsUntil() {
   }
 }
 
-export function isRoyalRationsActive(now) {
-  var until = getRoyalRationsUntil();
-  return until > (now != null ? now : performance.now());
+export function isRoyalRationsActive() {
+  return getRoyalRationsUntil() > Date.now();
 }
 
-export function getHpMax(now) {
-  return isRoyalRationsActive(now) ? HP_MAX_ROYAL : HP_MAX_DEFAULT;
+export function getHpMax() {
+  return isRoyalRationsActive() ? HP_MAX_ROYAL : HP_MAX_DEFAULT;
 }
 
-export function getStaminaMax(now) {
-  return isRoyalRationsActive(now) ? STAMINA_MAX_ROYAL : STAMINA_MAX_DEFAULT;
+export function getStaminaMax() {
+  return isRoyalRationsActive() ? STAMINA_MAX_ROYAL : STAMINA_MAX_DEFAULT;
 }
 
-export function activateRoyalRationsBuff(now) {
-  now = now != null ? now : performance.now();
+export function activateRoyalRationsBuff() {
   try {
     sessionStorage.setItem(
       ROYAL_RATIONS_BUFF_KEY,
-      String(now + ROYAL_RATIONS_DURATION_MS)
+      String(Date.now() + ROYAL_RATIONS_DURATION_MS)
     );
   } catch (err) {
     return false;
@@ -54,11 +53,10 @@ export function activateRoyalRationsBuff(now) {
 }
 
 /**  buff 结束时将 hp / 体力压回默认上限 */
-export function syncRoyalRationsExpiry(survival, now) {
+export function syncRoyalRationsExpiry(survival) {
   if (!survival) return false;
-  now = now != null ? now : performance.now();
   var until = getRoyalRationsUntil();
-  if (until <= 0 || until > now) return false;
+  if (until <= 0 || until > Date.now()) return false;
   clearRoyalRationsBuff();
   survival.hp = Math.min(HP_MAX_DEFAULT, survival.hp);
   survival.stamina = Math.min(STAMINA_MAX_DEFAULT, survival.stamina);
@@ -66,8 +64,8 @@ export function syncRoyalRationsExpiry(survival, now) {
   return true;
 }
 
-export function formatRoyalRationsRemaining(now) {
-  now = now != null ? now : performance.now();
+export function formatRoyalRationsRemaining() {
+  var now = Date.now();
   var until = getRoyalRationsUntil();
   if (until <= now) return "";
   var sec = Math.ceil((until - now) / 1000);

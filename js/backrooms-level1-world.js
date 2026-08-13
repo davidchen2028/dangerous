@@ -506,7 +506,6 @@ var _megBackDoorStaffNpc = null;
 var _megRationsVendorNpc = null;
 /** @type {{ x: number, z: number, talkRadius: number, group: THREE.Object3D } | null} Level 1.1 介绍员 */
 var _megLevel11Npc = null;
-
 function resetMegModuleState() {
   _megBaseCenter = null;
   _megBaseOccluderGroup = null;

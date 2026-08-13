@@ -1,5 +1,7 @@
 /**
  * 夜视药水 — 双击使用，5 分钟内 Level 2 等场景可提亮（session 内跨关卡）
+ * 截止时间用 Date.now() 墙钟存储：performance.now() 每次导航都会归零，
+ * 那样药效会在切层时被"续期"；用墙钟后即使身处用不到夜视的层级也照常消耗。
  */
 import { countItem, removeFirstItem } from "./backrooms-inventory.js";
 
@@ -28,36 +30,33 @@ function writeUntil(ts) {
   }
 }
 
-export function activateNightVision(now) {
-  var t = now != null ? now : performance.now();
-  var next = Math.max(readUntil(), t + NIGHT_VISION_DURATION_MS);
+export function activateNightVision() {
+  var next = Math.max(readUntil(), Date.now() + NIGHT_VISION_DURATION_MS);
   writeUntil(next);
   return next;
 }
 
-export function isNightVisionActive(now) {
-  var t = now != null ? now : performance.now();
-  return readUntil() > t;
+export function isNightVisionActive() {
+  return readUntil() > Date.now();
 }
 
-export function getNightVisionRemainingMs(now) {
-  var t = now != null ? now : performance.now();
-  return Math.max(0, readUntil() - t);
+export function getNightVisionRemainingMs() {
+  return Math.max(0, readUntil() - Date.now());
 }
 
 export function clearNightVision() {
   writeUntil(0);
 }
 
-export function useNightVisionPotionFromBackpack(now) {
+export function useNightVisionPotionFromBackpack() {
   if (countItem("night_vision_potion") < 1) return false;
   if (!removeFirstItem("night_vision_potion")) return false;
-  activateNightVision(now);
+  activateNightVision();
   return true;
 }
 
-export function formatNightVisionRemaining(now) {
-  var ms = getNightVisionRemainingMs(now);
+export function formatNightVisionRemaining() {
+  var ms = getNightVisionRemainingMs();
   var sec = Math.ceil(ms / 1000);
   var m = Math.floor(sec / 60);
   var s = sec % 60;

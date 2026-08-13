@@ -1,6 +1,6 @@
 /**
  * Backrooms Level 6.1 — 10×10 零食货架间
- * 玻璃门打开 → Level 11；通风管 Q → Level 3
+ * 玻璃门打开 → Level 11；通风管 Q → Level 3；画作 Q → Level C-144
  */
 import * as THREE from "three";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
@@ -105,6 +105,33 @@ function addBox(root, w, h, d, x, y, z, mat) {
   mesh.position.set(x, y, z);
   root.add(mesh);
   return mesh;
+}
+
+function makeCommunityPaintingTexture() {
+  var canvas2d = document.createElement("canvas");
+  canvas2d.width = 512;
+  canvas2d.height = 320;
+  var ctx = canvas2d.getContext("2d");
+  var sky = ctx.createLinearGradient(0, 0, 0, 210);
+  sky.addColorStop(0, "#849aa8");
+  sky.addColorStop(1, "#d5c6a1");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, 512, 320);
+  ctx.fillStyle = "#646c70";
+  var i;
+  for (i = 0; i < 12; i++) {
+    var h = 70 + ((i * 37) % 110);
+    ctx.fillRect(i * 46 - 12, 210 - h, 34, h);
+  }
+  ctx.fillStyle = "#4d5947";
+  ctx.fillRect(0, 210, 512, 110);
+  ctx.fillStyle = "#f4ead0";
+  ctx.font = "bold 34px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("和爱社区", 256, 286);
+  var texture = new THREE.CanvasTexture(canvas2d);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 function addShelf(root, collidersRef, x, z) {
@@ -225,6 +252,27 @@ function buildWorld(root) {
   interactRoots.push(pickVent);
   void grate;
 
+  // 北墙上的社区画作：切出至 Level C-144
+  var frameMat = new THREE.MeshStandardMaterial({
+    color: 0x4a3425,
+    roughness: 0.72,
+  });
+  addBox(root, 3.5, 2.35, 0.12, 0, 1.65, -HALF + 0.13, frameMat);
+  var painting = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.15, 2),
+    new THREE.MeshBasicMaterial({ map: makeCommunityPaintingTexture() })
+  );
+  painting.position.set(0, 1.65, -HALF + 0.2);
+  root.add(painting);
+  var pickPainting = new THREE.Mesh(
+    new THREE.BoxGeometry(3.3, 2.2, 0.45),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  pickPainting.position.set(0, 1.65, -HALF + 0.38);
+  pickPainting.userData.brInteract = { kind: "l61_c144_painting" };
+  root.add(pickPainting);
+  interactRoots.push(pickPainting);
+
   root.add(new THREE.AmbientLight(0xffffff, 0.55));
   root.add(new THREE.HemisphereLight(0xf4f7fa, 0xa8a090, 0.45));
   var lamp = new THREE.PointLight(0xfff4e0, 0.85, 14, 2);
@@ -235,7 +283,7 @@ function buildWorld(root) {
 function syncHint() {
   if (!hintEl) return;
   hintEl.innerHTML =
-    "Level 6.1 零食间 · <kbd>Q</kbd> 玻璃门 / 通风管 · <kbd>WASD</kbd> · <kbd>B</kbd>";
+    "Level 6.1 零食间 · <kbd>Q</kbd> 交互 · <kbd>WASD</kbd> · <kbd>B</kbd>";
 }
 
 function refreshAimPick() {
@@ -274,6 +322,8 @@ function updateInteractUi() {
           : "按 <kbd>Q</kbd> 打开玻璃门";
       } else if (kind === "l61_vent") {
         interactHintEl.innerHTML = "按 <kbd>Q</kbd> 爬进通风管";
+      } else if (kind === "l61_c144_painting") {
+        interactHintEl.innerHTML = "按 <kbd>Q</kbd> 切入画作";
       }
     }
   }
@@ -317,6 +367,15 @@ function crawlVentToL3() {
   exitTo("l3", 3, "backrooms-level3.html", "你爬进通风管，身体不断下坠…");
 }
 
+function clipPaintingToC144() {
+  exitTo(
+    "c144",
+    "C-144",
+    "backrooms-level-c144.html",
+    "画布变得柔软，你从画中切了出去…"
+  );
+}
+
 function tryQAction() {
   if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
   var kind = aimedKind();
@@ -326,6 +385,10 @@ function tryQAction() {
   }
   if (kind === "l61_vent") {
     crawlVentToL3();
+    return;
+  }
+  if (kind === "l61_c144_painting") {
+    clipPaintingToC144();
   }
 }
 

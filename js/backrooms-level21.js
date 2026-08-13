@@ -64,7 +64,7 @@ const DOOR_FORWARD = [12, 18, 24, 30, 36, 42];
  * @type {{ num: number, level: number, page: string, pass: string|null, prob: number, made: boolean }[]}
  */
 const DOOR_TABLE = [
-  { num: 105, level: 0, page: "backrooms-level0.html", pass: null, prob: 0.05, made: true },
+  { num: 105, level: 0, page: "backrooms-level0.html", pass: "l0", prob: 0.05, made: true },
   { num: 356, level: 356, page: "backrooms-level356.html", pass: null, prob: 0.01, made: false },
   { num: 8, level: 8, page: "backrooms-level8.html", pass: "l8", prob: 0.02, made: true },
   { num: 9, level: 9, page: "backrooms-level9.html", pass: "l9", prob: 0.03, made: true },

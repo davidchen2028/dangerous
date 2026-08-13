@@ -260,6 +260,7 @@ function exitToLevel0() {
   if (transitionLock) return;
   transitionLock = true;
   saveBackroomsSurvival(survival);
+  grantLevelPass("l0", fps.yaw);
   grantLevelPass("clip", fps.yaw);
   queueEnterLevelNumber(0);
   window.location.href = "backrooms-level0.html";

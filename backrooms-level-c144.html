@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <title>后室 Level C-144 — 和爱社区</title>
+  <link rel="stylesheet" href="css/backrooms-level0.css?v=18">
+  <link rel="stylesheet" href="css/backrooms-survival.css?v=5">
+  <style>
+    .br-c144-dialogue {
+      position: fixed;
+      left: 50%;
+      bottom: max(32px, env(safe-area-inset-bottom, 0px));
+      z-index: 80;
+      width: min(90vw, 620px);
+      transform: translateX(-50%);
+      padding: 18px 22px;
+      border: 1px solid rgba(235, 240, 255, .4);
+      border-radius: 9px;
+      background: rgba(8, 12, 18, .92);
+      color: #f4f6fa;
+      box-shadow: 0 12px 44px rgba(0, 0, 0, .65);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    .br-c144-dialogue[hidden], .br-c144-night[hidden] { display: none; }
+    .br-c144-dialogue__speaker { margin: 0 0 9px; color: #acd7be; font-weight: 700; }
+    .br-c144-dialogue__text { margin: 0 0 12px; line-height: 1.65; }
+    .br-c144-dialogue__choices { margin: 0; color: #e6d49b; }
+    .br-c144-night {
+      position: fixed;
+      inset: 0;
+      z-index: 110;
+      display: grid;
+      place-items: center;
+      background: #000;
+      pointer-events: none;
+    }
+    .br-c144-night__text {
+      margin: 0;
+      color: #fff;
+      font: 500 clamp(24px, 5vw, 52px)/1.4 system-ui, sans-serif;
+      letter-spacing: .12em;
+      text-align: center;
+      text-shadow: 0 2px 14px #000;
+    }
+    body.backrooms-c144-cutscene .backrooms-hud,
+    body.backrooms-c144-cutscene .backrooms-crosshair,
+    body.backrooms-c144-cutscene .br-hotbar { visibility: hidden; }
+  </style>
+</head>
+<body class="backrooms-level1 backrooms-level-c144">
+  <canvas id="backroomsCanvas" aria-label="后室 Level C-144"></canvas>
+  <div id="backroomsInput" class="backrooms-input" aria-hidden="true"></div>
+  <div class="backrooms-crosshair" id="backroomsCrosshair" aria-hidden="true"></div>
+  <div class="backrooms-hud">
+    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level C-144 · 和爱社区</p>
+    <div class="backrooms-nav"><div class="backrooms-nav__row">
+      <p class="backrooms-temp" id="backroomsTemp"><span class="backrooms-temp__label">温度</span><span class="backrooms-temp__meter"><span class="backrooms-temp__fill" id="backroomsTempFill"></span></span><strong class="backrooms-temp__value" id="backroomsTempValue">—</strong></p>
+      <p class="backrooms-points"><span class="backrooms-points__label">积分点</span><strong class="backrooms-points__value" id="backroomsMegPoints">0</strong></p>
+    </div></div>
+    <p class="backrooms-hud__hint" id="backroomsHint">加载中…</p>
+    <p class="backrooms-hud__talk backrooms-hud__talk--door" id="backroomsInteractHint" hidden></p>
+    <p class="backrooms-hud__loot" id="backroomsLootToast" hidden></p>
+    <div class="backrooms-hud__error" id="backroomsError" hidden></div>
+  </div>
+  <div class="br-c144-dialogue" id="backroomsC144Dialogue" hidden>
+    <p class="br-c144-dialogue__speaker">受 Level 11 效应影响的肢团</p>
+    <p class="br-c144-dialogue__text" id="backroomsC144DialogueText"></p>
+    <p class="br-c144-dialogue__choices" id="backroomsC144DialogueChoices"></p>
+  </div>
+  <div class="br-c144-night" id="backroomsC144Night" hidden>
+    <p class="br-c144-night__text" id="backroomsC144NightText"></p>
+  </div>
+  <script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
+  <script type="module" src="js/backrooms-level-c144.js?v=2"></script>
+</body>
+</html>

@@ -491,7 +491,7 @@ function startLoop() {
     requestAnimationFrame(frame);
     var now = performance.now();
     var dt = Math.min(clock.getDelta(), 0.05);
-    var nv = isNightVisionActive(now);
+    var nv = isNightVisionActive();
     applyLevel2NightVisionLighting(nv);
     updateLootToast(now);
     var moving = isBackroomsPlayerMoving(fps);
@@ -546,7 +546,7 @@ function startLoop() {
     }
 
     if (nv) {
-      var hintSec = Math.ceil(getNightVisionRemainingMs(now) / 1000);
+      var hintSec = Math.ceil(getNightVisionRemainingMs() / 1000);
       if (hintSec !== lastNvHintSec) {
         lastNvHintSec = hintSec;
         syncLookUi();

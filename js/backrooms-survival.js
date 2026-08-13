@@ -141,9 +141,8 @@ export class BackroomsSurvival {
 
   refreshHud() {
     if (!this.rootEl) return;
-    var now = performance.now();
-    var hpMax = getHpMax(now);
-    var staMax = getStaminaMax(now);
+    var hpMax = getHpMax();
+    var staMax = getStaminaMax();
     var hpPct = hpMax > 0 ? Math.max(0, Math.min(100, (this.hp / hpMax) * 100)) : 0;
     var sanPct = Math.max(0, Math.min(100, this.sanity));
     var staPct = staMax > 0 ? Math.max(0, Math.min(100, (this.stamina / staMax) * 100)) : 0;
@@ -169,9 +168,9 @@ export class BackroomsSurvival {
     if (this.dead) return;
     env = env || {};
     var now = performance.now();
-    syncRoyalRationsExpiry(this, now);
-    var hpCap = getHpMax(now);
-    var staCap = getStaminaMax(now);
+    syncRoyalRationsExpiry(this);
+    var hpCap = getHpMax();
+    var staCap = getStaminaMax();
 
     if (env.sprinting && this.stamina > 0) {
       this.stamina = Math.max(0, this.stamina - 15 * dt);
@@ -226,7 +225,7 @@ export class BackroomsSurvival {
   useAlmondWater() {
     if (this.dead) return false;
     if (!removeFirstItem("almond_water")) return false;
-    var hpCap = getHpMax(performance.now());
+    var hpCap = getHpMax();
     this.sanity = Math.min(100, this.sanity + ALMOND_WATER_SANITY);
     this.hp = Math.min(hpCap, this.hp + ALMOND_WATER_HP);
     this.refreshHud();
@@ -236,7 +235,7 @@ export class BackroomsSurvival {
   useRoyalRations() {
     if (this.dead) return false;
     if (!removeFirstItem("royal_rations")) return false;
-    if (!activateRoyalRationsBuff(performance.now())) return false;
+    if (!activateRoyalRationsBuff()) return false;
     this.hp = HP_MAX_ROYAL;
     this.stamina = STAMINA_MAX_ROYAL;
     this.refreshHud();

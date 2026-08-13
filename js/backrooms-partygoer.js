@@ -247,3 +247,95 @@ export function spawnPartygoer(parent, spec) {
   };
   return fig;
 }
+
+export const PARTYGOER_ATTACK_DAMAGE = 60;
+export const PARTYGOER_ATTACK_COOLDOWN = 20;
+export const PARTYGOER_SEE_DIST = 16;
+export const PARTYGOER_ATTACK_RANGE = 1.55;
+export const PARTYGOER_MOVE_SPEED = 2.35;
+
+function distSq(ax, az, bx, bz) {
+  var dx = ax - bx;
+  var dz = az - bz;
+  return dx * dx + dz * dz;
+}
+
+/**
+ * 可追击的派对客系统（伤害 / 冷却可配置）
+ * @param {THREE.Object3D} parent
+ * @param {{ x: number, z: number, rotY?: number, scale?: number, seed?: number }[]} spawns
+ * @param {{ damage?: number, cooldown?: number }} [opts]
+ */
+export function createPartygoersAt(parent, spawns, opts) {
+  opts = opts || {};
+  var damage = opts.damage != null ? opts.damage : PARTYGOER_ATTACK_DAMAGE;
+  var cooldown = opts.cooldown != null ? opts.cooldown : PARTYGOER_ATTACK_COOLDOWN;
+  var root = new THREE.Group();
+  root.name = "Partygoers";
+  parent.add(root);
+
+  var units = [];
+  var i;
+  for (i = 0; i < (spawns || []).length; i++) {
+    var fig = spawnPartygoer(root, spawns[i]);
+    units.push({
+      figure: fig,
+      group: fig.group,
+      x: spawns[i].x || 0,
+      z: spawns[i].z || 0,
+      cooldown: 0,
+      animT: Math.random() * 10,
+      dead: false,
+    });
+  }
+
+  return {
+    root: root,
+    units: units,
+    clear: function () {
+      for (i = 0; i < units.length; i++) {
+        units[i].figure.dispose();
+        if (units[i].group.parent) units[i].group.parent.remove(units[i].group);
+      }
+      units.length = 0;
+      if (root.parent) root.parent.remove(root);
+    },
+    update: function (dt, px, pz, survival, toastFn, extra) {
+      extra = extra || {};
+      var seeSq = PARTYGOER_SEE_DIST * PARTYGOER_SEE_DIST;
+      var atkSq = PARTYGOER_ATTACK_RANGE * PARTYGOER_ATTACK_RANGE;
+      for (i = 0; i < units.length; i++) {
+        var unit = units[i];
+        if (unit.dead || !unit.group.visible) continue;
+        if (unit.figure.health && !unit.figure.health.alive) {
+          unit.dead = true;
+          continue;
+        }
+        unit.animT += dt;
+        unit.figure.update(unit.animT);
+        if (unit.cooldown > 0) unit.cooldown = Math.max(0, unit.cooldown - dt);
+        if (extra.playerSafe || !survival || survival.dead) continue;
+
+        var d2 = distSq(unit.x, unit.z, px, pz);
+        if (d2 > seeSq) continue;
+        var dist = Math.sqrt(d2) || 0.001;
+        unit.group.rotation.y = Math.atan2(px - unit.x, pz - unit.z);
+        if (d2 > atkSq) {
+          var step = Math.min(PARTYGOER_MOVE_SPEED * dt, dist - PARTYGOER_ATTACK_RANGE * 0.75);
+          if (step > 0) {
+            unit.x += ((px - unit.x) / dist) * step;
+            unit.z += ((pz - unit.z) / dist) * step;
+            unit.group.position.x = unit.x;
+            unit.group.position.z = unit.z;
+          }
+        } else if (unit.cooldown <= 0) {
+          survival.takeDamage(damage);
+          unit.cooldown = cooldown;
+          if (typeof toastFn === "function") {
+            toastFn("派对客扑上来！−" + damage + " 血量");
+          }
+        }
+      }
+    },
+  };
+}

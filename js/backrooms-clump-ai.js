@@ -132,9 +132,9 @@ function createClumpEntity(parent, spawn, opts) {
     dead: false,
   };
   clump.health = registerBackroomsEntityTarget(group, {
-    kind: "clump",
-    name: "肢团",
-    maxHp: BACKROOMS_ENTITY_HEALTH.clump,
+    kind: opts.kind || "clump",
+    name: opts.name || "肢团",
+    maxHp: opts.maxHp != null ? opts.maxHp : BACKROOMS_ENTITY_HEALTH.clump,
     aimHeight: 0.7,
     onDeath: function () {
       clump.dead = true;
@@ -176,12 +176,13 @@ function moveClump(clump, nx, nz, opts) {
   clump.group.position.z = nz;
 }
 
-function applyPounceDamage(clump, survival, toastFn) {
+function applyPounceDamage(clump, survival, toastFn, opts) {
   if (clump.lungeApplied || !survival || survival.dead) return;
   clump.lungeApplied = true;
-  survival.takeDamage(CLUMP_POUNCE_DAMAGE);
+  var damage = opts.damage != null ? opts.damage : CLUMP_POUNCE_DAMAGE;
+  survival.takeDamage(damage);
   if (typeof toastFn === "function") {
-    toastFn("肢团扑击！−" + CLUMP_POUNCE_DAMAGE + " 血量");
+    toastFn((opts.name || "肢团") + "扑击！−" + damage + " 血量");
   }
 }
 
@@ -206,11 +207,12 @@ function updateSingleClump(clump, dt, px, pz, survival, toastFn, opts) {
     var lungeScale = 1 + ease * 0.35;
     clump.group.scale.setScalar(lungeScale);
     if (p >= 0.12 && p <= 0.55) {
-      if (!opts.playerSafe) applyPounceDamage(clump, survival, toastFn);
+      if (!opts.playerSafe) applyPounceDamage(clump, survival, toastFn, opts);
     }
     if (clump.lungeLeft <= 0) {
       clump.mode = "cooldown";
-      clump.cooldown = CLUMP_POUNCE_COOLDOWN;
+      clump.cooldown =
+        opts.cooldown != null ? opts.cooldown : CLUMP_POUNCE_COOLDOWN;
       clump.x = clump.homeX;
       clump.z = clump.homeZ;
       clump.group.position.set(clump.homeX, 0, clump.homeZ);
@@ -298,6 +300,9 @@ function createClumpSystem(parent, spawns, opts) {
         mazeGrid: extra.mazeGrid != null ? extra.mazeGrid : opts.mazeGrid,
         wallColliders: extra.wallColliders != null ? extra.wallColliders : opts.wallColliders,
         playerSafe: !!extra.playerSafe,
+        damage: opts.damage,
+        cooldown: opts.cooldown,
+        name: opts.name,
       };
       for (i = 0; i < clumps.length; i++) {
         updateSingleClump(clumps[i], dt, px, pz, survival, toastFn, moveOpts);
@@ -313,9 +318,16 @@ function createClumpSystem(parent, spawns, opts) {
 }
 
 /** 自定义关卡：按给定世界坐标生成肢团 */
-export function createClumpsAt(parent, spawns, wallColliders) {
+export function createClumpsAt(parent, spawns, wallColliders, options) {
+  options = options || {};
   return createClumpSystem(parent, spawns || [], {
     wallColliders: wallColliders || null,
+    scale: options.scale,
+    maxHp: options.maxHp,
+    damage: options.damage,
+    cooldown: options.cooldown,
+    kind: options.kind,
+    name: options.name,
   });
 }
 

@@ -66,6 +66,7 @@ const FOG_DENSITY = 0.025;
 const NV_FOG_COLOR = 0x3a4a58;
 const NV_FOG_DENSITY = 0.012;
 const FIRE_SALT_REWARD_KEY = "backrooms_l8_fire_salt_reward_v1";
+/** 到访标记：M.E.G 基地火盐补给员据此出现 */
 
 const canvas = document.getElementById("backroomsCanvas");
 const inputEl = document.getElementById("backroomsInput");
@@ -386,9 +387,9 @@ function init() {
     var now = performance.now();
     var dt = Math.min(clock.getDelta(), 0.05);
     if (lootToastEl && !lootToastEl.hidden && now >= lootToastUntil) lootToastEl.hidden = true;
-    var nv = isNightVisionActive(now);
+    var nv = isNightVisionActive();
     applyLevel8NightVision(nv);
-    var nvSec = nv ? Math.ceil(getNightVisionRemainingMs(now) / 1000) : -1;
+    var nvSec = nv ? Math.ceil(getNightVisionRemainingMs() / 1000) : -1;
     if (nvSec !== lastNvHintSec) {
       lastNvHintSec = nvSec;
       syncLookUi();

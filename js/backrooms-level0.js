@@ -7,6 +7,7 @@ import { BackroomsSurvival, resetBackroomsRun, registerBackroomsInventoryUseHand
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
 import {
   loadBackroomsSurvival,
+  saveBackroomsSurvival,
   registerBackroomsSurvivalPersist,
 } from "./backrooms-survival-persist.js";
 import {
@@ -26,6 +27,7 @@ import { pickCrosshairInteract, getCameraAimRay } from "./backrooms-interact-aim
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
 import {
   queueEnterLevelNumber,
+  showEnterLevelBannerIfQueued,
 } from "./backrooms-level-enter.js";
 import {
   resolveBackroomsGfxProfile,
@@ -58,7 +60,7 @@ import {
 } from "./backrooms-level0-02.js?v=14";
 import { BLUE_HOLE_CELL, buildBlueHole } from "./backrooms-level0-03.js?v=1";
 import { createLevel0ZoneManager } from "./backrooms-level0-zones.js";
-import { grantLevelPass } from "./backrooms-level-pass.js";
+import { grantLevelPass, consumeLevel0CarryEntry } from "./backrooms-level-pass.js";
 import {
   mountLevel0WallDecor,
   updateClipWallVortex,
@@ -939,6 +941,7 @@ function updateClipDash(dt) {
   if (clipDashLeft <= 0 || fps.player.x > c.x - 0.35) {
     clipState = "done";
     fps.move.forward = false;
+    saveBackroomsSurvival(survival);
     try {
       grantLevelPass("clip");
       sessionStorage.setItem("backrooms_clip_yaw", String(fps.yaw));
@@ -1042,8 +1045,15 @@ function init() {
   if (!canvas) {
     throw new Error("找不到 canvas 元素");
   }
-  resetBackroomsRun();
-  resetMegPoints();
+  // 由其他层级切入 L0 时保留背包、血量、积分与夜视计时；只有新开一局才清档。
+  var carried = consumeLevel0CarryEntry(function (yaw) {
+    fps.yaw = yaw;
+  });
+  if (!carried) {
+    resetBackroomsRun();
+    resetMegPoints();
+  }
+  showEnterLevelBannerIfQueued();
   validateMatrix();
 
   level0GfxProfile = resolveBackroomsGfxProfile();

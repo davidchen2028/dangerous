@@ -18,6 +18,7 @@ import {
 } from "./backrooms-temperature.js";
 import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -60,6 +61,12 @@ const megPointsEl = document.getElementById("backroomsMegPoints");
 const tempRootEl = document.getElementById("backroomsTemp");
 const tempFillEl = document.getElementById("backroomsTempFill");
 const tempValueEl = document.getElementById("backroomsTempValue");
+const crosshairEl = document.getElementById("backroomsCrosshair");
+const interactHintEl = document.getElementById("backroomsInteractHint");
+const dialogueEl = document.getElementById("backroomsDialogue");
+const dialogueSpeakerEl = document.getElementById("backroomsDialogueSpeaker");
+const dialogueTextEl = document.getElementById("backroomsDialogueText");
+const dialogueChoicesEl = document.getElementById("backroomsDialogueChoices");
 let renderer;
 let camera;
 let scene;
@@ -68,10 +75,17 @@ let lootToastUntil = 0;
 let colliders = [];
 let levelWorld = null;
 let transitionLock = false;
+let interactRoots = [];
+let currentAimPick = null;
+let dialogueOpen = false;
+let sandFaintTimer = 0;
+let sandFaintOverlay = null;
 
 /** L10 岔路：主路 z≈22 向右拐的小道尽头 → L11 */
 const L10_FORK_Z = 22;
 const L10_FORK_EXIT_X = 24;
+const AIM_MAX = 4.2;
+const SAND_FAINT_DURATION = 4.5;
 const fps = createBackroomsFpsState({
   player: { x: 0, z: 0, radius: 0.34, speed: 4.1 },
 });
@@ -214,15 +228,189 @@ function exitLevel11ToL13() {
   }, 450);
 }
 
+function exitLevel11ToL119() {
+  if (transitionLock) return;
+  transitionLock = true;
+  showToast("你推开 Alom Wotor 的门——一股氯水味扑面而来…");
+  if (survival) saveBackroomsSurvival(survival);
+  grantLevelPass("l119", fps.yaw);
+  queueEnterLevelNumber(119);
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level119.html";
+  }, 450);
+}
+
+function ensureSandFaintOverlay() {
+  if (sandFaintOverlay) return sandFaintOverlay;
+  sandFaintOverlay = document.createElement("div");
+  sandFaintOverlay.id = "backroomsL11SandFaint";
+  sandFaintOverlay.setAttribute("aria-hidden", "true");
+  sandFaintOverlay.style.cssText =
+    "position:fixed;inset:0;pointer-events:none;z-index:95;" +
+    "background:#000;opacity:0;transition:opacity 0.55s linear;";
+  document.body.appendChild(sandFaintOverlay);
+  return sandFaintOverlay;
+}
+
+function exitLevel11ToL48() {
+  if (transitionLock) return;
+  transitionLock = true;
+  ensureSandFaintOverlay().style.opacity = "1";
+  showToast("沙子灌进喉咙——你晕了过去…");
+  if (survival) saveBackroomsSurvival(survival);
+  grantLevelPass("l48", fps.yaw);
+  queueEnterLevelNumber(48);
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level48.html";
+  }, 900);
+}
+
+function updateSandRoomFaint(dt) {
+  if (level !== 11 || transitionLock || !levelWorld || !levelWorld.isLevel48SandRoom) {
+    sandFaintTimer = 0;
+    if (sandFaintOverlay) sandFaintOverlay.style.opacity = "0";
+    return;
+  }
+  if (!survival || survival.dead || dialogueOpen) return;
+  if (levelWorld.isLevel48SandRoom(fps.player.x, fps.player.z)) {
+    sandFaintTimer += dt;
+    var progress = Math.min(1, sandFaintTimer / SAND_FAINT_DURATION);
+    ensureSandFaintOverlay().style.opacity = String(progress * 0.95);
+    if (hintEl && sandFaintTimer > 0.4) {
+      hintEl.innerHTML =
+        "沙子房间……意识逐渐模糊（" +
+        Math.max(0, Math.ceil(SAND_FAINT_DURATION - sandFaintTimer)) +
+        "）";
+    }
+    if (sandFaintTimer >= SAND_FAINT_DURATION) exitLevel11ToL48();
+  } else {
+    if (sandFaintTimer > 0) sandFaintTimer = Math.max(0, sandFaintTimer - dt * 1.6);
+    if (sandFaintOverlay) {
+      sandFaintOverlay.style.opacity = String(
+        Math.min(0.95, (sandFaintTimer / SAND_FAINT_DURATION) * 0.95)
+      );
+    }
+  }
+}
+
+function refreshAimPick() {
+  if (!camera || dialogueOpen || isInventoryOpen() || !interactRoots.length) {
+    currentAimPick = null;
+    return;
+  }
+  currentAimPick = pickCrosshairInteract(camera, interactRoots, AIM_MAX);
+}
+
+function resolveInteract() {
+  return currentAimPick && currentAimPick.distance <= AIM_MAX
+    ? currentAimPick.data
+    : null;
+}
+
+function updateInteractUi() {
+  var data = resolveInteract();
+  var hidden = isInventoryOpen() || dialogueOpen || !survival || survival.dead || !data;
+  if (interactHintEl) {
+    interactHintEl.hidden = hidden;
+    if (!hidden) {
+      interactHintEl.innerHTML = "M.E.G 工作人员 · 按 <kbd>Q</kbd> 对话";
+    }
+  }
+  if (crosshairEl) {
+    crosshairEl.classList.toggle("backrooms-crosshair--hidden", isInventoryOpen() || dialogueOpen);
+    crosshairEl.classList.toggle("backrooms-crosshair--interact", !hidden && !!data);
+  }
+}
+
+function openStaffDialogue() {
+  if (!dialogueEl || !dialogueTextEl) return;
+  dialogueOpen = true;
+  document.body.classList.add("backrooms-dialogue-open");
+  dialogueEl.hidden = false;
+  if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "M.E.G 工作人员";
+  dialogueTextEl.textContent = "要我送你回 Level 1 的出生点吗？";
+  if (dialogueChoicesEl) {
+    dialogueChoicesEl.hidden = false;
+    dialogueChoicesEl.innerHTML =
+      '<button type="button" class="backrooms-dialogue__choice" data-choice="a"><kbd>A</kbd> 好</button>' +
+      '<button type="button" class="backrooms-dialogue__choice" data-choice="b"><kbd>B</kbd> 算了</button>';
+  }
+  if (interactHintEl) interactHintEl.hidden = true;
+  if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+}
+
+function closeDialogue() {
+  dialogueOpen = false;
+  document.body.classList.remove("backrooms-dialogue-open");
+  if (dialogueEl) dialogueEl.hidden = true;
+  if (dialogueChoicesEl) dialogueChoicesEl.hidden = true;
+}
+
+function exitLevel11ToL1() {
+  if (transitionLock) return;
+  transitionLock = true;
+  closeDialogue();
+  showToast("工作人员领你回到了 Level 1 的出生点…");
+  if (survival) saveBackroomsSurvival(survival);
+  grantLevelPass("clip");
+  try {
+    sessionStorage.setItem("backrooms_clip_yaw", "0");
+  } catch (err) {
+    /* ignore */
+  }
+  queueEnterLevelNumber(1);
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level1.html";
+  }, 450);
+}
+
+function handleStaffChoice(choice) {
+  if (!dialogueOpen) return;
+  if (choice === "a") exitLevel11ToL1();
+  else closeDialogue();
+}
+
+function tryQAction() {
+  if (dialogueOpen) return;
+  if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
+  var data = resolveInteract();
+  if (data && data.kind === "l11_meg_staff") openStaffDialogue();
+}
+
+function isChoiceKey(e, letter) {
+  if (e.repeat) return false;
+  if (e.code === "Key" + letter.toUpperCase()) return true;
+  var key = e.key;
+  return !!(key && key.length === 1 && key.toLowerCase() === letter);
+}
+
 function bindControls() {
   bindBackroomsFpsControls({
     canvas: canvas,
     inputEl: inputEl,
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
-    shouldBlockPointerLock: function () { return isInventoryOpen(); },
+    shouldBlockPointerLock: function () { return isInventoryOpen() || dialogueOpen; },
     onJump: function () { tryBackroomsJump(fps, 8); },
     onKeyDown: function (e) {
+      if (dialogueOpen) {
+        if (isChoiceKey(e, "a")) {
+          e.preventDefault();
+          handleStaffChoice("a");
+          return true;
+        }
+        if (isChoiceKey(e, "b") || (e.code === "Escape" && !e.repeat)) {
+          e.preventDefault();
+          closeDialogue();
+          return true;
+        }
+        return true;
+      }
+      if (e.code === "KeyQ" && !e.repeat) {
+        e.preventDefault();
+        tryQAction();
+        return true;
+      }
       if (e.code === "KeyB" && !e.repeat) {
         e.preventDefault();
         toggleBackpack();
@@ -231,6 +419,13 @@ function bindControls() {
       return false;
     },
   });
+  if (dialogueChoicesEl) {
+    dialogueChoicesEl.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-choice]");
+      if (!btn) return;
+      handleStaffChoice(btn.getAttribute("data-choice"));
+    });
+  }
   bindBackroomsWindowResize(renderer, camera);
 }
 
@@ -261,6 +456,7 @@ function init() {
   else if (level === 11) {
     levelWorld = buildLevel11World(root);
     colliders = levelWorld.colliders;
+    interactRoots = levelWorld.interactRoots || [];
   }
   else if (level === 10) buildLevel10(root);
   else buildLevel9(root);
@@ -314,7 +510,7 @@ function init() {
     _physOpts.gravity = DEFAULT_GRAVITY;
     _physOpts.ceilingY = wallH;
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock && !dialogueOpen) {
       var mul = survival && sprinting
         ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
         : 1;
@@ -342,7 +538,23 @@ function init() {
     ) {
       exitLevel11ToL13();
     }
+    if (
+      level === 11 &&
+      !transitionLock &&
+      survival &&
+      !survival.dead &&
+      levelWorld &&
+      levelWorld.isLevel119Entrance &&
+      levelWorld.isLevel119Entrance(fps.player.x, fps.player.z)
+    ) {
+      exitLevel11ToL119();
+    }
+    updateSandRoomFaint(dt);
     applyBackroomsCamera(fps, camera, 1.65);
+    if (interactRoots.length) {
+      refreshAimPick();
+      updateInteractUi();
+    }
     updateBackroomsTemperature(dt, now);
     updateBackroomsHeatDamage(survival, now);
     renderer.render(scene, camera);
