@@ -13,12 +13,12 @@ import {
 import { consumeXiaoyeFullHealFlag } from "./backrooms-level2-xiaoye.js";
 import {
   clearRoyalRationsBuff,
-  HP_MAX_DEFAULT,
-  STAMINA_MAX_DEFAULT,
+  getHpMax,
+  getStaminaMax,
 } from "./backrooms-royal-rations.js";
+import { getSanityMax } from "./backrooms-death-penalty.js";
 import { clearNightVision } from "./backrooms-night-vision.js";
 import { saveBackroomsSurvival } from "./backrooms-survival-persist.js";
-import { resetBackroomsRun } from "./backrooms-survival.js";
 import { refreshLevelPass, grantLevelPass } from "./backrooms-level-pass.js";
 
 export const MEG_CHECKPOINT_KEY = "backrooms_meg_checkpoint_v1";
@@ -200,9 +200,9 @@ export function applyMegDeathState(survival) {
     clearNightVision();
     resetBackpack();
 
-    survival.hp = HP_MAX_DEFAULT;
-    survival.sanity = 100;
-    survival.stamina = STAMINA_MAX_DEFAULT;
+    survival.hp = getHpMax();
+    survival.sanity = getSanityMax();
+    survival.stamina = getStaminaMax();
     survival.dead = false;
     survival.sanityBreaking = false;
     if (survival._deathTimer) {
@@ -258,8 +258,8 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
         survival,
         reason,
         reason === "sanity"
-          ? "精神崩溃 — 即将返回 Level 0…"
-          : "你已死亡 — 即将返回 Level 0…"
+          ? "精神崩溃 — 即将在 Level 0 醒来…"
+          : "你已死亡 — 即将在 Level 0 醒来…"
       );
       return;
     }
@@ -286,7 +286,27 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
     survival._deathSnapshot = null;
 
     if (plan === "l0_reset") {
-      resetBackroomsRun();
+      // 第 1/2 次死亡：软回 L0（保留背包/负面/积分），不再整局清档
+      try {
+        clearRoyalRationsBuff();
+        clearNightVision();
+        survival.hp = getHpMax();
+        survival.sanity = getSanityMax();
+        survival.stamina = getStaminaMax();
+        survival.dead = false;
+        survival.sanityBreaking = false;
+        if (survival._deathTimer) {
+          clearTimeout(survival._deathTimer);
+          survival._deathTimer = null;
+        }
+        document.body.classList.remove("backrooms-sanity-break", "backrooms-dead");
+        if (survival.deathEl) survival.deathEl.classList.remove("br-survival__death--show");
+        survival.refreshHud();
+        saveBackroomsSurvival(survival);
+      } catch (err) {
+        /* ignore */
+      }
+      grantLevelPass("l0");
       window.location.replace(level0Page);
       return;
     }
@@ -305,7 +325,22 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
       return;
     }
 
-    resetBackroomsRun();
+    try {
+      clearRoyalRationsBuff();
+      clearNightVision();
+      survival.hp = getHpMax();
+      survival.sanity = getSanityMax();
+      survival.stamina = getStaminaMax();
+      survival.dead = false;
+      survival.sanityBreaking = false;
+      document.body.classList.remove("backrooms-sanity-break", "backrooms-dead");
+      if (survival.deathEl) survival.deathEl.classList.remove("br-survival__death--show");
+      survival.refreshHud();
+      saveBackroomsSurvival(survival);
+    } catch (err2) {
+      /* ignore */
+    }
+    grantLevelPass("l0");
     window.location.replace(level0Page);
   };
 }

@@ -1,11 +1,13 @@
 /**
- * Backrooms Level C-192 — 从和爱社区山洞进入的地下层级。
+ * Backrooms Level C-192 — 10×10 的封闭森林。
  */
 import * as THREE from "three";
+import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
 import {
   loadBackroomsSurvival,
   registerBackroomsSurvivalPersist,
+  saveBackroomsSurvival,
 } from "./backrooms-survival-persist.js";
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
 import { toggleBackpack, isInventoryOpen, setInventoryOpenHandler } from "./backrooms-inventory.js";
@@ -15,8 +17,12 @@ import {
   updateBackroomsTemperature,
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
-import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
-import { enforceLevelEntry } from "./backrooms-level-pass.js";
+import {
+  showEnterLevelBannerIfQueued,
+  queueEnterLevelNumber,
+} from "./backrooms-level-enter.js";
+import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -38,11 +44,26 @@ import {
   DEFAULT_GRAVITY,
 } from "./backrooms-fps-controller.js";
 
+const ROOM_SIZE = 10;
+const HALF = ROOM_SIZE * 0.5;
+const WALL_H = 8;
 const EYE_HEIGHT = 1.65;
-const WALL_H = 18;
+const AIM_MAX = 4.5;
+const TREE_MODEL_URL = "./models/tree-by-zsky.glb";
+const TREE_POSITIONS = [
+  [-3.4, -3.3],
+  [0, -2.1],
+  [3.35, -3.25],
+  [-3.45, 0],
+  [3.45, 0.15],
+  [-3.2, 3.25],
+  [3.15, 3.2],
+];
+
 const colliders = [];
+const interactRoots = [];
 const fps = createBackroomsFpsState({
-  player: { x: 0, z: 38, radius: 0.34, speed: 4.05 },
+  player: { x: 0, z: 3.8, radius: 0.34, speed: 3.7 },
 });
 const _survCtx = { sprinting: false };
 const _physOpts = { gravity: DEFAULT_GRAVITY, ceilingY: WALL_H };
@@ -50,6 +71,8 @@ const _physOpts = { gravity: DEFAULT_GRAVITY, ceilingY: WALL_H };
 const canvas = document.getElementById("backroomsCanvas");
 const inputEl = document.getElementById("backroomsInput");
 const hintEl = document.getElementById("backroomsHint");
+const interactHintEl = document.getElementById("backroomsInteractHint");
+const crosshairEl = document.getElementById("backroomsCrosshair");
 const errorEl = document.getElementById("backroomsError");
 const megPointsEl = document.getElementById("backroomsMegPoints");
 const tempRootEl = document.getElementById("backroomsTemp");
@@ -60,50 +83,11 @@ let renderer = null;
 let scene = null;
 let camera = null;
 let survival = null;
+let currentAimPick = null;
+let transitionLock = false;
 
 function wallCollider(minX, maxX, minZ, maxZ) {
   return { kind: "wall", minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ };
-}
-
-function addRock(root, x, y, z, sx, sy, sz, material) {
-  var rock = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), material);
-  rock.position.set(x, y, z);
-  rock.scale.set(sx, sy, sz);
-  root.add(rock);
-}
-
-function buildWorld(root) {
-  var ground = new THREE.MeshStandardMaterial({ color: 0x292827, roughness: 1 });
-  var rock = new THREE.MeshStandardMaterial({ color: 0x373534, roughness: 1 });
-  var floor = new THREE.Mesh(new THREE.PlaneGeometry(90, 110), ground);
-  floor.rotation.x = -Math.PI * 0.5;
-  root.add(floor);
-  var i;
-  for (i = 0; i < 34; i++) {
-    var z = -51 + i * 3.1;
-    addRock(root, -43 + Math.sin(i * 1.7) * 2, 6, z, 6, 8, 5, rock);
-    addRock(root, 43 + Math.cos(i * 1.4) * 2, 6, z, 6, 8, 5, rock);
-  }
-  for (i = 0; i < 22; i++) {
-    addRock(
-      root,
-      -35 + ((i * 17) % 70),
-      15 + (i % 3),
-      -45 + ((i * 29) % 90),
-      5,
-      4,
-      7,
-      rock
-    );
-  }
-  colliders.push(wallCollider(-48, -39, -55, 55));
-  colliders.push(wallCollider(39, 48, -55, 55));
-  colliders.push(wallCollider(-48, 48, -58, -50));
-  colliders.push(wallCollider(-48, 48, 50, 58));
-  root.add(new THREE.HemisphereLight(0x738093, 0x171718, 0.55));
-  var lamp = new THREE.PointLight(0x9db9ce, 1.2, 80, 2);
-  lamp.position.set(0, 10, 30);
-  root.add(lamp);
 }
 
 function showToast(text) {
@@ -117,6 +101,151 @@ function showError(text) {
     "<p><strong>Level C-192 无法启动</strong></p><p>" + String(text) + "</p>";
 }
 
+function addAirWalls() {
+  var thickness = 1;
+  colliders.push(wallCollider(-HALF - thickness, HALF + thickness, -HALF - thickness, -HALF));
+  colliders.push(wallCollider(-HALF - thickness, HALF + thickness, HALF, HALF + thickness));
+  colliders.push(wallCollider(-HALF - thickness, -HALF, -HALF, HALF));
+  colliders.push(wallCollider(HALF, HALF + thickness, -HALF, HALF));
+}
+
+function addTreeInteraction(group, index) {
+  var pick = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.8, 0.8, 4.8, 8),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  pick.position.y = 2.35;
+  pick.userData.brInteract = { kind: "c192_tree", index: index };
+  group.add(pick);
+  interactRoots.push(pick);
+}
+
+function addFallbackTree(root, x, z, index) {
+  var group = new THREE.Group();
+  group.position.set(x, 0, z);
+  root.add(group);
+  var trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.28, 0.42, 3.4, 8),
+    new THREE.MeshStandardMaterial({ color: 0x493629, roughness: 1 })
+  );
+  trunk.position.y = 1.7;
+  group.add(trunk);
+  var crown = new THREE.Mesh(
+    new THREE.ConeGeometry(1.65, 4.2, 9),
+    new THREE.MeshStandardMaterial({ color: 0x264a2b, roughness: 1 })
+  );
+  crown.position.y = 4.5;
+  group.add(crown);
+  addTreeInteraction(group, index);
+}
+
+function populateTrees(root) {
+  new GLTFLoader().load(
+    TREE_MODEL_URL,
+    function (gltf) {
+      var source = gltf.scene;
+      var bounds = new THREE.Box3().setFromObject(source);
+      var size = new THREE.Vector3();
+      bounds.getSize(size);
+      var scale = size.y > 0 ? 5.7 / size.y : 1;
+      var i;
+      for (i = 0; i < TREE_POSITIONS.length; i++) {
+        var group = new THREE.Group();
+        group.position.set(TREE_POSITIONS[i][0], 0, TREE_POSITIONS[i][1]);
+        group.rotation.y = i * 1.37;
+        root.add(group);
+        var visual = source.clone(true);
+        visual.scale.setScalar(scale);
+        visual.position.y = -bounds.min.y * scale;
+        group.add(visual);
+        addTreeInteraction(group, i);
+      }
+    },
+    undefined,
+    function (err) {
+      console.warn("[Backrooms C-192] 树模型加载失败，使用程序化树", err);
+      var i;
+      for (i = 0; i < TREE_POSITIONS.length; i++) {
+        addFallbackTree(root, TREE_POSITIONS[i][0], TREE_POSITIONS[i][1], i);
+      }
+      showToast("树木的轮廓有些模糊，但仍能切入。");
+    }
+  );
+}
+
+function buildWorld(root) {
+  var ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(ROOM_SIZE, ROOM_SIZE),
+    new THREE.MeshStandardMaterial({ color: 0x31452d, roughness: 1 })
+  );
+  ground.rotation.x = -Math.PI * 0.5;
+  root.add(ground);
+
+  // 空气墙不可见，只限制 10×10 森林边界。
+  addAirWalls();
+  populateTrees(root);
+
+  root.add(new THREE.HemisphereLight(0xaac59b, 0x172116, 0.9));
+  var moon = new THREE.DirectionalLight(0xd8e6cf, 0.8);
+  moon.position.set(-4, 11, 5);
+  root.add(moon);
+}
+
+function exitToLevel48() {
+  if (transitionLock) return;
+  transitionLock = true;
+  if (survival) saveBackroomsSurvival(survival);
+  grantLevelPass("l48", fps.yaw);
+  queueEnterLevelNumber(48);
+  showToast("你切入了树干，潮湿的森林气味变成了海风…");
+  if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level48.html";
+  }, 650);
+}
+
+function refreshAimPick() {
+  if (
+    !camera ||
+    transitionLock ||
+    isInventoryOpen() ||
+    !survival ||
+    survival.dead ||
+    !interactRoots.length
+  ) {
+    currentAimPick = null;
+    return;
+  }
+  currentAimPick = pickCrosshairInteract(camera, interactRoots, AIM_MAX);
+}
+
+function resolveInteract() {
+  return currentAimPick && currentAimPick.distance <= AIM_MAX
+    ? currentAimPick.data
+    : null;
+}
+
+function updateInteractUi() {
+  var data = resolveInteract();
+  var treeReady = data && data.kind === "c192_tree";
+  var hidden =
+    transitionLock || isInventoryOpen() || !survival || survival.dead || !treeReady;
+  if (interactHintEl) {
+    interactHintEl.hidden = hidden;
+    if (!hidden) interactHintEl.innerHTML = "树干 · 按 <kbd>Q</kbd> 切入";
+  }
+  if (crosshairEl) {
+    crosshairEl.classList.toggle("backrooms-crosshair--hidden", isInventoryOpen());
+    crosshairEl.classList.toggle("backrooms-crosshair--interact", !hidden);
+  }
+}
+
+function tryQAction() {
+  if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
+  var data = resolveInteract();
+  if (data && data.kind === "c192_tree") exitToLevel48();
+}
+
 function bindControls() {
   bindBackroomsFpsControls({
     canvas: canvas,
@@ -124,12 +253,17 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen();
+      return isInventoryOpen() || transitionLock;
     },
     onJump: function () {
-      tryBackroomsJump(fps, 8);
+      if (!transitionLock) tryBackroomsJump(fps, 8);
     },
     onKeyDown: function (event) {
+      if (event.code === "KeyQ" && !event.repeat) {
+        event.preventDefault();
+        tryQAction();
+        return true;
+      }
       if (event.code === "KeyB" && !event.repeat) {
         event.preventDefault();
         toggleBackpack();
@@ -148,15 +282,15 @@ function init() {
   }
   showEnterLevelBannerIfQueued();
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x101214);
-  scene.fog = new THREE.FogExp2(0x101214, 0.026);
-  camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 150);
+  scene.background = new THREE.Color(0x18251a);
+  scene.fog = new THREE.Fog(0x18251a, 5, 15);
+  camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 40);
   var gfx = resolveBackroomsGfxProfile();
   renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
   applyBackroomsRendererSize(renderer, window.innerWidth, window.innerHeight, gfx);
   applyBackroomsToneMapping(renderer);
   var root = new THREE.Group();
-  root.name = "BackroomsLevelC192";
+  root.name = "BackroomsLevelC192Forest";
   scene.add(root);
   buildWorld(root);
 
@@ -182,7 +316,7 @@ function init() {
   });
   updateMegPointsDisplay(megPointsEl);
   hintEl.innerHTML =
-    "Level C-192 · 山洞深处 · <kbd>WASD</kbd> 移动 · <kbd>B</kbd> 背包";
+    "Level C-192 · 10×10 森林 · 对准树按 <kbd>Q</kbd> 切入 · <kbd>B</kbd> 背包";
   bindControls();
 
   var clock = new THREE.Clock();
@@ -197,7 +331,7 @@ function init() {
       survival.update(dt, _survCtx);
     }
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen()) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock) {
       var mul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
@@ -207,6 +341,8 @@ function init() {
       });
     }
     applyBackroomsCamera(fps, camera, EYE_HEIGHT);
+    refreshAimPick();
+    updateInteractUi();
     updateBackroomsTemperature(dt, now);
     updateBackroomsHeatDamage(survival, now);
     renderer.render(scene, camera);

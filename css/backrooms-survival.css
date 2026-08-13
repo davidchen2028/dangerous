@@ -343,6 +343,26 @@ body.backrooms-settings-open .br-settings {
   pointer-events: auto;
 }
 
+/* —— 商店收购：对话框压在背包之上，快捷栏保持可点 —— */
+body.backrooms-shop-sell .backrooms-hud {
+  z-index: 7;
+}
+
+body.backrooms-shop-sell .backrooms-dialogue,
+body.backrooms-shop-sell .backrooms-dialogue__choice {
+  pointer-events: auto;
+}
+
+body.backrooms-shop-sell .br-hotbar {
+  z-index: 8;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.br-pack__cell--sell:hover {
+  border-color: rgba(255, 212, 121, 0.75);
+}
+
 /* —— 设置（P） —— */
 .br-settings {
   position: fixed;

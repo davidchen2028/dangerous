@@ -520,7 +520,8 @@ function updateMutantRest(now, dt) {
 }
 
 function isInsideCaveExit() {
-  return Math.abs(fps.player.x) < 36 && fps.player.z < -305;
+  // 山洞口前沿；玩家一碰到洞口便立即切入 C-192。
+  return Math.abs(fps.player.x) < 61 && fps.player.z < -285;
 }
 
 function exitToLevelC192() {
@@ -529,10 +530,8 @@ function exitToLevelC192() {
   saveBackroomsSurvival(survival);
   grantLevelPass("c192", fps.yaw);
   queueEnterLevelNumber("C-192");
-  showToast("你趁变异肢团休息时冲进了山洞深处…");
-  window.setTimeout(function () {
-    window.location.href = "backrooms-level-c192.html";
-  }, 650);
+  showToast("你碰到了山洞——四周的景象瞬间改变…");
+  window.location.href = "backrooms-level-c192.html";
 }
 
 function refreshAimPick() {
@@ -849,7 +848,7 @@ function init() {
         { playerSafe: dialogueOpen }
       );
     }
-    if (mutantsResting && isInsideCaveExit()) exitToLevelC192();
+    if (isInsideCaveExit()) exitToLevelC192();
     applyCamera();
     refreshAimPick();
     updateInteractUi();

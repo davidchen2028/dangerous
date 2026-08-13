@@ -11,11 +11,19 @@ import {
   XIAOYE_STORAGE_KEY,
   XIAOYE_FULL_HEAL_KEY,
 } from "./backrooms-level2-xiaoye.js";
-import { ROYAL_RATIONS_BUFF_KEY } from "./backrooms-royal-rations.js";
+import {
+  ROYAL_RATIONS_BUFF_KEY,
+  ROYAL_RATIONS_MEDIUM_KEY,
+} from "./backrooms-royal-rations.js";
 import {
   MEG_NV_POTION_GIVEN_KEY,
   MEG_NV_ALMOND_GIVEN_KEY,
 } from "./backrooms-night-vision.js";
+import {
+  DEATH_COUNT_KEY,
+  DEATH_P1_KEY,
+  DEATH_P2_KEY,
+} from "./backrooms-death-penalty.js";
 import { ENTER_BANNER_KEY } from "./backrooms-level-enter.js";
 
 /** @type {readonly string[]} */
@@ -80,8 +88,6 @@ export const BACKROOMS_SESSION_KEYS = [
   "backrooms_l119_yaw",
   "backrooms_l121_pass",
   "backrooms_l121_yaw",
-  "backrooms_l581_pass",
-  "backrooms_l581_yaw",
   "backrooms_blue_channel_pass",
   "backrooms_blue_channel_yaw",
   "backrooms_c144_pass",
@@ -106,6 +112,10 @@ export const BACKROOMS_SESSION_KEYS = [
   "backrooms_l2_xiaoye_triggered",
   XIAOYE_FULL_HEAL_KEY,
   ROYAL_RATIONS_BUFF_KEY,
+  ROYAL_RATIONS_MEDIUM_KEY,
+  DEATH_COUNT_KEY,
+  DEATH_P1_KEY,
+  DEATH_P2_KEY,
   ENTER_BANNER_KEY,
 ];
 

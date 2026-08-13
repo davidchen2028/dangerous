@@ -13,7 +13,10 @@ const ITEM_ICONS = {
   almond_water: "img/backrooms/almond-water.png",
   night_vision_potion: "img/backrooms/night-vision-potion.png",
   royal_rations: "img/backrooms/royal-rations.png",
+  royal_rations_medium: "img/backrooms/royal-rations-medium.png",
   fire_salt: "img/backrooms/fire-salt.png",
+  archive_c11: "img/backrooms/archive-viewer.png",
+  roulette_revolver: "img/backrooms/roulette-revolver.png",
 };
 
 /** @type {(null | { id: string, name: string })[]} */
@@ -43,6 +46,10 @@ let open = false;
 let settingsOpen = false;
 let onOpenChange = null;
 let hotbarKeysBound = false;
+/** 商店收购模式：设置后点击格子交给商店报价，而不是普通选中 */
+let sellPickHandler = null;
+/** @type {null | { source: "backpack" | "hotbar", index: number }} */
+let sellPick = null;
 
 function cloneItem(item) {
   if (!item || !item.id) return null;
@@ -366,6 +373,61 @@ export function renderGridPublic() {
   renderHotbar();
 }
 
+/**
+ * 进入/退出商店收购模式。
+ * @param {null | ((item: { id: string, name: string }, source: "backpack" | "hotbar", index: number) => void)} handler
+ */
+export function setInventorySellMode(handler) {
+  sellPickHandler = typeof handler === "function" ? handler : null;
+  sellPick = null;
+  renderGrid();
+  renderHotbar();
+}
+
+export function isInventorySellMode() {
+  return !!sellPickHandler;
+}
+
+export function clearInventorySellPick() {
+  sellPick = null;
+  renderGrid();
+  renderHotbar();
+}
+
+/** 按格子精确移除（商店收购成交用） */
+export function removeItemAt(source, index) {
+  var arr = source === "hotbar" ? hotbarSlots : backpackSlots;
+  if (!Number.isFinite(index) || index < 0 || index >= arr.length) return null;
+  var item = arr[index];
+  if (!item) return null;
+  arr[index] = null;
+  if (sellPick && sellPick.source === source && sellPick.index === index) {
+    sellPick = null;
+  }
+  persistAll();
+  renderGrid();
+  renderHotbar();
+  return item;
+}
+
+function handleSellClick(source, index) {
+  if (!sellPickHandler) return false;
+  var arr = source === "hotbar" ? hotbarSlots : backpackSlots;
+  var item = arr[index];
+  if (!item) return true;
+  sellPick = { source: source, index: index };
+  renderGrid();
+  renderHotbar();
+  sellPickHandler(cloneItem(item), source, index);
+  return true;
+}
+
+function markSellPickCell(cell, source, index) {
+  if (!sellPick || sellPick.source !== source || sellPick.index !== index) return;
+  cell.style.outline = "2px solid #ffd479";
+  cell.style.outlineOffset = "-2px";
+}
+
 function appendItemIcon(cell, item) {
   var iconSrc = ITEM_ICONS[item.id];
   if (iconSrc) {
@@ -393,11 +455,80 @@ function dispatchUseItemId(itemId) {
     if (typeof window.__backroomsUseRoyalRations === "function") {
       window.__backroomsUseRoyalRations();
     }
+  } else if (itemId === "royal_rations_medium") {
+    if (typeof window.__backroomsUseRoyalRationsMedium === "function") {
+      window.__backroomsUseRoyalRationsMedium();
+    }
   } else if (itemId === "fire_salt") {
     if (typeof window.__backroomsUseFireSalt === "function") {
       window.__backroomsUseFireSalt();
     }
+  } else if (itemId === "archive_c11") {
+    useArchiveC11();
   }
+}
+
+const C11_ARCHIVE_TEXT = [
+  "【M.E.G 层级档案 · Level C-11】",
+  "分类：安全 · 稳定 · 无实体（长期观测）",
+  "",
+  "Level C-11 是一片一望无际的田园乡村，起伏的绿色丘陵、",
+  "成熟的麦田与零星的木屋在温暖的日光下延展，天空恒为黄昏前",
+  "的金色。此层被流浪者视为少数可长期定居的『家园层级』之一。",
+  "",
+  "· 环境：气候温和，昼长夜短；作物可安全食用，溪水近似杏仁水。",
+  "· 居民：存在友善的社区聚落，多由早期定居者与其后代组成。",
+  "· 危险：几乎没有敌对实体；主要风险为迷路与低估补给。",
+  "· 出入口：多与 Level 11 的郊区、Level 10 的田野相连。",
+  "",
+  "（一次性查看工具已消耗。）",
+].join("\n");
+
+let archiveOverlayEl = null;
+
+function closeArchiveOverlay() {
+  if (archiveOverlayEl) {
+    archiveOverlayEl.remove();
+    archiveOverlayEl = null;
+  }
+  document.removeEventListener("keydown", onArchiveKeydown, true);
+}
+
+function onArchiveKeydown(e) {
+  if (e.code === "Escape" || e.code === "KeyQ" || e.code === "Enter") {
+    e.preventDefault();
+    e.stopPropagation();
+    closeArchiveOverlay();
+  }
+}
+
+function useArchiveC11() {
+  if (archiveOverlayEl) return;
+  if (!removeFirstItem("archive_c11")) return;
+  if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+  var overlay = document.createElement("div");
+  overlay.id = "backroomsArchiveC11";
+  overlay.setAttribute("role", "dialog");
+  overlay.style.cssText =
+    "position:fixed;inset:0;z-index:120;display:grid;place-items:center;" +
+    "background:rgba(6,10,16,0.82);backdrop-filter:blur(2px);";
+  var panel = document.createElement("div");
+  panel.style.cssText =
+    "max-width:min(680px,86vw);max-height:80vh;overflow:auto;padding:26px 30px;" +
+    "background:#12161d;border:1px solid #3a4658;border-radius:12px;color:#e7eef6;" +
+    "font:14px/1.7 system-ui,sans-serif;white-space:pre-wrap;box-shadow:0 18px 60px #000;";
+  panel.textContent = C11_ARCHIVE_TEXT;
+  var tip = document.createElement("p");
+  tip.style.cssText = "margin:18px 0 0;text-align:center;color:#8fa2b8;font:13px system-ui;";
+  tip.innerHTML = "按 <kbd>Q</kbd> / <kbd>Esc</kbd> 关闭";
+  panel.appendChild(tip);
+  overlay.appendChild(panel);
+  overlay.addEventListener("click", function (e) {
+    if (e.target === overlay) closeArchiveOverlay();
+  });
+  document.body.appendChild(overlay);
+  archiveOverlayEl = overlay;
+  document.addEventListener("keydown", onArchiveKeydown, true);
 }
 
 /** 按 R：使用当前加粗选中的快捷栏物品 */
@@ -427,16 +558,22 @@ function renderGrid() {
       cell.title = backpackSlots[i].name + " · 拖到快捷栏";
       cell.draggable = true;
       appendItemIcon(cell, backpackSlots[i]);
+      if (sellPickHandler) {
+        cell.classList.add("br-pack__cell--sell");
+        cell.title = backpackSlots[i].name + " · 点击询价";
+      }
     }
+    markSellPickCell(cell, "backpack", i);
     gridEl.appendChild(cell);
   }
   if (titleEl) {
-    titleEl.textContent =
-      "背包 " +
-      countUsedSlots() +
-      "/" +
-      BACKPACK_CAPACITY +
-      " · 拖到快捷栏 / 双击使用";
+    titleEl.textContent = sellPickHandler
+      ? "背包 " + countUsedSlots() + "/" + BACKPACK_CAPACITY + " · 点击物品询价"
+      : "背包 " +
+        countUsedSlots() +
+        "/" +
+        BACKPACK_CAPACITY +
+        " · 拖到快捷栏 / 双击使用";
   }
 }
 
@@ -458,6 +595,7 @@ function renderHotbar() {
     } else {
       cell.title = "快捷栏 " + (i + 1);
     }
+    markSellPickCell(cell, "hotbar", i);
     hotbarSlotsEl.appendChild(cell);
   }
 }
@@ -542,6 +680,8 @@ function bindHotbarKeys() {
   hotbarKeysBound = true;
   window.addEventListener("keydown", function (e) {
     if (e.repeat) return;
+    // 商店收购中：物品交易由商店对话接管，避免误用道具
+    if (sellPickHandler) return;
     if (e.code === "KeyP") {
       e.preventDefault();
       toggleSettings();
@@ -601,6 +741,7 @@ export function mountHotbar(parent) {
     if (!cell) return;
     var idx = parseInt(cell.dataset.slot, 10);
     if (!Number.isFinite(idx)) return;
+    if (handleSellClick("hotbar", idx)) return;
     setSelectedHotbarIndex(idx);
   });
   bindHotbarKeys();
@@ -655,7 +796,18 @@ export function mountBackpackPanel(parent) {
   gridEl.style.setProperty("--br-cols", String(BACKPACK_COLS));
   gridEl.style.setProperty("--br-rows", String(BACKPACK_ROWS));
 
+  gridEl.addEventListener("click", function (e) {
+    if (!sellPickHandler) return;
+    var cell = e.target.closest(".br-pack__cell");
+    if (!cell) return;
+    var idx = Array.prototype.indexOf.call(gridEl.children, cell);
+    if (idx < 0) return;
+    e.preventDefault();
+    handleSellClick("backpack", idx);
+  });
+
   gridEl.addEventListener("dblclick", function (e) {
+    if (sellPickHandler) return;
     var cell = e.target.closest(".br-pack__cell");
     if (!cell) return;
     var idx = Array.prototype.indexOf.call(gridEl.children, cell);
@@ -675,6 +827,17 @@ export function toggleBackpack() {
   open = !open;
   panelEl.hidden = !open;
   document.body.classList.toggle("backrooms-pack-open", open);
+  notifyUiOpenChange();
+  return open;
+}
+
+export function openBackpack() {
+  if (!panelEl) mountBackpackPanel();
+  if (open) return open;
+  closeSettings();
+  open = true;
+  panelEl.hidden = false;
+  document.body.classList.add("backrooms-pack-open");
   notifyUiOpenChange();
   return open;
 }
@@ -718,7 +881,12 @@ if (typeof window !== "undefined") {
     mountHotbar: mountHotbar,
     mountSettingsPanel: mountSettingsPanel,
     toggleBackpack: toggleBackpack,
+    openBackpack: openBackpack,
     closeBackpack: closeBackpack,
+    setInventorySellMode: setInventorySellMode,
+    isInventorySellMode: isInventorySellMode,
+    clearInventorySellPick: clearInventorySellPick,
+    removeItemAt: removeItemAt,
     toggleSettings: toggleSettings,
     closeSettings: closeSettings,
     isInventoryOpen: isInventoryOpen,

@@ -1,6 +1,6 @@
 /**
  * Backrooms Level 48 — 日落沙滩
- * 酒店（床）、后方农舍→L10、客房门→L581、小湖湖底→L121
+ * 酒店（床）、后方农舍→L10、小湖湖底→L121
  */
 import * as THREE from "three";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
@@ -170,19 +170,11 @@ function buildHotel(root) {
   addBox(root, 2.2, 0.35, 0.55, -5.5, 0.95, -11.5, fabric, false);
   addBox(root, 2.5, 1.3, 0.18, -5.5, 1.15, -12.05, wood, true);
 
-  // 客房门（通往 L581）
+  // 客房门（封死，无层级出口）
   var roomDoor = addBox(root, 1.5, 2.5, 0.12, 6.2, 1.25, -14.05, dark, false);
   roomDoor.name = "L48RoomDoor";
   var knob = addBox(root, 0.08, 0.08, 0.12, 6.75, 1.2, -13.95, trim, false);
   void knob;
-  var pickDoor = new THREE.Mesh(
-    new THREE.BoxGeometry(1.8, 2.7, 0.6),
-    new THREE.MeshBasicMaterial({ visible: false })
-  );
-  pickDoor.position.set(6.2, 1.3, -13.7);
-  pickDoor.userData.brInteract = { kind: "l48_room_door" };
-  root.add(pickDoor);
-  interactRoots.push(pickDoor);
 
   // 农舍（酒店后方）
   var barn = new THREE.MeshStandardMaterial({ color: 0xa8744a, roughness: 0.92 });
@@ -261,10 +253,6 @@ function exitFarmhouseToL10() {
   exitTo("l10", 10, "backrooms-level10.html", "你走进农舍——田野的气味涌了进来…");
 }
 
-function exitRoomDoorToL581() {
-  exitTo("l581", 581, "backrooms-level581.html", "客房门后是一条漫长的路…");
-}
-
 function exitLakeToL121() {
   exitTo("l121", 121, "backrooms-level121.html", "你沉到湖底，四周只剩幽蓝…");
 }
@@ -303,28 +291,18 @@ function resolveInteract() {
 }
 
 function updateInteractUi() {
-  var data = resolveInteract();
-  var hidden =
-    transitionLock || isInventoryOpen() || !survival || survival.dead || inLake || !data;
-  if (interactHintEl) {
-    interactHintEl.hidden = hidden;
-    if (!hidden) {
-      interactHintEl.innerHTML = "客房门 · 按 <kbd>Q</kbd> 打开";
-    }
-  }
+  if (interactHintEl) interactHintEl.hidden = true;
   if (crosshairEl) {
     crosshairEl.classList.toggle(
       "backrooms-crosshair--hidden",
       isInventoryOpen() || !survival || survival.dead || inLake
     );
-    crosshairEl.classList.toggle("backrooms-crosshair--interact", !hidden);
+    crosshairEl.classList.remove("backrooms-crosshair--interact");
   }
 }
 
 function tryQAction() {
-  if (transitionLock || isInventoryOpen() || !survival || survival.dead || inLake) return;
-  var data = resolveInteract();
-  if (data && data.kind === "l48_room_door") exitRoomDoorToL581();
+  /* Level 48 暂无 Q 交互 */
 }
 
 function syncHint() {
@@ -336,7 +314,7 @@ function syncHint() {
       "</strong> 秒";
   } else {
     hintEl.innerHTML =
-      "Level 48 · 日落沙滩 · 酒店 / 农舍 / 小湖 · <kbd>Q</kbd> 开门 · <kbd>WASD</kbd> · <kbd>B</kbd>";
+      "Level 48 · 日落沙滩 · 酒店 / 农舍 / 小湖 · <kbd>WASD</kbd> · <kbd>B</kbd>";
   }
 }
 

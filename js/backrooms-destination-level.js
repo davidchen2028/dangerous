@@ -9,16 +9,35 @@ import {
   registerBackroomsSurvivalPersist,
 } from "./backrooms-survival-persist.js";
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
-import { toggleBackpack, isInventoryOpen, setInventoryOpenHandler } from "./backrooms-inventory.js";
-import { updateMegPointsDisplay } from "./backrooms-meg-points.js";
+import {
+  toggleBackpack,
+  isInventoryOpen,
+  setInventoryOpenHandler,
+  addItem,
+  addAlmondWater,
+  addFireSalt,
+  countUsedSlots,
+  BACKPACK_CAPACITY,
+} from "./backrooms-inventory.js";
+import {
+  updateMegPointsDisplay,
+  getMegPoints,
+  addMegPoints,
+} from "./backrooms-meg-points.js";
 import {
   initBackroomsTemperature,
   updateBackroomsTemperature,
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
-import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
+import {
+  showEnterLevelBannerIfQueued,
+  queueEnterLevelNumber,
+  queueEnterLevelBanner,
+} from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
+import { playBackroomsRoulette } from "./backrooms-roulette.js";
+import { getBuyPrice } from "./backrooms-shop-prices.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -78,6 +97,9 @@ let transitionLock = false;
 let interactRoots = [];
 let currentAimPick = null;
 let dialogueOpen = false;
+let vendorMode = false;
+/** @type {null | { id: string, label: string, cost: number }} */
+let pendingVendorPurchase = null;
 let sandFaintTimer = 0;
 let sandFaintOverlay = null;
 
@@ -313,7 +335,10 @@ function updateInteractUi() {
   if (interactHintEl) {
     interactHintEl.hidden = hidden;
     if (!hidden) {
-      interactHintEl.innerHTML = "M.E.G 工作人员 · 按 <kbd>Q</kbd> 对话";
+      interactHintEl.innerHTML =
+        data.kind === "l11_bntg_vendor"
+          ? "B.N.T.G 员工 · 按 <kbd>Q</kbd> 交易"
+          : "M.E.G 工作人员 · 按 <kbd>Q</kbd> 对话";
     }
   }
   if (crosshairEl) {
@@ -341,6 +366,8 @@ function openStaffDialogue() {
 
 function closeDialogue() {
   dialogueOpen = false;
+  vendorMode = false;
+  pendingVendorPurchase = null;
   document.body.classList.remove("backrooms-dialogue-open");
   if (dialogueEl) dialogueEl.hidden = true;
   if (dialogueChoicesEl) dialogueChoicesEl.hidden = true;
@@ -370,11 +397,192 @@ function handleStaffChoice(choice) {
   else closeDialogue();
 }
 
+/* ----------------------------- B.N.T.G 商店 ----------------------------- */
+
+const BNTG_ITEMS = [
+  { id: "almond", label: "杏仁水", cost: getBuyPrice("almond_water") },
+  { id: "firesalt", label: "小块可爆炸火盐", cost: getBuyPrice("fire_salt") },
+  {
+    id: "royal_min",
+    label: "最小有效分量皇家口粮",
+    cost: getBuyPrice("royal_rations"),
+  },
+  {
+    id: "royal_medium",
+    label: "中等大小皇家口粮",
+    cost: getBuyPrice("royal_rations_medium"),
+  },
+  {
+    id: "viewer",
+    label: "一次性查看工具（Level C-11 档案）",
+    cost: getBuyPrice("archive_c11"),
+  },
+  { id: "roulette", label: "后室轮盘赌", cost: getBuyPrice("roulette") },
+  {
+    id: "escort_l0",
+    label: "护送服务 · 前往 Level 0",
+    cost: getBuyPrice("escort_l0"),
+  },
+  {
+    id: "escort_l4",
+    label: "护送服务 · 前往 Level 4",
+    cost: getBuyPrice("escort_l4"),
+  },
+  {
+    id: "escort_l61",
+    label: "护送服务 · 前往 Level 6.1",
+    cost: getBuyPrice("escort_l61"),
+  },
+];
+
+function renderVendorMenu(note) {
+  if (!dialogueEl || !dialogueTextEl) return;
+  pendingVendorPurchase = null;
+  if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "B.N.T.G 员工";
+  var points = getMegPoints();
+  dialogueTextEl.textContent =
+    (note ? note + "　" : "欢迎光临。") + "（当前积分点：" + points + "）";
+  if (dialogueChoicesEl) {
+    dialogueChoicesEl.hidden = false;
+    var html = "";
+    var i;
+    for (i = 0; i < BNTG_ITEMS.length; i++) {
+      var it = BNTG_ITEMS[i];
+      var afford = points >= it.cost;
+      html +=
+        '<button type="button" class="backrooms-dialogue__choice" data-vendor="' +
+        it.id +
+        '"' +
+        (afford ? "" : ' style="opacity:0.5"') +
+        "><kbd>" +
+        (i + 1) +
+        "</kbd> " +
+        it.label +
+        " · " +
+        it.cost +
+        " 积分点</button>";
+    }
+    html +=
+      '<button type="button" class="backrooms-dialogue__choice" data-vendor="close"><kbd>Esc</kbd> 离开</button>';
+    dialogueChoicesEl.innerHTML = html;
+  }
+}
+
+function renderVendorConfirm(def) {
+  if (!dialogueTextEl || !dialogueChoicesEl) return;
+  pendingVendorPurchase = def;
+  dialogueTextEl.textContent =
+    def.label + "，价格 " + def.cost + " 积分点。按 A 确认购买。";
+  dialogueChoicesEl.hidden = false;
+  dialogueChoicesEl.innerHTML =
+    '<button type="button" class="backrooms-dialogue__choice" data-vendor-confirm="yes"><kbd>A</kbd> 确认购买</button>' +
+    '<button type="button" class="backrooms-dialogue__choice" data-vendor-confirm="back"><kbd>B</kbd> 返回商品列表</button>';
+}
+
+function openBntgVendor() {
+  if (!dialogueEl || !dialogueTextEl) return;
+  dialogueOpen = true;
+  vendorMode = true;
+  document.body.classList.add("backrooms-dialogue-open");
+  dialogueEl.hidden = false;
+  renderVendorMenu(null);
+  if (interactHintEl) interactHintEl.hidden = true;
+  if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+}
+
+function escortTo(pass, page, banner) {
+  if (transitionLock) return;
+  transitionLock = true;
+  closeDialogue();
+  showToast("B.N.T.G 员工护送你前往 " + banner + "…");
+  if (survival) saveBackroomsSurvival(survival);
+  grantLevelPass(pass, fps.yaw);
+  queueEnterLevelBanner(banner);
+  window.setTimeout(function () {
+    window.location.href = page;
+  }, 500);
+}
+
+function selectVendorPurchase(id) {
+  if (!vendorMode) return;
+  if (id === "close") {
+    closeDialogue();
+    return;
+  }
+  var def = null;
+  var i;
+  for (i = 0; i < BNTG_ITEMS.length; i++) {
+    if (BNTG_ITEMS[i].id === id) {
+      def = BNTG_ITEMS[i];
+      break;
+    }
+  }
+  if (!def) return;
+  renderVendorConfirm(def);
+}
+
+function confirmVendorPurchase() {
+  if (!vendorMode || !pendingVendorPurchase) return;
+  var def = pendingVendorPurchase;
+  var id = def.id;
+  if (getMegPoints() < def.cost) {
+    renderVendorMenu("积分点不足。");
+    return;
+  }
+
+  if (id === "roulette") {
+    addMegPoints(-def.cost);
+    updateMegPointsDisplay(megPointsEl);
+    closeDialogue();
+    playBackroomsRoulette(survival);
+    return;
+  }
+
+  // 需要背包空间的物品：先确认能放下再扣分。
+  if (
+    id === "almond" ||
+    id === "firesalt" ||
+    id === "viewer" ||
+    id === "royal_min" ||
+    id === "royal_medium"
+  ) {
+    var packFull = countUsedSlots() >= BACKPACK_CAPACITY;
+    var ok = false;
+    if (id === "almond") ok = addAlmondWater(1) > 0;
+    else if (id === "firesalt") ok = addFireSalt(1) > 0;
+    else if (id === "royal_min") {
+      ok = addItem({ id: "royal_rations", name: "最小有效分量皇家口粮" });
+    }
+    else if (id === "royal_medium") {
+      ok = addItem({ id: "royal_rations_medium", name: "中等大小皇家口粮" });
+    } else ok = addItem({ id: "archive_c11", name: "C-11 档案查看器" });
+    if (!ok) {
+      renderVendorMenu(packFull ? "背包已满，无法购买。" : "无法放入物品。");
+      return;
+    }
+    addMegPoints(-def.cost);
+    updateMegPointsDisplay(megPointsEl);
+    if (survival) survival.refreshHud();
+    renderVendorMenu("已购买：" + def.label + "。双击背包内物品即可使用。");
+    return;
+  }
+
+  if (id === "escort_l0" || id === "escort_l4" || id === "escort_l61") {
+    addMegPoints(-def.cost);
+    updateMegPointsDisplay(megPointsEl);
+    if (id === "escort_l0") escortTo("l0", "backrooms-level0.html", "Level 0");
+    else if (id === "escort_l4") escortTo("l4", "backrooms-level4.html", "Level 4");
+    else escortTo("l6_1", "backrooms-level6-1.html", "Level 6.1");
+    return;
+  }
+}
+
 function tryQAction() {
   if (dialogueOpen) return;
   if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
   var data = resolveInteract();
   if (data && data.kind === "l11_meg_staff") openStaffDialogue();
+  else if (data && data.kind === "l11_bntg_vendor") openBntgVendor();
 }
 
 function isChoiceKey(e, letter) {
@@ -394,6 +602,33 @@ function bindControls() {
     onJump: function () { tryBackroomsJump(fps, 8); },
     onKeyDown: function (e) {
       if (dialogueOpen) {
+        if (vendorMode) {
+          if (e.code === "Escape" && !e.repeat) {
+            e.preventDefault();
+            closeDialogue();
+            return true;
+          }
+          if (pendingVendorPurchase) {
+            if (isChoiceKey(e, "a")) {
+              e.preventDefault();
+              confirmVendorPurchase();
+              return true;
+            }
+            if (isChoiceKey(e, "b")) {
+              e.preventDefault();
+              renderVendorMenu(null);
+              return true;
+            }
+            return true;
+          }
+          if (!e.repeat && /^Digit[1-9]$/.test(e.code)) {
+            e.preventDefault();
+            var idx = parseInt(e.code.slice(5), 10) - 1;
+            if (BNTG_ITEMS[idx]) selectVendorPurchase(BNTG_ITEMS[idx].id);
+            return true;
+          }
+          return true;
+        }
         if (isChoiceKey(e, "a")) {
           e.preventDefault();
           handleStaffChoice("a");
@@ -421,6 +656,20 @@ function bindControls() {
   });
   if (dialogueChoicesEl) {
     dialogueChoicesEl.addEventListener("click", function (e) {
+      var confirmBtn = e.target.closest("[data-vendor-confirm]");
+      if (confirmBtn) {
+        if (confirmBtn.getAttribute("data-vendor-confirm") === "yes") {
+          confirmVendorPurchase();
+        } else {
+          renderVendorMenu(null);
+        }
+        return;
+      }
+      var vendorBtn = e.target.closest("[data-vendor]");
+      if (vendorBtn) {
+        selectVendorPurchase(vendorBtn.getAttribute("data-vendor"));
+        return;
+      }
       var btn = e.target.closest("[data-choice]");
       if (!btn) return;
       handleStaffChoice(btn.getAttribute("data-choice"));

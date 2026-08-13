@@ -22,6 +22,9 @@ const L48_SAND_Z = -16;
 /** Alom Wotor 水上商店：左侧街，进门进入 Level 119 */
 const L119_SHOP_X = -BUILDING_X;
 const L119_SHOP_Z = 0;
+/** B.N.T.G 大房子：右侧街，门开在房子侧面（-Z），很难发现 */
+const BNTG_X = BUILDING_X;
+const BNTG_Z = -9;
 /** 出生点（0,0）旁的 M.E.G 工作人员 */
 const STAFF_X = 0.9;
 const STAFF_Z = -3;
@@ -322,6 +325,8 @@ function addSegment(root, index) {
     }
     if (index === 0 && rowZ === 0) {
       addLevel13Highrise(group, entries);
+    } else if (index === 0 && rowZ === -16) {
+      // B.N.T.G 大房子占用此格；房子本体挂常驻 root，这里留空避免重叠。
     } else {
       addBuilding(group, entries, BUILDING_X, rowZ + 7, 1, serial + 5);
     }
@@ -411,12 +416,134 @@ function addStaffNpc(root, interactRoots) {
   interactRoots.push(pick);
 }
 
+/** B.N.T.G 员工：房内的商人，外观普通制服 + 不可见拾取盒 */
+function addBntgNpc(root, interactRoots, x, z) {
+  var group = new THREE.Group();
+  group.name = "Level11BntgVendor";
+  group.position.set(x, 0, z);
+  group.rotation.y = Math.PI; // 面向门口（-Z）
+  root.add(group);
+
+  var uniformMat = new THREE.MeshLambertMaterial({ color: 0x5a4632, emissive: 0x140d06 });
+  var skinMat = new THREE.MeshLambertMaterial({ color: 0xc89a6a, emissive: 0x100804 });
+  var legMat = new THREE.MeshLambertMaterial({ color: 0x2c2216, emissive: 0x080602 });
+
+  var legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.85, 0.24), legMat);
+  legL.position.set(-0.14, 0.425, 0);
+  group.add(legL);
+  var legR = legL.clone();
+  legR.position.x = 0.14;
+  group.add(legR);
+
+  var torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.72, 0.32), uniformMat);
+  torso.position.y = 1.21;
+  group.add(torso);
+
+  var head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), skinMat);
+  head.position.y = 1.72;
+  group.add(head);
+
+  var armL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.58, 0.16), uniformMat);
+  armL.position.set(-0.36, 1.18, 0);
+  group.add(armL);
+  var armR = armL.clone();
+  armR.position.x = 0.36;
+  group.add(armR);
+
+  var badgeCanvas = document.createElement("canvas");
+  badgeCanvas.width = 128;
+  badgeCanvas.height = 64;
+  var bctx = badgeCanvas.getContext("2d");
+  bctx.fillStyle = "#3a2a16";
+  bctx.fillRect(0, 0, 128, 64);
+  bctx.fillStyle = "#f0d59a";
+  bctx.font = "bold 26px system-ui, sans-serif";
+  bctx.textAlign = "center";
+  bctx.textBaseline = "middle";
+  bctx.fillText("B.N.T.G", 64, 32);
+  var badge = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.34, 0.17),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(badgeCanvas) })
+  );
+  badge.position.set(0, 1.28, -0.17);
+  badge.rotation.y = Math.PI;
+  group.add(badge);
+
+  // 简易柜台
+  var counter = new THREE.Mesh(
+    new THREE.BoxGeometry(2.6, 0.95, 0.7),
+    new THREE.MeshStandardMaterial({ color: 0x6b5334, roughness: 0.8 })
+  );
+  counter.position.set(x, 0.475, z - 1.4);
+  root.add(counter);
+
+  var pick = new THREE.Mesh(
+    new THREE.BoxGeometry(2.8, 2.2, 2.8),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  pick.position.set(x, 1.1, z - 0.6);
+  pick.userData.brInteract = { kind: "l11_bntg_vendor" };
+  root.add(pick);
+  interactRoots.push(pick);
+}
+
+/** B.N.T.G 大房子：外观与普通民居无异，门开在侧面（-Z），内有商人 */
+function addBntgHouse(root, staticColliders, interactRoots) {
+  var mats = materials();
+  var x = BNTG_X;
+  var z = BNTG_Z;
+  var W = BUILDING_W;
+  var D = BUILDING_D;
+  var H = 11;
+  var wallMat = mats.buildingB;
+  var t = 0.4;
+
+  // 地板与屋顶
+  addBox(root, mats.sidewalk, x, 0.06, z, W - 0.4, 0.12, D - 0.4);
+  addBox(root, wallMat, x, H, z, W, 0.4, D);
+
+  // 背墙（+X，背对街道）
+  addBox(root, wallMat, x + W * 0.5, H * 0.5, z, t, H, D);
+  staticColliders.push(collider(x + W * 0.5 - 0.2, x + W * 0.5 + 0.2, z - D * 0.5, z + D * 0.5));
+  // 临街立面（-X）
+  addBox(root, wallMat, x - W * 0.5, H * 0.5, z, t, H, D);
+  staticColliders.push(collider(x - W * 0.5 - 0.2, x - W * 0.5 + 0.2, z - D * 0.5, z + D * 0.5));
+  // +Z 侧墙（完整）
+  addBox(root, wallMat, x, H * 0.5, z + D * 0.5, W, H, t);
+  staticColliders.push(collider(x - W * 0.5, x + W * 0.5, z + D * 0.5 - 0.2, z + D * 0.5 + 0.2));
+
+  // -Z 侧墙：开一道窄门（与墙同色，很难发现）
+  var doorW = 1.3;
+  var wing = (W - doorW) * 0.5;
+  var facadeZ = z - D * 0.5;
+  addBox(root, wallMat, x - (doorW * 0.5 + wing * 0.5), H * 0.5, facadeZ, wing, H, t);
+  staticColliders.push(collider(x - W * 0.5, x - doorW * 0.5, facadeZ - 0.2, facadeZ + 0.2));
+  addBox(root, wallMat, x + (doorW * 0.5 + wing * 0.5), H * 0.5, facadeZ, wing, H, t);
+  staticColliders.push(collider(x + doorW * 0.5, x + W * 0.5, facadeZ - 0.2, facadeZ + 0.2));
+  // 门楣（不做碰撞，避免挡住门洞）
+  addBox(root, wallMat, x, H - 1.1, facadeZ, doorW + 0.2, 2.2, t);
+
+  // 临街立面的窗带，让房子看起来和普通民居一样
+  var floorY;
+  for (floorY = 3; floorY < H - 1; floorY += 3) {
+    addBox(root, mats.glass, x - W * 0.5 - 0.05, floorY, z, 0.08, 1.4, D - 3);
+  }
+
+  // 室内暖光
+  var lamp = new THREE.PointLight(0xffe9c0, 0.95, 24, 2);
+  lamp.position.set(x, H - 1.6, z);
+  root.add(lamp);
+
+  addBntgNpc(root, interactRoots, x, z + 2);
+}
+
 export function buildLevel11World(root) {
   var chunksRoot = new THREE.Group();
   chunksRoot.name = "Level11InfiniteCity";
   root.add(chunksRoot);
   var chunks = new Map();
   var activeColliders = [];
+  var staticColliders = [];
   var interactRoots = [];
 
   root.add(new THREE.HemisphereLight(0xeef8ff, 0x68727d, 1.35));
@@ -427,6 +554,7 @@ export function buildLevel11World(root) {
 
   function rebuildColliders() {
     activeColliders.length = 0;
+    Array.prototype.push.apply(activeColliders, staticColliders);
     chunks.forEach(function (chunk) {
       Array.prototype.push.apply(activeColliders, chunk.colliders);
     });
@@ -457,7 +585,10 @@ export function buildLevel11World(root) {
     if (changed) rebuildColliders();
   }
 
+  // 常驻结构（房子/NPC）先建，静态碰撞随后并入 activeColliders。
+  addBntgHouse(root, staticColliders, interactRoots);
   updateStreaming(0);
+  rebuildColliders();
   // NPC 挂在常驻 root 上，不随街区流式卸载。
   addStaffNpc(root, interactRoots);
   return {

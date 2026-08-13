@@ -502,8 +502,6 @@ function tryOpenMegDoor(px, pz) {
 var _megInteriorNpc = null;
 /** @type {{ x: number, z: number, talkRadius: number } | null} 后门引导员 */
 var _megBackDoorStaffNpc = null;
-/** @type {{ x: number, z: number, talkRadius: number, group: THREE.Object3D } | null} */
-var _megRationsVendorNpc = null;
 /** @type {{ x: number, z: number, talkRadius: number, group: THREE.Object3D } | null} Level 1.1 介绍员 */
 var _megLevel11Npc = null;
 function resetMegModuleState() {
@@ -516,7 +514,6 @@ function resetMegModuleState() {
   _megCorridorState = null;
   _megInteriorNpc = null;
   _megBackDoorStaffNpc = null;
-  _megRationsVendorNpc = null;
   _megLevel11Npc = null;
 }
 
@@ -837,20 +834,6 @@ function buildMegAlphaBase(root, ctx) {
     z: interior.z,
     talkRadius: 2.8,
     group: interior.group,
-  };
-
-  var rationsVendor = buildMegStaffFigure(
-    root,
-    center.x - hx + 2.15,
-    center.z - 1.35,
-    "MegRationsVendor",
-    "rations"
-  );
-  _megRationsVendorNpc = {
-    x: rationsVendor.x,
-    z: rationsVendor.z,
-    talkRadius: 2.8,
-    group: rationsVendor.group,
   };
 
   var level11Guide = buildMegStaffFigure(
@@ -1595,9 +1578,6 @@ export function buildBackroomsLevel1World(root, opts) {
       if (_megInteriorNpc && _megInteriorNpc.group) roots.push(_megInteriorNpc.group);
       if (_megBackDoorStaffNpc && _megBackDoorStaffNpc.group) {
         roots.push(_megBackDoorStaffNpc.group);
-      }
-      if (_megRationsVendorNpc && _megRationsVendorNpc.group) {
-        roots.push(_megRationsVendorNpc.group);
       }
       if (_megLevel11Npc && _megLevel11Npc.group) {
         roots.push(_megLevel11Npc.group);

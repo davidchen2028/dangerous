@@ -138,7 +138,7 @@ export function createLevel1_1ZoneManager(deps) {
     else if (subZone === "corridor4") deps.onHudTitleChange("Backrooms · L1.1-4 → 灯塔");
     else if (subZone === "corridor2") deps.onHudTitleChange("Backrooms · L1.1-2");
     else if (subZone === "corridor") deps.onHudTitleChange("Backrooms · L1.1-1");
-    else deps.onHudTitleChange("Backrooms · Level 1");
+    else deps.onHudTitleChange("Backrooms · Level 1 · 生存难度 1");
   }
 
   function setZoneVisibility() {

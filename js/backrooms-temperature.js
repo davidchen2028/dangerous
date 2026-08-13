@@ -66,14 +66,12 @@ const LEVEL_PROFILE = {
   119: { min: 20, max: 26, base: 23, swing: 1.4 },
   /** Level 121 — 湖底 */
   121: { min: 8, max: 14, base: 11, swing: 1.4 },
-  /** Level 581 — 酒店门外的路 */
-  581: { min: 16, max: 22, base: 19, swing: 1.8 },
   /** 蓝色通道 */
   blue_channel: { min: 14, max: 19, base: 16.5, swing: 1.2 },
   /** Level C-144 — 和爱社区，温和的城区与郊区 */
   c144: { min: 16, max: 24, base: 20, swing: 2.6 },
-  /** Level C-192 — 山洞深处 */
-  c192: { min: 7, max: 12, base: 9.5, swing: 1.8 },
+  /** Level C-192 — 封闭森林 */
+  c192: { min: 14, max: 20, base: 17, swing: 1.6 },
   /** Level C-370 — 水池深处的沉静空间 */
   c370: { min: 20, max: 25, base: 22.5, swing: 1 },
   /** Level 0.3 — 极寒 */

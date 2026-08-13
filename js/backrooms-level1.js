@@ -12,12 +12,16 @@ import { createBackroomsHorrorSystem } from "./backrooms-horror.js";
 import { rollAlmondWaterFromChest } from "./backrooms-chest-loot.js";
 import {
   toggleBackpack,
+  openBackpack,
+  closeBackpack,
   isInventoryOpen,
   setInventoryOpenHandler,
-  countItem,
-  removeFirstItem,
   addItem,
+  setInventorySellMode,
+  clearInventorySellPick,
+  removeItemAt,
 } from "./backrooms-inventory.js";
+import { getSellPrice } from "./backrooms-shop-prices.js";
 import {
   MEG_NV_POTION_GIVEN_KEY,
   MEG_NV_ALMOND_GIVEN_KEY,
@@ -179,7 +183,7 @@ let grounded = true;
 /** @type {{ x: number, z: number, talkRadius: number } | null} */
 let megGuideNpc = null;
 let megDialogueOpen = false;
-/** @type {"guide" | "trade" | "backdoor" | "rations" | "level11" | "level11_tour" | null} */
+/** @type {"guide" | "trade" | "backdoor" | "level11" | "level11_tour" | null} */
 let megDialogueKind = null;
 let level11TourStep = 0;
 
@@ -478,10 +482,6 @@ function isNearMegBackDoorStaff() {
   return isAimKind("meg_npc", "backdoor");
 }
 
-function isNearMegRationsVendor() {
-  return isAimKind("meg_npc", "rations");
-}
-
 function isNearMegLevel11Staff() {
   return isAimKind("meg_npc", "level11");
 }
@@ -701,13 +701,6 @@ function setDialogueChoicesGuide() {
     renderDialogueChoice("a", "想") + renderDialogueChoice("b", "算了");
 }
 
-function setDialogueChoicesTrade() {
-  if (!dialogueChoicesEl) return;
-  dialogueChoicesEl.hidden = false;
-  dialogueChoicesEl.innerHTML =
-    renderDialogueChoice("a", "兑换") + renderDialogueChoice("b", "算了");
-}
-
 function setDialogueChoicesDismiss() {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
@@ -731,67 +724,98 @@ function openMegGuideDialogue() {
   focusMegDialogue();
 }
 
+/** @type {null | { source: "backpack" | "hotbar", index: number, id: string, name: string, price: number }} */
+let pendingSale = null;
+
+function setDialogueChoicesSellIdle() {
+  if (!dialogueChoicesEl) return;
+  dialogueChoicesEl.hidden = false;
+  dialogueChoicesEl.innerHTML = renderDialogueChoice("b", "离开");
+}
+
+function setDialogueChoicesSellConfirm() {
+  if (!dialogueChoicesEl) return;
+  dialogueChoicesEl.hidden = false;
+  dialogueChoicesEl.innerHTML =
+    renderDialogueChoice("a", "确认出售") + renderDialogueChoice("b", "离开");
+}
+
+function sellPromptText(note) {
+  return (
+    (note ? note + " " : "") +
+    "在背包或快捷栏里点一下要出手的东西，我给你报价。（当前积分点：" +
+    getMegPoints() +
+    "）"
+  );
+}
+
+function showSellPrompt(note) {
+  pendingSale = null;
+  clearInventorySellPick();
+  if (dialogueTextEl) dialogueTextEl.textContent = sellPromptText(note);
+  setDialogueChoicesSellIdle();
+}
+
+function onSellItemPicked(item, source, index) {
+  if (megDialogueKind !== "trade") return;
+  var price = getSellPrice(item.id);
+  if (price == null) {
+    pendingSale = null;
+    clearInventorySellPick();
+    if (dialogueTextEl) {
+      dialogueTextEl.textContent = "「" + item.name + "」这东西我们不收，换别的吧。";
+    }
+    setDialogueChoicesSellIdle();
+    return;
+  }
+  pendingSale = {
+    source: source,
+    index: index,
+    id: item.id,
+    name: item.name,
+    price: price,
+  };
+  if (dialogueTextEl) {
+    dialogueTextEl.textContent =
+      "「" + item.name + "」我出 " + price + " 积分点。按 A 确认成交。";
+  }
+  setDialogueChoicesSellConfirm();
+}
+
+function confirmSellPendingItem() {
+  if (!pendingSale) {
+    showSellPrompt("先挑一件东西。");
+    return;
+  }
+  var deal = pendingSale;
+  var removed = removeItemAt(deal.source, deal.index);
+  if (!removed || removed.id !== deal.id) {
+    showSellPrompt("这件东西不在原来的位置了。");
+    return;
+  }
+  addMegPoints(deal.price);
+  updateMegPointsDisplay(megPointsEl);
+  if (survival) survival.refreshHud();
+  showLootToast("售出 " + deal.name + " · +" + deal.price + " 积分点");
+  showSellPrompt("成交。");
+}
+
 function openMegTradeDialogue() {
   if (!dialogueEl || !dialogueTextEl) return;
   megDialogueOpen = true;
   megDialogueKind = "trade";
+  pendingSale = null;
   document.body.classList.add("backrooms-dialogue-open");
+  document.body.classList.add("backrooms-shop-sell");
   dialogueEl.hidden = false;
   if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "M.E.G 工作人员";
-  dialogueTextEl.textContent =
-    "你好。可以用 1 瓶杏仁水兑换 5 积分点，要换吗？";
-  setDialogueChoicesTrade();
+  setInventorySellMode(onSellItemPicked);
+  openBackpack();
+  showSellPrompt("你好，物资我都收。");
   if (interiorTalkHintEl) interiorTalkHintEl.hidden = true;
   if (document.pointerLockElement && document.exitPointerLock) {
     document.exitPointerLock();
   }
-  focusMegDialogue();
-}
-
-function openMegRationsDialogue() {
-  if (!dialogueEl || !dialogueTextEl) return;
-  megDialogueOpen = true;
-  megDialogueKind = "rations";
-  document.body.classList.add("backrooms-dialogue-open");
-  dialogueEl.hidden = false;
-  if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "M.E.G 补给员";
-  dialogueTextEl.textContent =
-    "最小剂量皇家口粮，10 积分点。使用后 10 分钟内血量上限 150、体力上限 200，并回满血量。要购买吗？";
-  setDialogueChoicesTrade();
-  if (interiorTalkHintEl) interiorTalkHintEl.hidden = true;
-  if (document.pointerLockElement && document.exitPointerLock) {
-    document.exitPointerLock();
-  }
-  focusMegDialogue();
-}
-
-function tryBuyRoyalRations() {
-  if (getMegPoints() < 10) {
-    if (dialogueTextEl) {
-      dialogueTextEl.textContent = "积分不足，需要 10 积分点。";
-    }
-    if (dialogueChoicesEl) dialogueChoicesEl.hidden = true;
-    window.setTimeout(closeMegDialogue, 1600);
-    return;
-  }
-  if (
-    !addItem({
-      id: "royal_rations",
-      name: "皇家口粮",
-    })
-  ) {
-    if (dialogueTextEl) {
-      dialogueTextEl.textContent = "背包已满，无法购买。";
-    }
-    if (dialogueChoicesEl) dialogueChoicesEl.hidden = true;
-    window.setTimeout(closeMegDialogue, 1600);
-    return;
-  }
-  addMegPoints(-10);
-  updateMegPointsDisplay(megPointsEl);
-  if (survival) survival.refreshHud();
-  closeMegDialogue();
-  showLootToast("购入皇家口粮 · −10 积分");
 }
 
 function openMegBackDoorStaffDialogue() {
@@ -874,30 +898,20 @@ function tryGiveMegBackDoorAlmondWater() {
 }
 
 function closeMegDialogue() {
+  var wasSelling = megDialogueKind === "trade";
   megDialogueOpen = false;
   megDialogueKind = null;
   level11TourStep = 0;
+  pendingSale = null;
   setDialogueImage(null);
   document.body.classList.remove("backrooms-dialogue-open");
+  if (wasSelling) {
+    document.body.classList.remove("backrooms-shop-sell");
+    setInventorySellMode(null);
+    closeBackpack();
+  }
   if (dialogueEl) dialogueEl.hidden = true;
   if (dialogueChoicesEl) dialogueChoicesEl.hidden = true;
-}
-
-function tryAlmondWaterTrade() {
-  if (countItem("almond_water") < 1) {
-    if (dialogueTextEl) {
-      dialogueTextEl.textContent = "背包里没有杏仁水，无法兑换。";
-    }
-    if (dialogueChoicesEl) dialogueChoicesEl.hidden = true;
-    window.setTimeout(closeMegDialogue, 1400);
-    return;
-  }
-  removeFirstItem("almond_water");
-  addMegPoints(5);
-  updateMegPointsDisplay(megPointsEl);
-  if (survival) survival.refreshHud();
-  closeMegDialogue();
-  showLootToast("兑换成功 · +5 积分点");
 }
 
 function teleportToMegBase() {
@@ -925,12 +939,7 @@ function megDialogueChoose(wantYes) {
     return;
   }
   if (megDialogueKind === "trade") {
-    if (wantYes) tryAlmondWaterTrade();
-    else closeMegDialogue();
-    return;
-  }
-  if (megDialogueKind === "rations") {
-    if (wantYes) tryBuyRoyalRations();
+    if (wantYes) confirmSellPendingItem();
     else closeMegDialogue();
     return;
   }
@@ -1044,10 +1053,6 @@ function tryMegQAction() {
   }
   if (isNearMegBackDoorStaff()) {
     openMegBackDoorStaffDialogue();
-    return;
-  }
-  if (isNearMegRationsVendor()) {
-    openMegRationsDialogue();
     return;
   }
   if (isNearMegInteriorStaff()) {
@@ -1246,7 +1251,6 @@ function updateMegDoorHint() {
     isNearMegGuide() ||
     isNearMegInteriorStaff() ||
     isNearMegBackDoorStaff() ||
-    isNearMegRationsVendor() ||
     isNearMegLevel11Staff()
   ) {
     doorHintEl.hidden = true;
@@ -1290,9 +1294,7 @@ function updateMegInteriorTalkHint() {
     return;
   }
   interiorTalkHintEl.hidden = !(
-    isNearMegInteriorStaff() ||
-    isNearMegBackDoorStaff() ||
-    isNearMegRationsVendor()
+    isNearMegInteriorStaff() || isNearMegBackDoorStaff()
   );
 }
 
@@ -1346,24 +1348,24 @@ function tryLootFixedChest(chest) {
     return;
   }
   if (chest.lootKind === "royal_rations") {
-    if (!addItem({ id: "royal_rations", name: "皇家口粮" })) {
+    if (!addItem({ id: "royal_rations", name: "最小有效分量皇家口粮" })) {
       showLootToast("背包已满");
       return;
     }
     chest.opened = true;
     if (chest.chestId) markLevel1_1ChestOpened(chest.chestId);
-    showLootToast("搜索宝箱 · 皇家口粮 ×1");
+    showLootToast("搜索宝箱 · 最小有效分量皇家口粮 ×1");
     return;
   }
   if (chest.lootKind === "royal_rations_trap") {
-    if (!addItem({ id: "royal_rations", name: "皇家口粮" })) {
+    if (!addItem({ id: "royal_rations", name: "最小有效分量皇家口粮" })) {
       showLootToast("背包已满");
       return;
     }
     chest.opened = true;
     if (chest.chestId) markLevel1_1ChestOpened(chest.chestId);
     survival.takeDamage(99);
-    showLootToast("皇家口粮 ×1 · 陷阱！−99 血量");
+    showLootToast("最小有效分量皇家口粮 ×1 · 陷阱！−99 血量");
   }
 }
 

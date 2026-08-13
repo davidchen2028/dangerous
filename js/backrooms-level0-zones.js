@@ -119,7 +119,7 @@ export function createLevel0ZoneManager(deps) {
     if (!deps.onHudTitleChange) return;
     if (activeId === "03") deps.onHudTitleChange("Backrooms · Level 0.3");
     else if (activeId === "02") deps.onHudTitleChange("Backrooms · Level 0.2");
-    else deps.onHudTitleChange("Backrooms · Level 0");
+    else deps.onHudTitleChange("Backrooms · Level 0 · 生存难度 1");
   }
 
   function applyL0Atmosphere() {

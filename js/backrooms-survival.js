@@ -17,11 +17,18 @@ import {
   clearRoyalRationsBuff,
   getHpMax,
   getStaminaMax,
+  getRoyalSprintMul,
   syncRoyalRationsExpiry,
   activateRoyalRationsBuff,
-  HP_MAX_ROYAL,
-  STAMINA_MAX_ROYAL,
+  activateRoyalRationsMediumBuff,
 } from "./backrooms-royal-rations.js";
+import {
+  getSanityMax,
+  getSanityDrainMul,
+  offerDeathPenaltyChoice,
+  updateDeathHallucinations,
+  clearDeathPenalties,
+} from "./backrooms-death-penalty.js";
 
 /** 兼容旧引用 — 后室不再使用主游戏 playerInventory 数组 */
 export const playerInventory = [];
@@ -44,6 +51,7 @@ export function resetBackroomsRun() {
     clearAllBackroomsSessionKeys();
     clearBackroomsSurvivalPersist();
     clearRoyalRationsBuff();
+    clearDeathPenalties();
   } catch (err) {
     /* ignore */
   }
@@ -65,6 +73,10 @@ export function registerBackroomsInventoryUseHandlers(survival, options) {
   }
   window.__backroomsUseRoyalRations = function () {
     if (!survival || !survival.useRoyalRations()) return;
+    if (options.onRoyalRationsUsed) options.onRoyalRationsUsed();
+  };
+  window.__backroomsUseRoyalRationsMedium = function () {
+    if (!survival || !survival.useRoyalRationsMedium()) return;
     if (options.onRoyalRationsUsed) options.onRoyalRationsUsed();
   };
 }
@@ -143,8 +155,9 @@ export class BackroomsSurvival {
     if (!this.rootEl) return;
     var hpMax = getHpMax();
     var staMax = getStaminaMax();
+    var sanMax = getSanityMax();
     var hpPct = hpMax > 0 ? Math.max(0, Math.min(100, (this.hp / hpMax) * 100)) : 0;
-    var sanPct = Math.max(0, Math.min(100, this.sanity));
+    var sanPct = sanMax > 0 ? Math.max(0, Math.min(100, (this.sanity / sanMax) * 100)) : 0;
     var staPct = staMax > 0 ? Math.max(0, Math.min(100, (this.stamina / staMax) * 100)) : 0;
 
     if (this._fillHp) this._fillHp.style.width = hpPct + "%";
@@ -153,7 +166,10 @@ export class BackroomsSurvival {
     if (this._valHp) {
       this._valHp.textContent = String(Math.round(this.hp)) + "/" + String(hpMax);
     }
-    if (this._valSanity) this._valSanity.textContent = String(Math.round(sanPct));
+    if (this._valSanity) {
+      this._valSanity.textContent =
+        String(Math.round(this.sanity)) + "/" + String(sanMax);
+    }
     if (this._valStamina) {
       this._valStamina.textContent =
         String(Math.round(this.stamina)) + "/" + String(staMax);
@@ -179,13 +195,20 @@ export class BackroomsSurvival {
     }
 
     if (!env.skipPassiveSanity) {
-      this.sanity = Math.max(0, this.sanity - SANITY_PASSIVE_DRAIN_PER_SEC * dt);
+      this.sanity = Math.max(
+        0,
+        this.sanity - SANITY_PASSIVE_DRAIN_PER_SEC * getSanityDrainMul() * dt
+      );
     }
     if ((env.sanityDrainPerSec || 0) > 0) {
-      this.sanity = Math.max(0, this.sanity - env.sanityDrainPerSec * dt);
+      this.sanity = Math.max(
+        0,
+        this.sanity - env.sanityDrainPerSec * getSanityDrainMul() * dt
+      );
     }
     this.hp = Math.min(hpCap, this.hp);
     this.stamina = Math.min(staCap, this.stamina);
+    this.sanity = Math.min(getSanityMax(), this.sanity);
 
     if (this.sanity <= 0 && !this.sanityBreaking) {
       this.triggerSanityBreak();
@@ -195,6 +218,7 @@ export class BackroomsSurvival {
       this.triggerDeath("hp");
     }
 
+    updateDeathHallucinations(this, dt);
     this.refreshHud();
   }
 
@@ -204,7 +228,7 @@ export class BackroomsSurvival {
 
   getSprintSpeedMul(baseSpeed, sprinting, moving) {
     if (!moving || !sprinting || !this.canSprint()) return 1;
-    return 1.65;
+    return getRoyalSprintMul();
   }
 
   takeDamage(amount) {
@@ -226,7 +250,8 @@ export class BackroomsSurvival {
     if (this.dead) return false;
     if (!removeFirstItem("almond_water")) return false;
     var hpCap = getHpMax();
-    this.sanity = Math.min(100, this.sanity + ALMOND_WATER_SANITY);
+    var sanCap = getSanityMax();
+    this.sanity = Math.min(sanCap, this.sanity + ALMOND_WATER_SANITY);
     this.hp = Math.min(hpCap, this.hp + ALMOND_WATER_HP);
     this.refreshHud();
     return true;
@@ -236,8 +261,29 @@ export class BackroomsSurvival {
     if (this.dead) return false;
     if (!removeFirstItem("royal_rations")) return false;
     if (!activateRoyalRationsBuff()) return false;
-    this.hp = HP_MAX_ROYAL;
-    this.stamina = STAMINA_MAX_ROYAL;
+    this.hp = getHpMax();
+    this.stamina = getStaminaMax();
+    this.refreshHud();
+    return true;
+  }
+
+  /** 中等大小皇家口粮：从背包消耗一份后生效 */
+  useRoyalRationsMedium() {
+    if (this.dead) return false;
+    if (!removeFirstItem("royal_rations_medium")) return false;
+    if (!activateRoyalRationsMediumBuff()) return false;
+    this.hp = getHpMax();
+    this.stamina = getStaminaMax();
+    this.refreshHud();
+    return true;
+  }
+
+  /** 中等皇家口粮：直接生效（血量上限 400、体力上限 300、奔跑 2 倍） */
+  activateMediumRoyalRations() {
+    if (this.dead) return false;
+    if (!activateRoyalRationsMediumBuff()) return false;
+    this.hp = getHpMax();
+    this.stamina = getStaminaMax();
     this.refreshHud();
     return true;
   }
@@ -260,9 +306,9 @@ export class BackroomsSurvival {
   }
 
   resetStats() {
-    this.hp = 100;
-    this.sanity = 100;
-    this.stamina = 100;
+    this.hp = getHpMax();
+    this.sanity = getSanityMax();
+    this.stamina = getStaminaMax();
     clearRoyalRationsBuff();
     this.dead = false;
     this.sanityBreaking = false;
@@ -311,9 +357,21 @@ export class BackroomsSurvival {
     }
     this.refreshHud();
     var self = this;
+    if (this._deathTimer) {
+      clearTimeout(this._deathTimer);
+      this._deathTimer = null;
+    }
+    // 等死亡遮罩出现后弹出负面选择
     this._deathTimer = setTimeout(function () {
-      self.respawn(reason);
-    }, 1400);
+      offerDeathPenaltyChoice(self, reason, function (outcome) {
+        if (outcome === "wipe") {
+          resetBackroomsRun();
+          window.location.replace("backrooms-level0.html");
+          return;
+        }
+        self.respawn(reason);
+      });
+    }, 700);
   }
 
   respawn(reason) {
