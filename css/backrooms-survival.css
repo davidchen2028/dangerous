@@ -359,6 +359,19 @@ body.backrooms-shop-sell .br-hotbar {
   pointer-events: auto;
 }
 
+body.backrooms-luck-glitch canvas {
+  animation: backrooms-luck-glitch 0.12s steps(2, end) infinite;
+  filter: contrast(1.2) saturate(0.72);
+}
+
+@keyframes backrooms-luck-glitch {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(-3px, 1px); }
+  50% { transform: translate(2px, -2px); }
+  75% { transform: translate(1px, 2px); }
+  100% { transform: translate(0, 0); }
+}
+
 .br-pack__cell--sell:hover {
   border-color: rgba(255, 212, 121, 0.75);
 }

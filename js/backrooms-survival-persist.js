@@ -7,6 +7,7 @@ export const SURVIVAL_STORAGE_KEY = "backrooms_survival_v1";
 let boundSurvival = null;
 
 import { getHpMax, getStaminaMax } from "./backrooms-royal-rations.js";
+import { getSanityMax } from "./backrooms-death-penalty.js";
 
 export function saveBackroomsSurvival(survival) {
   if (!survival || survival.dead) return;
@@ -28,13 +29,16 @@ export function loadBackroomsSurvival(survival) {
   if (!survival) return false;
   var hpCap = getHpMax();
   var staCap = getStaminaMax();
+  var sanityCap = getSanityMax();
   try {
     var raw = sessionStorage.getItem(SURVIVAL_STORAGE_KEY);
     if (!raw) return false;
     var data = JSON.parse(raw);
     if (!data || typeof data !== "object") return false;
     if (Number.isFinite(data.hp)) survival.hp = Math.max(0, Math.min(hpCap, data.hp));
-    if (Number.isFinite(data.sanity)) survival.sanity = Math.max(0, Math.min(100, data.sanity));
+    if (Number.isFinite(data.sanity)) {
+      survival.sanity = Math.max(0, Math.min(sanityCap, data.sanity));
+    }
     if (Number.isFinite(data.stamina)) {
       survival.stamina = Math.max(0, Math.min(staCap, data.stamina));
     }

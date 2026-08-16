@@ -55,6 +55,8 @@ const _survivalEnv = { skipPassiveSanity: false, sanityDrainPerSec: 0 };
  * @param {(row: number) => number} deps.cellCenterZ
  * @param {(msg: string) => void} deps.showToast
  * @param {(title: string) => void} [deps.onHudTitleChange]
+ * @param {(id: "red" | "02" | "03") => void} [deps.onEnterSubLevel]
+ * @param {(id: "red" | "02" | "03") => void} [deps.onExitSubLevel]
  */
 export function createLevel0ZoneManager(deps) {
   /** @type {Level0SubZoneId | null} */
@@ -227,6 +229,9 @@ export function createLevel0ZoneManager(deps) {
     opts = opts || {};
     if (activeId !== "02") return;
     activeId = null;
+    if (opts.resumeMusic !== false && deps.onExitSubLevel) {
+      deps.onExitSubLevel("02");
+    }
     stopLevel02Hazards();
     if (level02State) level02State.group.visible = false;
     if (level02FxRoot) level02FxRoot.visible = false;
@@ -246,6 +251,9 @@ export function createLevel0ZoneManager(deps) {
     opts = opts || {};
     if (activeId !== "red") return;
     activeId = null;
+    if (opts.resumeMusic !== false && deps.onExitSubLevel) {
+      deps.onExitSubLevel("red");
+    }
     if (redRoomState) redRoomState.group.visible = false;
     setMainWorldVisible(true);
     applyRedRoomAtmosphere(false);
@@ -262,6 +270,9 @@ export function createLevel0ZoneManager(deps) {
     opts = opts || {};
     if (activeId !== "03") return;
     activeId = null;
+    if (opts.resumeMusic !== false && deps.onExitSubLevel) {
+      deps.onExitSubLevel("03");
+    }
     if (level03State) level03State.group.visible = false;
     setMainWorldVisible(true);
     applyLevel03Atmosphere(false);
@@ -286,8 +297,11 @@ export function createLevel0ZoneManager(deps) {
     var survival = deps.getSurvival();
     if (!survival || survival.dead) return false;
 
-    if (activeId === "03") exitLevel03({ restorePlayer: false });
-    else if (activeId === "02") exitLevel02({ rebuild: false });
+    if (activeId === "03") {
+      exitLevel03({ restorePlayer: false, resumeMusic: false });
+    } else if (activeId === "02") {
+      exitLevel02({ rebuild: false, resumeMusic: false });
+    }
 
     returnSnapshot = {
       x: deps.fps.player.x,
@@ -295,6 +309,7 @@ export function createLevel0ZoneManager(deps) {
       yaw: deps.fps.yaw,
     };
     activeId = "red";
+    if (deps.onEnterSubLevel) deps.onEnterSubLevel("red");
     setMainWorldVisible(false);
     if (level02State) level02State.group.visible = false;
     redRoomState.group.visible = true;
@@ -316,6 +331,7 @@ export function createLevel0ZoneManager(deps) {
     if (activeId === "red" || activeId === "03") return false;
 
     activeId = "02";
+    if (deps.onEnterSubLevel) deps.onEnterSubLevel("02");
     setMainWorldVisible(false);
     if (redRoomState) redRoomState.group.visible = false;
     level02State.group.visible = true;
@@ -344,6 +360,7 @@ export function createLevel0ZoneManager(deps) {
       yaw: deps.fps.yaw,
     };
     activeId = "03";
+    if (deps.onEnterSubLevel) deps.onEnterSubLevel("03");
     setMainWorldVisible(false);
     if (redRoomState) redRoomState.group.visible = false;
     level03State.group.visible = true;
@@ -399,7 +416,11 @@ export function createLevel0ZoneManager(deps) {
     },
 
     dispose: function disposeAllZones() {
-      leaveActiveSubZone({ restorePlayer: false, rebuild: false });
+      leaveActiveSubZone({
+        restorePlayer: false,
+        rebuild: false,
+        resumeMusic: false,
+      });
       stopLevel02Hazards();
       if (level02State && level02State.group && deps.scene) {
         if (level02State.disposeLights) level02State.disposeLights();

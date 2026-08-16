@@ -699,6 +699,100 @@ function addStairsDownToL6(group, colliders, interactRoots, sx, sz, mats) {
   interactRoots.push(pick);
 }
 
+var _megL4SignTex = null;
+function megL4SignTexture() {
+  if (_megL4SignTex) return _megL4SignTex;
+  var canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 128;
+  var ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#183d64";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "#8fc5ec";
+  ctx.lineWidth = 8;
+  ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+  ctx.fillStyle = "#eef8ff";
+  ctx.font = "bold 42px Arial, PingFang SC, Microsoft YaHei, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("M.E.G · LEVEL 4 前哨站", 256, 64);
+  _megL4SignTex = new THREE.CanvasTexture(canvas);
+  _megL4SignTex.colorSpace = THREE.SRGBColorSpace;
+  return _megL4SignTex;
+}
+
+/** 出生区东侧固定区块：空置的 M.E.G Level 4 任务前哨站 + B.N.T.G 联络员 */
+function addMegL4Outpost(group, batches, colliders, interactRoots, ox, oz, mats) {
+  var wallMat = new THREE.MeshStandardMaterial({ color: 0xd9dde2, roughness: 0.86 });
+  var blueMat = new THREE.MeshStandardMaterial({ color: 0x214f7a, roughness: 0.68 });
+  var darkMat = new THREE.MeshStandardMaterial({ color: 0x26313b, roughness: 0.75 });
+  var skinMat = new THREE.MeshStandardMaterial({ color: 0xc89a76, roughness: 0.82 });
+  var signMat = new THREE.MeshStandardMaterial({
+    map: megL4SignTexture() || undefined,
+    color: 0xffffff,
+    roughness: 0.55,
+  });
+  var minX = ox - 9;
+  var maxX = ox + 9;
+  var minZ = oz - 8;
+  var maxZ = oz + 8;
+  var wallT = 0.22;
+
+  // 西墙留 3 米入口，其余三面封闭。
+  queueBox(batches, "megWall", wallMat, minX, 1.35, oz - 5.4, wallT, 2.7, 5.2, 0, true, true);
+  queueBox(batches, "megWall", wallMat, minX, 1.35, oz + 5.4, wallT, 2.7, 5.2, 0, true, true);
+  queueBox(batches, "megWall", wallMat, maxX, 1.35, oz, wallT, 2.7, 16, 0, true, true);
+  queueBox(batches, "megWall", wallMat, ox, 1.35, minZ, 18, 2.7, wallT, 0, true, true);
+  queueBox(batches, "megWall", wallMat, ox, 1.35, maxZ, 18, 2.7, wallT, 0, true, true);
+  pushBoxCollider(colliders, minX - 0.2, minX + 0.2, minZ, oz - 2.8);
+  pushBoxCollider(colliders, minX - 0.2, minX + 0.2, oz + 2.8, maxZ);
+  pushBoxCollider(colliders, maxX - 0.2, maxX + 0.2, minZ, maxZ);
+  pushBoxCollider(colliders, minX, maxX, minZ - 0.2, minZ + 0.2);
+  pushBoxCollider(colliders, minX, maxX, maxZ - 0.2, maxZ + 0.2);
+
+  var sign = new THREE.Mesh(sharedBoxGeometry(), signMat);
+  sign.position.set(minX + 0.13, 2.05, oz);
+  sign.scale.set(0.08, 0.6, 3.6);
+  group.add(sign);
+
+  // 任务发布台目前空置。
+  queueBox(batches, "megDesk", darkMat, ox + 4.8, 0.55, oz, 1.0, 1.1, 7.5, 0, true, true);
+  pushBoxCollider(colliders, ox + 4.25, ox + 5.35, oz - 3.8, oz + 3.8);
+  var board = new THREE.Mesh(sharedBoxGeometry(), blueMat);
+  board.position.set(maxX - 0.18, 1.55, oz);
+  board.scale.set(0.08, 1.3, 5.8);
+  group.add(board);
+
+  // B.N.T.G 联络员。
+  var npc = new THREE.Group();
+  npc.name = "L4BntgLiaison";
+  npc.position.set(ox + 1.8, 0, oz);
+  npc.userData.brInteract = { kind: "l4_bntg_liaison" };
+  var legs = new THREE.Mesh(sharedBoxGeometry(), darkMat);
+  legs.position.y = 0.48;
+  legs.scale.set(0.42, 0.95, 0.34);
+  npc.add(legs);
+  var torso = new THREE.Mesh(sharedBoxGeometry(), blueMat);
+  torso.position.y = 1.18;
+  torso.scale.set(0.68, 0.75, 0.38);
+  npc.add(torso);
+  var head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8), skinMat);
+  head.position.y = 1.82;
+  npc.add(head);
+  var badge = new THREE.Mesh(sharedBoxGeometry(), mats.lightPanel);
+  badge.position.set(0.22, 1.27, 0.21);
+  badge.scale.set(0.16, 0.1, 0.025);
+  npc.add(badge);
+  var pick = new THREE.Mesh(sharedBoxGeometry(), mats.invisiblePick);
+  pick.position.y = 1.05;
+  pick.scale.set(0.9, 2.2, 0.9);
+  npc.add(pick);
+  group.add(npc);
+  interactRoots.push(npc);
+  pushBoxCollider(colliders, ox + 1.4, ox + 2.2, oz - 0.4, oz + 0.4);
+}
+
 function loadChunk(cx, cz, ctx) {
   var key = chunkKey(cx, cz);
   if (ctx.chunks.has(key)) return;
@@ -738,6 +832,7 @@ function loadChunk(cx, cz, ctx) {
     addWindowWall(batches, colliders, ox, oz - half + 0.15, 0, true, mats);
   }
 
+  var isMegOutpost = cx === 1 && cz === 0;
   var rng = mulberry32((cx * 73856093) ^ (cz * 19349663));
   var slots = [
     [-6, -5],
@@ -752,11 +847,11 @@ function loadChunk(cx, cz, ctx) {
   ];
   var si;
   for (si = 0; si < slots.length; si++) {
-    if (rng() < 0.12) continue;
+    if (isMegOutpost || rng() < 0.12) continue;
     addDeskStation(batches, colliders, ox + slots[si][0], oz + slots[si][1], mats, rng);
   }
 
-  if (rng() < 0.55) {
+  if (!isMegOutpost && rng() < 0.55) {
     var cwx = ox + half - 1.2;
     var cwz = oz - half + 1.2;
     addWaterCooler(
@@ -770,7 +865,13 @@ function loadChunk(cx, cz, ctx) {
       key + "_cooler"
     );
   }
-  if (rng() < 0.45) addWhiteboard(batches, colliders, ox - 2, oz + half - 0.2, mats);
+  if (!isMegOutpost && rng() < 0.45) {
+    addWhiteboard(batches, colliders, ox - 2, oz + half - 0.2, mats);
+  }
+
+  if (isMegOutpost) {
+    addMegL4Outpost(group, batches, colliders, chunkInteractRoots, ox, oz, mats);
+  }
 
   if (cx === 0 && cz === 0) {
     var shaft = new THREE.Mesh(sharedBoxGeometry(), mats.shaft);

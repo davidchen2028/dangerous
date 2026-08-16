@@ -11,8 +11,15 @@ import {
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
 import {
   toggleBackpack,
+  openBackpack,
+  closeBackpack,
   isInventoryOpen,
   setInventoryOpenHandler,
+  setInventorySellMode,
+  clearInventorySellPick,
+  removeItemAt,
+  removeFirstItem,
+  countItem,
   addItem,
   addAlmondWater,
   addFireSalt,
@@ -36,8 +43,12 @@ import {
 } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
-import { playBackroomsRoulette } from "./backrooms-roulette.js";
-import { getBuyPrice } from "./backrooms-shop-prices.js";
+import { getBuyPrice, getSellPrice } from "./backrooms-shop-prices.js";
+import {
+  tryBeginMerchantTrade,
+  shouldGiveLuckyMerchantGift,
+  getMerchantLockRemainingMs,
+} from "./backrooms-luck.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -98,8 +109,13 @@ let interactRoots = [];
 let currentAimPick = null;
 let dialogueOpen = false;
 let vendorMode = false;
+let buyerMode = false;
 /** @type {null | { id: string, label: string, cost: number }} */
 let pendingVendorPurchase = null;
+/** @type {null | { source: "backpack" | "hotbar", index: number, id: string, name: string, price: number }} */
+let pendingSale = null;
+let bulkSellPromptEl = null;
+let bulkSellPromptTimer = null;
 let sandFaintTimer = 0;
 let sandFaintOverlay = null;
 
@@ -287,8 +303,22 @@ function exitLevel11ToL48() {
   }, 900);
 }
 
+function restoreDefaultHint() {
+  if (!hintEl) return;
+  if (level === 10) {
+    hintEl.innerHTML =
+      "Level 10 · 沿土路前进 · 留意岔路小道 · <kbd>WASD</kbd> 移动 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包";
+  } else {
+    hintEl.innerHTML =
+      "Level " +
+      levelLabel +
+      " · <kbd>WASD</kbd> 移动 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包";
+  }
+}
+
 function updateSandRoomFaint(dt) {
   if (level !== 11 || transitionLock || !levelWorld || !levelWorld.isLevel48SandRoom) {
+    if (sandFaintTimer > 0) restoreDefaultHint();
     sandFaintTimer = 0;
     if (sandFaintOverlay) sandFaintOverlay.style.opacity = "0";
     return;
@@ -306,6 +336,8 @@ function updateSandRoomFaint(dt) {
     }
     if (sandFaintTimer >= SAND_FAINT_DURATION) exitLevel11ToL48();
   } else {
+    // 离开沙子房间：立刻清掉底部提示，暗化继续淡出
+    if (sandFaintTimer > 0) restoreDefaultHint();
     if (sandFaintTimer > 0) sandFaintTimer = Math.max(0, sandFaintTimer - dt * 1.6);
     if (sandFaintOverlay) {
       sandFaintOverlay.style.opacity = String(
@@ -336,9 +368,9 @@ function updateInteractUi() {
     interactHintEl.hidden = hidden;
     if (!hidden) {
       interactHintEl.innerHTML =
-        data.kind === "l11_bntg_vendor"
-          ? "B.N.T.G 员工 · 按 <kbd>Q</kbd> 交易"
-          : "M.E.G 工作人员 · 按 <kbd>Q</kbd> 对话";
+        data.kind === "l11_bntg_buyer"
+          ? "B.N.T.G 收购员 · 按 <kbd>Q</kbd> 出售物资"
+          : "B.N.T.G 员工 · 按 <kbd>Q</kbd> 交易";
     }
   }
   if (crosshairEl) {
@@ -347,54 +379,22 @@ function updateInteractUi() {
   }
 }
 
-function openStaffDialogue() {
-  if (!dialogueEl || !dialogueTextEl) return;
-  dialogueOpen = true;
-  document.body.classList.add("backrooms-dialogue-open");
-  dialogueEl.hidden = false;
-  if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "M.E.G 工作人员";
-  dialogueTextEl.textContent = "要我送你回 Level 1 的出生点吗？";
-  if (dialogueChoicesEl) {
-    dialogueChoicesEl.hidden = false;
-    dialogueChoicesEl.innerHTML =
-      '<button type="button" class="backrooms-dialogue__choice" data-choice="a"><kbd>A</kbd> 好</button>' +
-      '<button type="button" class="backrooms-dialogue__choice" data-choice="b"><kbd>B</kbd> 算了</button>';
-  }
-  if (interactHintEl) interactHintEl.hidden = true;
-  if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
-}
-
 function closeDialogue() {
+  var wasBuying = buyerMode;
   dialogueOpen = false;
   vendorMode = false;
+  buyerMode = false;
   pendingVendorPurchase = null;
+  pendingSale = null;
+  clearBulkSellPrompt();
   document.body.classList.remove("backrooms-dialogue-open");
+  if (wasBuying) {
+    document.body.classList.remove("backrooms-shop-sell");
+    setInventorySellMode(null);
+    closeBackpack();
+  }
   if (dialogueEl) dialogueEl.hidden = true;
   if (dialogueChoicesEl) dialogueChoicesEl.hidden = true;
-}
-
-function exitLevel11ToL1() {
-  if (transitionLock) return;
-  transitionLock = true;
-  closeDialogue();
-  showToast("工作人员领你回到了 Level 1 的出生点…");
-  if (survival) saveBackroomsSurvival(survival);
-  grantLevelPass("clip");
-  try {
-    sessionStorage.setItem("backrooms_clip_yaw", "0");
-  } catch (err) {
-    /* ignore */
-  }
-  queueEnterLevelNumber(1);
-  window.setTimeout(function () {
-    window.location.href = "backrooms-level1.html";
-  }, 450);
-}
-
-function handleStaffChoice(choice) {
-  if (!dialogueOpen) return;
-  if (choice === "a") exitLevel11ToL1();
-  else closeDialogue();
 }
 
 /* ----------------------------- B.N.T.G 商店 ----------------------------- */
@@ -417,7 +417,6 @@ const BNTG_ITEMS = [
     label: "一次性查看工具（Level C-11 档案）",
     cost: getBuyPrice("archive_c11"),
   },
-  { id: "roulette", label: "后室轮盘赌", cost: getBuyPrice("roulette") },
   {
     id: "escort_l0",
     label: "护送服务 · 前往 Level 0",
@@ -481,6 +480,13 @@ function renderVendorConfirm(def) {
 
 function openBntgVendor() {
   if (!dialogueEl || !dialogueTextEl) return;
+  if (!tryBeginMerchantTrade()) {
+    var seconds = Math.ceil(getMerchantLockRemainingMs() / 1000);
+    showToast(
+      "商人厌恶地避开了你，拒绝进行任何买卖 · " + seconds + " 秒后再试"
+    );
+    return;
+  }
   dialogueOpen = true;
   vendorMode = true;
   document.body.classList.add("backrooms-dialogue-open");
@@ -530,21 +536,14 @@ function confirmVendorPurchase() {
     return;
   }
 
-  if (id === "roulette") {
-    addMegPoints(-def.cost);
-    updateMegPointsDisplay(megPointsEl);
-    closeDialogue();
-    playBackroomsRoulette(survival);
-    return;
-  }
-
   // 需要背包空间的物品：先确认能放下再扣分。
   if (
     id === "almond" ||
     id === "firesalt" ||
     id === "viewer" ||
     id === "royal_min" ||
-    id === "royal_medium"
+    id === "royal_medium" ||
+    id === "roulette"
   ) {
     var packFull = countUsedSlots() >= BACKPACK_CAPACITY;
     var ok = false;
@@ -555,6 +554,8 @@ function confirmVendorPurchase() {
     }
     else if (id === "royal_medium") {
       ok = addItem({ id: "royal_rations_medium", name: "中等大小皇家口粮" });
+    } else if (id === "roulette") {
+      ok = addItem({ id: "roulette", name: "后室轮盘赌" });
     } else ok = addItem({ id: "archive_c11", name: "C-11 档案查看器" });
     if (!ok) {
       renderVendorMenu(packFull ? "背包已满，无法购买。" : "无法放入物品。");
@@ -563,7 +564,17 @@ function confirmVendorPurchase() {
     addMegPoints(-def.cost);
     updateMegPointsDisplay(megPointsEl);
     if (survival) survival.refreshHud();
-    renderVendorMenu("已购买：" + def.label + "。双击背包内物品即可使用。");
+    var giftNote = "";
+    if (shouldGiveLuckyMerchantGift()) {
+      var gift =
+        Math.random() < 0.5
+          ? { id: "almond_water", name: "杏仁水" }
+          : { id: "fire_salt", name: "小块可爆炸火盐" };
+      if (addItem(gift)) giftNote = " 商人额外赠送了" + gift.name + "。";
+    }
+    renderVendorMenu(
+      "已购买：" + def.label + "。双击背包内物品即可使用。" + giftNote
+    );
     return;
   }
 
@@ -577,12 +588,172 @@ function confirmVendorPurchase() {
   }
 }
 
+/* --------------------------- B.N.T.G 收购员 --------------------------- */
+
+function clearBulkSellPrompt() {
+  if (bulkSellPromptTimer) {
+    clearTimeout(bulkSellPromptTimer);
+    bulkSellPromptTimer = null;
+  }
+  if (bulkSellPromptEl) {
+    bulkSellPromptEl.remove();
+    bulkSellPromptEl = null;
+  }
+}
+
+function showBulkSellPrompt(itemId, itemName, unitPrice) {
+  clearBulkSellPrompt();
+  var remaining = countItem(itemId);
+  if (remaining < 2) return;
+  var prompt = document.createElement("div");
+  prompt.setAttribute("role", "button");
+  prompt.setAttribute("tabindex", "0");
+  prompt.style.cssText =
+    "position:fixed;left:16px;top:16px;z-index:160;max-width:min(360px,82vw);" +
+    "padding:12px 15px;border:1px solid rgba(255,212,121,.75);border-radius:9px;" +
+    "background:rgba(15,18,22,.94);color:#ffe6ad;font:14px/1.55 system-ui,sans-serif;" +
+    "box-shadow:0 8px 28px rgba(0,0,0,.45);cursor:pointer;user-select:none;";
+  prompt.textContent =
+    "是否出售所有「" +
+    itemName +
+    "」？背包和快捷栏还剩 " +
+    remaining +
+    " 个，鼠标双击此处全部售出。";
+  prompt.addEventListener("dblclick", function () {
+    if (!buyerMode) return;
+    var sold = 0;
+    while (countItem(itemId) > 0 && removeFirstItem(itemId)) sold++;
+    if (sold < 1) {
+      clearBulkSellPrompt();
+      return;
+    }
+    var total = sold * unitPrice;
+    addMegPoints(total);
+    updateMegPointsDisplay(megPointsEl);
+    if (survival) survival.refreshHud();
+    showToast("全部售出 " + itemName + " ×" + sold + " · +" + total + " 积分点");
+    showSellPrompt("已售出所有「" + itemName + "」。");
+    clearBulkSellPrompt();
+  });
+  document.body.appendChild(prompt);
+  bulkSellPromptEl = prompt;
+  bulkSellPromptTimer = window.setTimeout(clearBulkSellPrompt, 8000);
+}
+
+function setSellChoicesIdle() {
+  if (!dialogueChoicesEl) return;
+  dialogueChoicesEl.hidden = false;
+  dialogueChoicesEl.innerHTML =
+    '<button type="button" class="backrooms-dialogue__choice" data-sell="close"><kbd>Esc</kbd> 离开</button>';
+}
+
+function setSellChoicesConfirm() {
+  if (!dialogueChoicesEl) return;
+  dialogueChoicesEl.hidden = false;
+  dialogueChoicesEl.innerHTML =
+    '<button type="button" class="backrooms-dialogue__choice" data-sell="confirm"><kbd>A</kbd> 确认出售</button>' +
+    '<button type="button" class="backrooms-dialogue__choice" data-sell="close"><kbd>B</kbd> 离开</button>';
+}
+
+function sellPromptText(note) {
+  return (
+    (note ? note + " " : "") +
+    "在背包或快捷栏里点一下要出手的东西，我给你报价。（当前积分点：" +
+    getMegPoints() +
+    "）"
+  );
+}
+
+function showSellPrompt(note) {
+  pendingSale = null;
+  clearInventorySellPick();
+  if (dialogueTextEl) dialogueTextEl.textContent = sellPromptText(note);
+  setSellChoicesIdle();
+}
+
+function onSellItemPicked(item, source, index) {
+  if (!buyerMode) return;
+  clearBulkSellPrompt();
+  var price = getSellPrice(item.id);
+  if (price == null) {
+    pendingSale = null;
+    clearInventorySellPick();
+    if (dialogueTextEl) {
+      dialogueTextEl.textContent = "「" + item.name + "」这东西我们不收，换别的吧。";
+    }
+    setSellChoicesIdle();
+    return;
+  }
+  pendingSale = {
+    source: source,
+    index: index,
+    id: item.id,
+    name: item.name,
+    price: price,
+  };
+  if (dialogueTextEl) {
+    dialogueTextEl.textContent =
+      "「" + item.name + "」我出 " + price + " 积分点。按 A 确认成交。";
+  }
+  setSellChoicesConfirm();
+}
+
+function confirmSellPendingItem() {
+  if (!pendingSale) {
+    showSellPrompt("先挑一件东西。");
+    return;
+  }
+  var deal = pendingSale;
+  var removed = removeItemAt(deal.source, deal.index);
+  if (!removed || removed.id !== deal.id) {
+    showSellPrompt("这件东西不在原来的位置了。");
+    return;
+  }
+  addMegPoints(deal.price);
+  updateMegPointsDisplay(megPointsEl);
+  if (survival) survival.refreshHud();
+  showToast("售出 " + deal.name + " · +" + deal.price + " 积分点");
+  var giftNote = "";
+  if (shouldGiveLuckyMerchantGift()) {
+    var gift =
+      Math.random() < 0.5
+        ? { id: "almond_water", name: "杏仁水" }
+        : { id: "fire_salt", name: "小块可爆炸火盐" };
+    if (addItem(gift)) giftNote = " 看你今天运气不错，再送你一份" + gift.name + "。";
+  }
+  showSellPrompt("成交。" + giftNote);
+  showBulkSellPrompt(deal.id, deal.name, deal.price);
+}
+
+function openBntgBuyer() {
+  if (!dialogueEl || !dialogueTextEl) return;
+  if (!tryBeginMerchantTrade()) {
+    var seconds = Math.ceil(getMerchantLockRemainingMs() / 1000);
+    showToast(
+      "收购员厌恶地避开了你，拒绝进行任何买卖 · " + seconds + " 秒后再试"
+    );
+    return;
+  }
+  dialogueOpen = true;
+  buyerMode = true;
+  pendingSale = null;
+  document.body.classList.add("backrooms-dialogue-open");
+  document.body.classList.add("backrooms-shop-sell");
+  dialogueEl.hidden = false;
+  if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "B.N.T.G 收购员";
+  setInventorySellMode(onSellItemPicked);
+  openBackpack();
+  showSellPrompt("你好，物资我都收。");
+  if (interactHintEl) interactHintEl.hidden = true;
+  if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+}
+
 function tryQAction() {
   if (dialogueOpen) return;
   if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
   var data = resolveInteract();
-  if (data && data.kind === "l11_meg_staff") openStaffDialogue();
-  else if (data && data.kind === "l11_bntg_vendor") openBntgVendor();
+  if (data && data.kind === "l11_bntg_vendor") openBntgVendor();
+  else if (data && data.kind === "l11_bntg_buyer") openBntgBuyer();
 }
 
 function isChoiceKey(e, letter) {
@@ -602,6 +773,24 @@ function bindControls() {
     onJump: function () { tryBackroomsJump(fps, 8); },
     onKeyDown: function (e) {
       if (dialogueOpen) {
+        if (buyerMode) {
+          if (e.code === "Escape" && !e.repeat) {
+            e.preventDefault();
+            closeDialogue();
+            return true;
+          }
+          if (pendingSale && isChoiceKey(e, "a")) {
+            e.preventDefault();
+            confirmSellPendingItem();
+            return true;
+          }
+          if (isChoiceKey(e, "b")) {
+            e.preventDefault();
+            closeDialogue();
+            return true;
+          }
+          return true;
+        }
         if (vendorMode) {
           if (e.code === "Escape" && !e.repeat) {
             e.preventDefault();
@@ -627,11 +816,6 @@ function bindControls() {
             if (BNTG_ITEMS[idx]) selectVendorPurchase(BNTG_ITEMS[idx].id);
             return true;
           }
-          return true;
-        }
-        if (isChoiceKey(e, "a")) {
-          e.preventDefault();
-          handleStaffChoice("a");
           return true;
         }
         if (isChoiceKey(e, "b") || (e.code === "Escape" && !e.repeat)) {
@@ -670,9 +854,11 @@ function bindControls() {
         selectVendorPurchase(vendorBtn.getAttribute("data-vendor"));
         return;
       }
-      var btn = e.target.closest("[data-choice]");
-      if (!btn) return;
-      handleStaffChoice(btn.getAttribute("data-choice"));
+      var sellBtn = e.target.closest("[data-sell]");
+      if (sellBtn) {
+        if (sellBtn.getAttribute("data-sell") === "confirm") confirmSellPendingItem();
+        else closeDialogue();
+      }
     });
   }
   bindBackroomsWindowResize(renderer, camera);
@@ -729,17 +915,7 @@ function init() {
     valueEl: tempValueEl,
   });
   updateMegPointsDisplay(megPointsEl);
-  if (hintEl) {
-    if (level === 10) {
-      hintEl.innerHTML =
-        "Level 10 · 沿土路前进 · 留意岔路小道 · <kbd>WASD</kbd> 移动 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包";
-    } else {
-      hintEl.innerHTML =
-        "Level " +
-        levelLabel +
-        " · <kbd>WASD</kbd> 移动 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包";
-    }
-  }
+  restoreDefaultHint();
   bindControls();
 
   var clock = new THREE.Clock();

@@ -56,6 +56,8 @@ export function attachMobileDragLook(opts) {
   cap.addEventListener(
     "pointerdown",
     function (e) {
+      // 死亡界面：不再重新锁定指针，也不接受拖动转视角
+      if (document.body.classList.contains("backrooms-dead")) return;
       if (opts.shouldBlockDrag && opts.shouldBlockDrag()) return;
       if (!opts.getPointerLocked() && useDragLook) {
         lookDragId = e.pointerId;

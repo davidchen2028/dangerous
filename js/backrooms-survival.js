@@ -11,7 +11,10 @@ import {
   mountBackpackPanel,
   BACKPACK_CAPACITY,
 } from "./backrooms-inventory.js";
-import { clearBackroomsSurvivalPersist } from "./backrooms-survival-persist.js";
+import {
+  clearBackroomsSurvivalPersist,
+  saveBackroomsSurvival,
+} from "./backrooms-survival-persist.js";
 import { clearAllBackroomsSessionKeys } from "./backrooms-session-keys.js";
 import {
   clearRoyalRationsBuff,
@@ -22,6 +25,28 @@ import {
   activateRoyalRationsBuff,
   activateRoyalRationsMediumBuff,
 } from "./backrooms-royal-rations.js";
+import {
+  clearSoyMilkBuffs,
+  syncSoyMilkExpiry,
+  activateStrawberrySoyMilkBuff,
+  activateStrawberryLuckySoyMilkBuff,
+  STRAWBERRY_SOY_MILK_SANITY_MUL,
+  BANANA_SOY_MILK_HEAL,
+  LUCKY_SOY_MILK_COLD_ID,
+  LUCKY_SOY_MILK_HOT_ID,
+  LUCKY_SOY_MILK_COLD_LUCK,
+  LUCKY_SOY_MILK_HOT_LUCK,
+} from "./backrooms-soy-milk.js";
+import {
+  applyLuckySoyMilkLuck,
+  clearLuck,
+  getLuck,
+  LUCKY_VAULT_SOY_MILK_DURATION_MS,
+  syncLuckExpiry,
+} from "./backrooms-luck.js";
+import { showBackroomsLootToast } from "./backrooms-fps-controller.js";
+import { queueEnterLevelNumber } from "./backrooms-level-enter.js";
+import { playBackroomsRoulette } from "./backrooms-roulette.js";
 import {
   getSanityMax,
   getSanityDrainMul,
@@ -39,6 +64,7 @@ export const ALMOND_WATER_SANITY = 25;
 
 /** 被动理智流失：每 10 秒 -1 */
 const SANITY_PASSIVE_DRAIN_PER_SEC = 1 / 10;
+let badLuckTransitionPending = false;
 
 export function getInventoryMax() {
   return BACKPACK_CAPACITY;
@@ -51,6 +77,8 @@ export function resetBackroomsRun() {
     clearAllBackroomsSessionKeys();
     clearBackroomsSurvivalPersist();
     clearRoyalRationsBuff();
+    clearSoyMilkBuffs();
+    clearLuck();
     clearDeathPenalties();
   } catch (err) {
     /* ignore */
@@ -68,6 +96,25 @@ export function registerBackroomsInventoryUseHandlers(survival, options) {
     if (!survival || !survival.useAlmondWater()) return;
     if (options.onAlmondWaterUsed) options.onAlmondWaterUsed();
   };
+  window.__backroomsUseStrawberrySoyMilk = function () {
+    if (!survival || !survival.useStrawberrySoyMilk()) return;
+    if (options.onStrawberrySoyMilkUsed) options.onStrawberrySoyMilkUsed();
+  };
+  window.__backroomsUseBananaSoyMilk = function () {
+    if (!survival || !survival.useBananaSoyMilk()) return;
+    if (options.onBananaSoyMilkUsed) options.onBananaSoyMilkUsed();
+  };
+  window.__backroomsUseLuckySoyMilk = function (itemId) {
+    if (!survival || !survival.useLuckySoyMilk(itemId)) return;
+    if (options.onLuckySoyMilkUsed) options.onLuckySoyMilkUsed(itemId);
+  };
+  window.__backroomsUseVaultSoyMilk = function (itemId) {
+    if (!survival || !survival.useVaultSoyMilk(itemId)) return;
+    if (options.onVaultSoyMilkUsed) options.onVaultSoyMilkUsed(itemId);
+  };
+  window.__backroomsOnLuckySoyMilkHeated = function () {
+    if (options.onLuckySoyMilkHeated) options.onLuckySoyMilkHeated();
+  };
   if (options.onNightVisionPotion) {
     window.__backroomsUseNightVisionPotion = options.onNightVisionPotion;
   }
@@ -78,6 +125,13 @@ export function registerBackroomsInventoryUseHandlers(survival, options) {
   window.__backroomsUseRoyalRationsMedium = function () {
     if (!survival || !survival.useRoyalRationsMedium()) return;
     if (options.onRoyalRationsUsed) options.onRoyalRationsUsed();
+  };
+  window.__backroomsUseRoulette = function () {
+    if (!survival || survival.dead) return;
+    playBackroomsRoulette(survival, function () {
+      removeFirstItem("roulette");
+      survival.refreshHud();
+    });
   };
 }
 
@@ -103,6 +157,7 @@ export class BackroomsSurvival {
     this._valStamina = null;
     this._invEl = null;
     this._deathTimer = null;
+    this._nextBadLuckEventAt = 0;
   }
 
   mountHud(parent) {
@@ -185,6 +240,23 @@ export class BackroomsSurvival {
     env = env || {};
     var now = performance.now();
     syncRoyalRationsExpiry(this);
+    var soyExpired = syncSoyMilkExpiry(this);
+    if (soyExpired) {
+      this.hp = Math.min(getHpMax(), this.hp);
+      this.sanity = Math.min(getSanityMax(), this.sanity);
+      this.refreshHud();
+      if (soyExpired === "strawberry_lucky") {
+        showBackroomsLootToast("草莓带来的精神增益缓缓褪去", {
+          durationMs: 3000,
+        });
+      }
+    }
+    if (syncLuckExpiry()) {
+      showBackroomsLootToast(
+        "豆奶带来的奇异感觉缓缓消散，周遭回归平常",
+        { durationMs: 3200 }
+      );
+    }
     var hpCap = getHpMax();
     var staCap = getStaminaMax();
 
@@ -194,16 +266,24 @@ export class BackroomsSurvival {
       this.stamina = Math.min(staCap, this.stamina + 10 * dt);
     }
 
+    var luck = getLuck();
+    this.updateBadLuckEvents(now, luck);
+    var luckSanityMul = luck <= -30 ? 1.6 : luck >= 30 ? 0.7 : 1;
     if (!env.skipPassiveSanity) {
       this.sanity = Math.max(
         0,
-        this.sanity - SANITY_PASSIVE_DRAIN_PER_SEC * getSanityDrainMul() * dt
+        this.sanity -
+          SANITY_PASSIVE_DRAIN_PER_SEC *
+            getSanityDrainMul() *
+            luckSanityMul *
+            dt
       );
     }
     if ((env.sanityDrainPerSec || 0) > 0) {
       this.sanity = Math.max(
         0,
-        this.sanity - env.sanityDrainPerSec * getSanityDrainMul() * dt
+        this.sanity -
+          env.sanityDrainPerSec * getSanityDrainMul() * luckSanityMul * dt
       );
     }
     this.hp = Math.min(hpCap, this.hp);
@@ -220,6 +300,96 @@ export class BackroomsSurvival {
 
     updateDeathHallucinations(this, dt);
     this.refreshHud();
+  }
+
+  updateBadLuckEvents(now, luck) {
+    if (luck > -30) {
+      this._nextBadLuckEventAt = 0;
+      return;
+    }
+    if (!this._nextBadLuckEventAt) {
+      this._nextBadLuckEventAt = now + 35000 + Math.random() * 30000;
+      return;
+    }
+    if (now < this._nextBadLuckEventAt) return;
+    this._nextBadLuckEventAt = now + 40000 + Math.random() * 45000;
+
+    var roll = Math.random();
+    if (roll < 0.42) {
+      var consumables = ["almond_water", "royal_rations", "fire_salt"];
+      var available = consumables.filter(function (id) {
+        return countItem(id) > 0;
+      });
+      if (!available.length) return;
+      var lost = available[Math.floor(Math.random() * available.length)];
+      if (!removeFirstItem(lost)) return;
+      var lostName =
+        lost === "almond_water"
+          ? "杏仁水"
+          : lost === "royal_rations"
+            ? "最小有效分量皇家口粮"
+            : "小块可爆炸火盐";
+      showBackroomsLootToast("一阵错位后，背包里的" + lostName + "消失了一份", {
+        durationMs: 3200,
+      });
+      return;
+    }
+    if (roll < 0.67 && countItem("fire_salt") > 0) {
+      removeFirstItem("fire_salt");
+      this.takeDamage(30);
+      showBackroomsLootToast("携带的火盐突然自爆并损毁 · -30 血量", {
+        durationMs: 3200,
+      });
+      return;
+    }
+    document.body.classList.add("backrooms-luck-glitch");
+    window.setTimeout(function () {
+      document.body.classList.remove("backrooms-luck-glitch");
+    }, 900);
+    showBackroomsLootToast("空间短暂抖动，你的脚步发生了错位", {
+      durationMs: 2600,
+    });
+    if (!badLuckTransitionPending && Math.random() < 0.12) {
+      badLuckTransitionPending = true;
+      var destinations = [
+        {
+          number: 0,
+          passKey: "backrooms_l0_pass",
+          page: "backrooms-level0.html",
+        },
+        {
+          number: 1,
+          passKey: "backrooms_clip_pass",
+          page: "backrooms-level1.html",
+        },
+        {
+          number: 2,
+          passKey: "backrooms_l2_pass",
+          page: "backrooms-level2.html",
+        },
+        {
+          number: 3,
+          passKey: "backrooms_l3_pass",
+          page: "backrooms-level3.html",
+        },
+      ];
+      var destination =
+        destinations[Math.floor(Math.random() * destinations.length)];
+      showBackroomsLootToast(
+        "空间正在把你甩向 Level " + destination.number + "…",
+        { durationMs: 1400 }
+      );
+      saveBackroomsSurvival(this);
+      try {
+        sessionStorage.setItem(destination.passKey, "1");
+      } catch (err) {
+        /* ignore */
+      }
+      queueEnterLevelNumber(destination.number);
+      window.setTimeout(function () {
+        window.location.href = destination.page;
+      }, 800);
+    }
   }
 
   canSprint() {
@@ -253,6 +423,98 @@ export class BackroomsSurvival {
     var sanCap = getSanityMax();
     this.sanity = Math.min(sanCap, this.sanity + ALMOND_WATER_SANITY);
     this.hp = Math.min(hpCap, this.hp + ALMOND_WATER_HP);
+    this.refreshHud();
+    return true;
+  }
+
+  useStrawberrySoyMilk() {
+    if (this.dead) return false;
+    if (!removeFirstItem("strawberry_soy_milk")) return false;
+    if (!activateStrawberrySoyMilkBuff()) return false;
+    var sanCap = getSanityMax();
+    var restore = Math.max(
+      1,
+      Math.round(sanCap * (STRAWBERRY_SOY_MILK_SANITY_MUL - 1))
+    );
+    this.sanity = Math.min(sanCap, this.sanity + restore);
+    this.refreshHud();
+    return true;
+  }
+
+  useBananaSoyMilk() {
+    if (this.dead) return false;
+    if (!removeFirstItem("banana_soy_milk")) return false;
+    var hpCap = getHpMax();
+    this.hp = Math.min(hpCap, this.hp + BANANA_SOY_MILK_HEAL);
+    this.refreshHud();
+    return true;
+  }
+
+  /**
+   * @param {string} [itemId]
+   */
+  useLuckySoyMilk(itemId) {
+    if (this.dead) return false;
+    var id = itemId || LUCKY_SOY_MILK_COLD_ID;
+    if (id !== LUCKY_SOY_MILK_COLD_ID && id !== LUCKY_SOY_MILK_HOT_ID) {
+      return false;
+    }
+    if (!removeFirstItem(id)) return false;
+    var delta =
+      id === LUCKY_SOY_MILK_HOT_ID
+        ? LUCKY_SOY_MILK_HOT_LUCK
+        : LUCKY_SOY_MILK_COLD_LUCK;
+    if (!applyLuckySoyMilkLuck(delta)) return false;
+    this.refreshHud();
+    return true;
+  }
+
+  useVaultSoyMilk(itemId) {
+    if (this.dead) return false;
+    if (
+      itemId !== "lucky_soy_milk" &&
+      itemId !== "strawberry_lucky_soy_milk" &&
+      itemId !== "banana_lucky_soy_milk"
+    ) {
+      return false;
+    }
+    if (!removeFirstItem(itemId)) return false;
+
+    if (itemId === "banana_lucky_soy_milk") {
+      this.hp = Math.min(getHpMax(), this.hp + BANANA_SOY_MILK_HEAL);
+      showBackroomsLootToast(
+        "香蕉温润的力量抚平了你身上一部分伤痛",
+        { durationMs: 3000 }
+      );
+    } else if (itemId === "strawberry_lucky_soy_milk") {
+      activateStrawberryLuckySoyMilkBuff();
+      // 只提高上限，不改变当前理智。
+      showBackroomsLootToast(
+        "草莓香甜漫开，你的精神承受能力短暂变强",
+        { durationMs: 3000 }
+      );
+    } else {
+      var roll = Math.random();
+      if (roll < 0.45) {
+        applyLuckySoyMilkLuck(100, LUCKY_VAULT_SOY_MILK_DURATION_MS);
+        showBackroomsLootToast(
+          "喝下豆奶，心里莫名感觉安稳，周遭似乎变得顺遂起来",
+          { durationMs: 3600 }
+        );
+      } else if (roll < 0.9) {
+        applyLuckySoyMilkLuck(-100, LUCKY_VAULT_SOY_MILK_DURATION_MS);
+        showBackroomsLootToast(
+          "喝下豆奶，一阵不安涌上心头，预感坏事将要发生",
+          { durationMs: 3600 }
+        );
+      } else {
+        clearLuck();
+        showBackroomsLootToast(
+          "豆奶下肚，身体没有产生任何奇异感受",
+          { durationMs: 3000 }
+        );
+      }
+    }
     this.refreshHud();
     return true;
   }
@@ -310,6 +572,8 @@ export class BackroomsSurvival {
     this.sanity = getSanityMax();
     this.stamina = getStaminaMax();
     clearRoyalRationsBuff();
+    clearSoyMilkBuffs();
+    clearLuck();
     this.dead = false;
     this.sanityBreaking = false;
     this._deathSnapshot = null;
@@ -345,6 +609,9 @@ export class BackroomsSurvival {
     this.dead = true;
     this.hp = 0;
     document.body.classList.add("backrooms-dead");
+    if (document.pointerLockElement && document.exitPointerLock) {
+      document.exitPointerLock();
+    }
     if (this.deathEl) {
       var msg = this.deathEl.querySelector("[data-death-msg]");
       if (msg) {

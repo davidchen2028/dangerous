@@ -4,13 +4,17 @@
 import { resetBackroomsRun } from "./backrooms-survival.js";
 
 export const LEVEL0_PAGE = "backrooms-level0.html";
-/** @typedef {"clip" | "l0" | "l2" | "l3" | "l4" | "l6" | "l6_1" | "l7" | "l8" | "l9" | "l10" | "l11" | "l13" | "l14" | "l21" | "l37" | "l48" | "l57" | "l75" | "l119" | "l121" | "l283" | "blue_channel" | "c144" | "c192" | "c370"} BackroomsLevelPassId */
+/** @typedef {"clip" | "l0" | "l1_bntg" | "l2" | "l3" | "l4" | "l6" | "l6_1" | "l7" | "l8" | "l9" | "l10" | "l11" | "l13" | "l14" | "l21" | "l37" | "l48" | "l57" | "l75" | "l119" | "l121" | "l283" | "blue_channel" | "c144" | "c192" | "c370"} BackroomsLevelPassId */
 
 /** @type {Record<BackroomsLevelPassId, { pass: string, yaw: string | null }>} */
 export const LEVEL_PASS_KEYS = {
   clip: { pass: "backrooms_clip_pass", yaw: null },
   /** 从其他层级切回 L0：持有此令牌表示延续本局，不清档 */
   l0: { pass: "backrooms_l0_pass", yaw: "backrooms_l0_yaw" },
+  l1_bntg: {
+    pass: "backrooms_l1_bntg_pass",
+    yaw: "backrooms_l1_bntg_yaw",
+  },
   l2: { pass: "backrooms_l2_pass", yaw: "backrooms_l2_yaw" },
   l3: { pass: "backrooms_l3_pass", yaw: "backrooms_l3_yaw" },
   l4: { pass: "backrooms_l4_pass", yaw: "backrooms_l4_yaw" },

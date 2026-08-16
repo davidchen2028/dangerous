@@ -2,8 +2,8 @@
  * 后室轮盘赌 — 改装左轮装置
  *
  * 机制：
- *  · 转轮随机装入 N 发实弹（N ∈ 1..6），装得越多越危险。
- *  · 扣扳机：转轮停在编号 L（1..6），屏幕顶端显示对应标识。
+ *  · 转轮随机装入实弹，但不会向玩家显示实弹数量。
+ *  · 扣扳机：转轮停下后，屏幕顶端只显示对应结局文字。
  *      - 实弹 → 直接死亡。
  *      - 空弹且 L=6（还乡道）→ 依然死亡（必死项）。
  *      - 空弹且 L∈1..5 → 依据编号传送到对应后室层级。
@@ -97,9 +97,10 @@ function killPlayer(survival) {
 /**
  * 开始一局轮盘赌。
  * @param {import("./backrooms-survival.js").BackroomsSurvival | null} survival
+ * @param {(() => void) | undefined} onPull 真正扣动扳机时消耗物品
  */
-export function playBackroomsRoulette(survival) {
-  if (overlayEl) return;
+export function playBackroomsRoulette(survival, onPull) {
+  if (overlayEl) return false;
   if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
 
   var liveCount = 1 + Math.floor(Math.random() * 6); // 1..6 发实弹
@@ -132,8 +133,7 @@ export function playBackroomsRoulette(survival) {
   var info = document.createElement("p");
   info.style.cssText =
     "margin:0;font-size:clamp(14px,3.4vw,18px);line-height:1.7;color:#f0d6cf;white-space:pre-line;";
-  info.textContent =
-    "转轮随机装入了 " + liveCount + " 发实弹（共 6 膛）。\n扣动扳机——空弹传送、实弹归零。";
+  info.textContent = "没人知道装入了多少实弹。\n扣动扳机——空弹传送、实弹归零。";
 
   var result = document.createElement("p");
   result.style.cssText =
@@ -160,6 +160,7 @@ export function playBackroomsRoulette(survival) {
   function resolvePull() {
     if (spun) return;
     spun = true;
+    if (onPull) onPull();
     pullBtn.disabled = true;
     leaveBtn.disabled = true;
     pullBtn.style.opacity = "0.5";
@@ -167,8 +168,8 @@ export function playBackroomsRoulette(survival) {
 
     var landed = 1 + Math.floor(Math.random() * 6); // 停在的编号 1..6
     var isLive = Math.random() < liveCount / 6;
-    badge.textContent = landed + "｜" + OUTCOME_LABELS[landed];
-    result.textContent = "转轮飞速旋转……停在了 " + landed + " 号。";
+    badge.textContent = OUTCOME_LABELS[landed];
+    result.textContent = "转轮飞速旋转……停在了「" + OUTCOME_LABELS[landed] + "」。";
 
     window.setTimeout(function () {
       if (isLive) {
@@ -219,4 +220,5 @@ export function playBackroomsRoulette(survival) {
     }
   };
   document.addEventListener("keydown", keyHandler, true);
+  return true;
 }

@@ -16,6 +16,12 @@ import {
   ROYAL_RATIONS_MEDIUM_KEY,
 } from "./backrooms-royal-rations.js";
 import {
+  STRAWBERRY_SOY_MILK_KEY,
+  BANANA_SOY_MILK_KEY,
+  STRAWBERRY_LUCKY_SOY_MILK_KEY,
+} from "./backrooms-soy-milk.js";
+import { LUCK_MOD_KEY } from "./backrooms-luck.js";
+import {
   MEG_NV_POTION_GIVEN_KEY,
   MEG_NV_ALMOND_GIVEN_KEY,
 } from "./backrooms-night-vision.js";
@@ -33,6 +39,8 @@ export const BACKROOMS_SESSION_KEYS = [
   "backrooms_clip_yaw",
   "backrooms_l0_pass",
   "backrooms_l0_yaw",
+  "backrooms_l1_bntg_pass",
+  "backrooms_l1_bntg_yaw",
   MEG_NV_POTION_GIVEN_KEY,
   MEG_NV_ALMOND_GIVEN_KEY,
   "backrooms_night_vision_until",
@@ -113,6 +121,13 @@ export const BACKROOMS_SESSION_KEYS = [
   XIAOYE_FULL_HEAL_KEY,
   ROYAL_RATIONS_BUFF_KEY,
   ROYAL_RATIONS_MEDIUM_KEY,
+  STRAWBERRY_SOY_MILK_KEY,
+  BANANA_SOY_MILK_KEY,
+  STRAWBERRY_LUCKY_SOY_MILK_KEY,
+  LUCK_MOD_KEY,
+  "backrooms_trade_vault_pity_v1",
+  "backrooms_trade_vault_pending_v1",
+  "backrooms_unlucky_merchant_lock_until_v1",
   DEATH_COUNT_KEY,
   DEATH_P1_KEY,
   DEATH_P2_KEY,

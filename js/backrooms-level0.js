@@ -23,6 +23,12 @@ import {
   updateBackroomsColdDamage,
   setBackroomsTemperatureZone,
 } from "./backrooms-temperature.js";
+import {
+  bindLevel0Music,
+  startLevel0Music,
+  fadeOutLevel0Music,
+  LEVEL0_MUSIC_FADE_OUT_MS as MUSIC_FADE_OUT_MS,
+} from "./backrooms-level0-music.js";
 import { pickCrosshairInteract, getCameraAimRay } from "./backrooms-interact-aim.js";
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
 import {
@@ -727,9 +733,17 @@ function initSurvivalHud() {
     }
   });
   registerBackroomsInventoryUseHandlers(survival);
-  installMegCheckpointDeathHooks(survival, function () {
-    return { level: 0 };
-  });
+  installMegCheckpointDeathHooks(
+    survival,
+    function () {
+      return { level: 0 };
+    },
+    {
+      beforeNavigate: function () {
+        return fadeOutLevel0Music(MUSIC_FADE_OUT_MS);
+      },
+    }
+  );
 }
 
 // =============================================================================
@@ -949,7 +963,9 @@ function updateClipDash(dt) {
       /* ignore */
     }
     queueEnterLevelNumber(1);
-    window.location.href = "backrooms-level1.html";
+    fadeOutLevel0Music(MUSIC_FADE_OUT_MS).then(function () {
+      window.location.href = "backrooms-level1.html";
+    });
   }
 }
 
@@ -975,6 +991,7 @@ function syncLookUi() {
 }
 
 function bindControls() {
+  bindLevel0Music();
   bindBackroomsFpsControls({
     canvas: canvas,
     inputEl: inputEl,
@@ -1000,7 +1017,8 @@ function bindControls() {
       }
       return false;
     },
-    onPointerLockChange: function () {
+    onPointerLockChange: function (locked) {
+      if (locked) startLevel0Music();
       syncLookUi();
     },
   });
@@ -1121,6 +1139,12 @@ function init() {
     cellCenterZ: cellCenterZ,
     showToast: showBackroomsToast,
     onHudTitleChange: syncLevel0HudTitle,
+    onEnterSubLevel: function () {
+      fadeOutLevel0Music(MUSIC_FADE_OUT_MS);
+    },
+    onExitSubLevel: function () {
+      startLevel0Music();
+    },
   });
   level0Zones.init();
 

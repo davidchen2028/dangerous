@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
   <title>后室 Level 4 — 办公层</title>
-  <link rel="stylesheet" href="css/backrooms-level0.css?v=18">
+  <link rel="stylesheet" href="css/backrooms-level0.css?v=22">
   <link rel="stylesheet" href="css/backrooms-survival.css?v=6">
 </head>
 <body class="backrooms-level1 backrooms-level2">
@@ -29,12 +29,17 @@
       </div>
     </div>
     <p class="backrooms-hud__hint" id="backroomsHint">加载中…</p>
-    <p class="backrooms-hud__hint backrooms-hud__hint--sub" id="backroomsWaterHint" hidden>
+    <p class="backrooms-hud__prompt" id="backroomsWaterHint" hidden>
       按 <kbd>Q</kbd> 接水
     </p>
-    <p class="backrooms-hud__talk backrooms-hud__talk--door" id="backroomsInteractHint" hidden></p>
+    <p class="backrooms-hud__prompt" id="backroomsInteractHint" hidden></p>
     <p class="backrooms-hud__loot" id="backroomsLootToast" hidden></p>
     <div class="backrooms-hud__error" id="backroomsError" hidden></div>
+  </div>
+  <div class="backrooms-dialogue" id="backroomsDialogue" hidden role="dialog" aria-label="B.N.T.G. 联络员对话">
+    <p class="backrooms-dialogue__speaker">B.N.T.G. 联络员</p>
+    <p class="backrooms-dialogue__text" id="backroomsDialogueText"></p>
+    <p class="backrooms-dialogue__choices" id="backroomsDialogueChoices"></p>
   </div>
   <script type="importmap">
   {
@@ -43,6 +48,6 @@
     }
   }
   </script>
-  <script type="module" src="js/backrooms-level4.js?v=14"></script>
+  <script type="module" src="js/backrooms-level4.js?v=16"></script>
 </body>
 </html>

@@ -9,6 +9,7 @@
  * 删档时可花 80 积分免除所有负面（清空次数与效果，不删档）
  */
 import { getMegPoints, addMegPoints, updateMegPointsDisplay } from "./backrooms-meg-points.js";
+import { applySoyMilkSanityMax } from "./backrooms-soy-milk.js";
 
 export const DEATH_COUNT_KEY = "backrooms_death_count_v1";
 export const DEATH_P1_KEY = "backrooms_death_penalty_p1_v1";
@@ -82,7 +83,8 @@ export function clearDeathPenalties() {
 }
 
 export function getSanityMax() {
-  return hasDeathPenalty1() ? SANITY_MAX_P1 : SANITY_MAX_DEFAULT;
+  var base = hasDeathPenalty1() ? SANITY_MAX_P1 : SANITY_MAX_DEFAULT;
+  return applySoyMilkSanityMax(base);
 }
 
 export function getSanityDrainMul() {

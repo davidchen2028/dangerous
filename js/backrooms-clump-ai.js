@@ -20,6 +20,7 @@ import {
   registerBackroomsEntityTarget,
   unregisterBackroomsEntityTarget,
 } from "./backrooms-entity-health.js";
+import { getLuck } from "./backrooms-luck.js";
 
 export const CLUMP_POUNCE_DAMAGE = 45;
 export const CLUMP_POUNCE_COOLDOWN = 50;
@@ -281,6 +282,25 @@ function updateSingleClump(clump, dt, px, pz, survival, toastFn, opts) {
 
 function createClumpSystem(parent, spawns, opts) {
   opts = opts || {};
+  var luck = getLuck();
+  if (luck >= 30) {
+    spawns = spawns.filter(function () {
+      return Math.random() < 0.55;
+    });
+  } else if (luck <= -30) {
+    spawns = spawns.slice();
+    var originals = spawns.slice();
+    for (var s = 0; s < originals.length; s++) {
+      if (Math.random() < 0.65) {
+        spawns.push({
+          x: originals[s].x - 1.2,
+          z: originals[s].z + 1.2,
+          rotY: originals[s].rotY,
+          seed: (originals[s].seed || 0) + 700,
+        });
+      }
+    }
+  }
   var root = new THREE.Group();
   root.name = "Clumps";
   parent.add(root);

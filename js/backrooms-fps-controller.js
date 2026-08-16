@@ -3,6 +3,7 @@
  */
 import { resolveCircleAgainstColliders } from "./backrooms-collide.js";
 import { attachMobileDragLook, isTouchPrimaryDevice } from "./backrooms-fps-look.js";
+import { getLuckMovementMul } from "./backrooms-luck.js";
 
 export { isTouchPrimaryDevice } from "./backrooms-fps-look.js";
 
@@ -73,7 +74,7 @@ export function moveBackroomsPlayer(state, dt, speedMul, resolvePosition) {
   var dir = readMoveInputWorldDir(state.move, state.yaw);
   if (!dir) return;
 
-  var speed = state.player.speed * (speedMul || 1);
+  var speed = state.player.speed * (speedMul || 1) * getLuckMovementMul();
   var nextX = state.player.x + dir.worldX * speed * dt;
   var nextZ = state.player.z + dir.worldZ * speed * dt;
   var out = resolvePosition(nextX, nextZ);

@@ -12,3 +12,8 @@ models/missile.glb
 
 # 重复/过时副本
 img/js/
+img/backrooms/level14/almond-water.png
+
+# 系统与备份文件
+.DS_Store
+*.bak

@@ -2,8 +2,9 @@
  * 后室商店价目表 — 玩家购买价 / 商店收购价
  * sell 为 null 表示不可收购。
  */
+import { getLuck } from "./backrooms-luck.js";
 
-/** @typedef {{ id: string, name: string, buy: number, sell: number | null }} ShopPrice */
+/** @typedef {{ id: string, name: string, buy: number | null, sell: number | null }} ShopPrice */
 
 /** @type {Record<string, ShopPrice>} */
 export const SHOP_PRICES = {
@@ -21,7 +22,25 @@ export const SHOP_PRICES = {
     sell: 34,
   },
   fire_salt: { id: "fire_salt", name: "小块可爆炸火盐", buy: 8, sell: 6 },
-  roulette: { id: "roulette", name: "后室轮盘赌", buy: 52, sell: null },
+  roulette: { id: "roulette", name: "后室轮盘赌", buy: null, sell: null },
+  lucky_soy_milk: {
+    id: "lucky_soy_milk",
+    name: "幸运豆奶",
+    buy: null,
+    sell: null,
+  },
+  strawberry_lucky_soy_milk: {
+    id: "strawberry_lucky_soy_milk",
+    name: "草莓味幸运豆奶",
+    buy: null,
+    sell: null,
+  },
+  banana_lucky_soy_milk: {
+    id: "banana_lucky_soy_milk",
+    name: "香蕉味幸运豆奶",
+    buy: null,
+    sell: null,
+  },
   escort_l0: { id: "escort_l0", name: "Lv11→Level 0 护送服务", buy: 15, sell: null },
   escort_l4: { id: "escort_l4", name: "Lv11→Level 4 护送服务", buy: 32, sell: null },
   escort_l61: { id: "escort_l61", name: "Lv11→Level 6.1 护送服务", buy: 75, sell: null },
@@ -37,7 +56,10 @@ export function getBuyPrice(itemId) {
 /** @param {string} itemId @returns {number | null} null = 不可收购 */
 export function getSellPrice(itemId) {
   var entry = SHOP_PRICES[itemId];
-  if (!entry) return null;
+  if (!entry || entry.sell == null) return null;
+  var luck = getLuck();
+  if (luck <= -30) return Math.max(1, Math.floor(entry.sell * 0.7));
+  if (luck >= 30) return Math.max(1, Math.round(entry.sell * 1.15));
   return entry.sell;
 }
 

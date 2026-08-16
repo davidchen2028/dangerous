@@ -3,25 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-  <title>后室 Level 7 — 水上平台</title>
+  <title>后室 Level 1 — B.N.T.G. 独立基地</title>
   <link rel="stylesheet" href="css/backrooms-level0.css?v=22">
   <link rel="stylesheet" href="css/backrooms-survival.css?v=6">
 </head>
-<body class="backrooms-level1 backrooms-level7">
-  <canvas id="backroomsCanvas" aria-label="后室 Level 7"></canvas>
+<body class="backrooms-level1">
+  <canvas id="backroomsCanvas" aria-label="Level 1 B.N.T.G. 独立基地"></canvas>
   <div id="backroomsInput" class="backrooms-input" aria-hidden="true"></div>
   <div class="backrooms-crosshair" id="backroomsCrosshair" aria-hidden="true"></div>
   <div class="backrooms-hud">
-    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level 7 · 水上平台 · 生存难度 4</p>
+    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level 1 · B.N.T.G. 独立基地</p>
     <div class="backrooms-nav"><div class="backrooms-nav__row">
       <p class="backrooms-temp" id="backroomsTemp"><span class="backrooms-temp__label">温度</span><span class="backrooms-temp__meter"><span class="backrooms-temp__fill" id="backroomsTempFill"></span></span><strong class="backrooms-temp__value" id="backroomsTempValue">—</strong></p>
       <p class="backrooms-points"><span class="backrooms-points__label">积分点</span><strong class="backrooms-points__value" id="backroomsMegPoints">0</strong></p>
     </div></div>
-    <p class="backrooms-hud__hint" id="backroomsHint">加载中…</p>
+    <p class="backrooms-hud__hint" id="backroomsHint">B.N.T.G. 独立基地 · <kbd>WASD</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>B</kbd> 背包</p>
+    <p class="backrooms-hud__prompt" id="backroomsInteractPrompt" hidden></p>
     <p class="backrooms-hud__loot" id="backroomsLootToast" hidden></p>
     <div class="backrooms-hud__error" id="backroomsError" hidden></div>
   </div>
+  <div class="backrooms-dialogue" id="backroomsDialogue" hidden role="dialog" aria-label="B.N.T.G. 银行人员对话">
+    <p class="backrooms-dialogue__speaker">B.N.T.G. 银行人员</p>
+    <p class="backrooms-dialogue__text" id="backroomsDialogueText"></p>
+    <p class="backrooms-dialogue__choices" id="backroomsDialogueChoices"></p>
+  </div>
   <script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
-  <script type="module" src="js/backrooms-level7.js?v=1"></script>
+  <script type="module" src="js/backrooms-level1-bntg-base.js?v=5"></script>
 </body>
 </html>

@@ -29,7 +29,11 @@ import {
   applyBackroomsRendererSize,
   applyBackroomsToneMapping,
 } from "./backrooms-gfx-profile.js";
-import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
+import {
+  showEnterLevelBannerIfQueued,
+  queueEnterLevelNumber,
+  queueEnterLevelBanner,
+} from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { refreshLevel1_1OutpostChestsOnFirstL4Visit } from "./backrooms-level1-1-chests.js";
 import {
@@ -66,6 +70,9 @@ const megPointsEl = document.getElementById("backroomsMegPoints");
 const tempRootEl = document.getElementById("backroomsTemp");
 const tempFillEl = document.getElementById("backroomsTempFill");
 const tempValueEl = document.getElementById("backroomsTempValue");
+const dialogueEl = document.getElementById("backroomsDialogue");
+const dialogueTextEl = document.getElementById("backroomsDialogueText");
+const dialogueChoicesEl = document.getElementById("backroomsDialogueChoices");
 
 const LOOK_SENS = 0.0022;
 const AIM_INTERACT_MAX = 3.2;
@@ -100,6 +107,7 @@ let interactRoots = [];
 let currentAimPick = null;
 let lootToastUntil = 0;
 let transitionLock = false;
+let dialogueOpen = false;
 
 function showError(msg) {
   if (!errorEl) return;
@@ -136,7 +144,14 @@ function syncLookUi() {
 }
 
 function updateAimPick() {
-  if (!camera || !interactRoots.length || isInventoryOpen() || !survival || survival.dead) {
+  if (
+    !camera ||
+    !interactRoots.length ||
+    isInventoryOpen() ||
+    dialogueOpen ||
+    !survival ||
+    survival.dead
+  ) {
     currentAimPick = null;
     return;
   }
@@ -175,9 +190,15 @@ function isAimVendingL61() {
   return currentAimPick.distance <= AIM_INTERACT_MAX;
 }
 
+function isAimBntgLiaison() {
+  if (!currentAimPick || !currentAimPick.data) return false;
+  if (currentAimPick.data.kind !== "l4_bntg_liaison") return false;
+  return currentAimPick.distance <= AIM_INTERACT_MAX;
+}
+
 function updateWaterHint() {
   if (!waterHintEl) return;
-  if (isInventoryOpen() || !survival || survival.dead || transitionLock) {
+  if (isInventoryOpen() || dialogueOpen || !survival || survival.dead || transitionLock) {
     waterHintEl.hidden = true;
     return;
   }
@@ -186,7 +207,7 @@ function updateWaterHint() {
 
 function updateInteractHint() {
   if (!interactHintEl) return;
-  if (isInventoryOpen() || !survival || survival.dead || transitionLock) {
+  if (isInventoryOpen() || dialogueOpen || !survival || survival.dead || transitionLock) {
     interactHintEl.hidden = true;
     return;
   }
@@ -200,7 +221,50 @@ function updateInteractHint() {
     interactHintEl.innerHTML = "按 <kbd>Q</kbd> 切入自动售货机";
     return;
   }
+  if (isAimBntgLiaison()) {
+    interactHintEl.hidden = false;
+    interactHintEl.innerHTML = "按 <kbd>Q</kbd> 与 B.N.T.G. 联络员交谈";
+    return;
+  }
   interactHintEl.hidden = true;
+}
+
+function closeBntgDialogue() {
+  dialogueOpen = false;
+  document.body.classList.remove("backrooms-dialogue-open");
+  if (dialogueEl) dialogueEl.hidden = true;
+}
+
+function openBntgDialogue() {
+  if (!dialogueEl || !dialogueTextEl || !dialogueChoicesEl) return;
+  dialogueOpen = true;
+  document.body.classList.add("backrooms-dialogue-open");
+  dialogueEl.hidden = false;
+  dialogueTextEl.textContent =
+    "M.E.G. 的任务人员还没到岗。你要不要先去 Level 1 的 B.N.T.G. 基地？那里与 Level 1 主区域不相通。";
+  dialogueChoicesEl.innerHTML =
+    '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="a"><kbd>A</kbd> 前往基地</button>' +
+    '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 暂时不去</button>';
+  if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+}
+
+function exitToL1BntgBase() {
+  if (transitionLock) return;
+  transitionLock = true;
+  closeBntgDialogue();
+  showLootToast("B.N.T.G. 联络员带你前往独立基地…");
+  saveBackroomsSurvival(survival);
+  grantLevelPass("l1_bntg", fps.yaw);
+  queueEnterLevelBanner("Level 1 · B.N.T.G. 基地");
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level1-bntg-base.html";
+  }, 500);
+}
+
+function handleBntgChoice(choice) {
+  if (!dialogueOpen) return;
+  if (choice === "a") exitToL1BntgBase();
+  else closeBntgDialogue();
 }
 
 function tryWaterCoolerQ() {
@@ -257,12 +321,25 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen();
+      return isInventoryOpen() || dialogueOpen;
     },
     onJump: function () {
       tryBackroomsJump(fps, JUMP_SPEED);
     },
     onKeyDown: function (e) {
+      if (dialogueOpen) {
+        if (e.code === "KeyA" && !e.repeat) {
+          e.preventDefault();
+          handleBntgChoice("a");
+          return true;
+        }
+        if ((e.code === "KeyB" || e.code === "Escape") && !e.repeat) {
+          e.preventDefault();
+          handleBntgChoice("b");
+          return true;
+        }
+        return true;
+      }
       if (e.code === "KeyB" && !e.repeat) {
         e.preventDefault();
         toggleBackpack();
@@ -272,6 +349,7 @@ function bindControls() {
         e.preventDefault();
         if (isAimStairsDown()) tryStairsQ();
         else if (isAimVendingL61()) tryVendingQ();
+        else if (isAimBntgLiaison()) openBntgDialogue();
         else tryWaterCoolerQ();
         return true;
       }
@@ -281,6 +359,13 @@ function bindControls() {
       syncLookUi();
     },
   });
+  if (dialogueChoicesEl) {
+    dialogueChoicesEl.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-bntg-choice]");
+      if (!btn) return;
+      handleBntgChoice(btn.getAttribute("data-bntg-choice"));
+    });
+  }
   bindBackroomsWindowResize(renderer, camera);
 }
 
@@ -356,7 +441,7 @@ function init() {
     _physOpts.bodyHeight = BODY_HEIGHT;
     _physOpts.ceilingY = L4_WALL_H;
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock && !dialogueOpen) {
       var mul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
@@ -371,11 +456,15 @@ function init() {
     updateInteractHint();
     applyBackroomsCamera(fps, camera, EYE_HEIGHT);
     if (crosshairEl) {
-      var hideXh = isInventoryOpen() || !survival || survival.dead;
+      var hideXh = isInventoryOpen() || dialogueOpen || !survival || survival.dead;
       crosshairEl.classList.toggle("backrooms-crosshair--hidden", hideXh);
       crosshairEl.classList.toggle(
         "backrooms-crosshair--interact",
-        !hideXh && (isAimWaterCooler() || isAimStairsDown() || isAimVendingL61())
+        !hideXh &&
+          (isAimWaterCooler() ||
+            isAimStairsDown() ||
+            isAimVendingL61() ||
+            isAimBntgLiaison())
       );
     }
     updateBackroomsTemperature(dt, performance.now());

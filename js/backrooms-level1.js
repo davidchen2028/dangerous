@@ -20,8 +20,16 @@ import {
   setInventorySellMode,
   clearInventorySellPick,
   removeItemAt,
+  removeFirstItem,
+  countItem,
 } from "./backrooms-inventory.js";
 import { getSellPrice } from "./backrooms-shop-prices.js";
+import {
+  tryBeginMerchantTrade,
+  shouldGiveLuckyMerchantGift,
+  getMerchantLockRemainingMs,
+  getLuck,
+} from "./backrooms-luck.js";
 import {
   MEG_NV_POTION_GIVEN_KEY,
   MEG_NV_ALMOND_GIVEN_KEY,
@@ -726,6 +734,58 @@ function openMegGuideDialogue() {
 
 /** @type {null | { source: "backpack" | "hotbar", index: number, id: string, name: string, price: number }} */
 let pendingSale = null;
+let bulkSellPromptEl = null;
+let bulkSellPromptTimer = null;
+
+function clearBulkSellPrompt() {
+  if (bulkSellPromptTimer) {
+    clearTimeout(bulkSellPromptTimer);
+    bulkSellPromptTimer = null;
+  }
+  if (bulkSellPromptEl) {
+    bulkSellPromptEl.remove();
+    bulkSellPromptEl = null;
+  }
+}
+
+function showBulkSellPrompt(itemId, itemName, unitPrice) {
+  clearBulkSellPrompt();
+  var remaining = countItem(itemId);
+  if (remaining < 2) return;
+  var prompt = document.createElement("div");
+  prompt.setAttribute("role", "button");
+  prompt.setAttribute("tabindex", "0");
+  prompt.style.cssText =
+    "position:fixed;left:16px;top:16px;z-index:160;max-width:min(360px,82vw);" +
+    "padding:12px 15px;border:1px solid rgba(255,212,121,.75);border-radius:9px;" +
+    "background:rgba(15,18,22,.94);color:#ffe6ad;font:14px/1.55 system-ui,sans-serif;" +
+    "box-shadow:0 8px 28px rgba(0,0,0,.45);cursor:pointer;user-select:none;";
+  prompt.textContent =
+    "是否出售所有「" +
+    itemName +
+    "」？背包和快捷栏还剩 " +
+    remaining +
+    " 个，鼠标双击此处全部售出。";
+  prompt.addEventListener("dblclick", function () {
+    if (megDialogueKind !== "trade") return;
+    var sold = 0;
+    while (countItem(itemId) > 0 && removeFirstItem(itemId)) sold++;
+    if (sold < 1) {
+      clearBulkSellPrompt();
+      return;
+    }
+    var total = sold * unitPrice;
+    addMegPoints(total);
+    updateMegPointsDisplay(megPointsEl);
+    if (survival) survival.refreshHud();
+    showLootToast("全部售出 " + itemName + " ×" + sold + " · +" + total + " 积分点");
+    showSellPrompt("已售出所有「" + itemName + "」。");
+    clearBulkSellPrompt();
+  });
+  document.body.appendChild(prompt);
+  bulkSellPromptEl = prompt;
+  bulkSellPromptTimer = window.setTimeout(clearBulkSellPrompt, 8000);
+}
 
 function setDialogueChoicesSellIdle() {
   if (!dialogueChoicesEl) return;
@@ -758,6 +818,7 @@ function showSellPrompt(note) {
 
 function onSellItemPicked(item, source, index) {
   if (megDialogueKind !== "trade") return;
+  clearBulkSellPrompt();
   var price = getSellPrice(item.id);
   if (price == null) {
     pendingSale = null;
@@ -797,11 +858,27 @@ function confirmSellPendingItem() {
   updateMegPointsDisplay(megPointsEl);
   if (survival) survival.refreshHud();
   showLootToast("售出 " + deal.name + " · +" + deal.price + " 积分点");
-  showSellPrompt("成交。");
+  var giftNote = "";
+  if (shouldGiveLuckyMerchantGift()) {
+    var gift =
+      Math.random() < 0.5
+        ? { id: "almond_water", name: "杏仁水" }
+        : { id: "fire_salt", name: "小块可爆炸火盐" };
+    if (addItem(gift)) giftNote = " 看你今天运气不错，再送你一份" + gift.name + "。";
+  }
+  showSellPrompt("成交。" + giftNote);
+  showBulkSellPrompt(deal.id, deal.name, deal.price);
 }
 
 function openMegTradeDialogue() {
   if (!dialogueEl || !dialogueTextEl) return;
+  if (!tryBeginMerchantTrade()) {
+    var seconds = Math.ceil(getMerchantLockRemainingMs() / 1000);
+    showLootToast(
+      "商人厌恶地避开了你，拒绝进行任何买卖 · " + seconds + " 秒后再试"
+    );
+    return;
+  }
   megDialogueOpen = true;
   megDialogueKind = "trade";
   pendingSale = null;
@@ -903,6 +980,7 @@ function closeMegDialogue() {
   megDialogueKind = null;
   level11TourStep = 0;
   pendingSale = null;
+  clearBulkSellPrompt();
   setDialogueImage(null);
   document.body.classList.remove("backrooms-dialogue-open");
   if (wasSelling) {
@@ -1369,10 +1447,32 @@ function tryLootFixedChest(chest) {
   }
 }
 
+function markChestEmpty(chest, text) {
+  chest.opened = true;
+  if (chest.chestId) markLevel1_1ChestOpened(chest.chestId);
+  if (chest.glowLight) chest.glowLight.intensity = 0.08;
+  showLootToast(text || "搜索宝箱 · 空箱子");
+}
+
 function tryLootChest() {
   if (isInventoryOpen() || !survival || survival.dead) return;
   var chest = findTargetChest();
   if (!chest || chest.opened) return;
+  var luck = getLuck();
+  if (luck <= -30 && Math.random() < 0.35) {
+    markChestEmpty(chest, "搜索宝箱 · 里面什么都没有");
+    return;
+  }
+  if (
+    luck <= -30 &&
+    chest.lootKind &&
+    (chest.lootKind === "royal_rations" ||
+      chest.lootKind === "royal_rations_trap") &&
+    Math.random() < 0.5
+  ) {
+    markChestEmpty(chest, "搜索宝箱 · 高级物资不翼而飞");
+    return;
+  }
   if (chest.lootKind) {
     tryLootFixedChest(chest);
     return;

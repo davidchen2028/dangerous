@@ -16,6 +16,8 @@ import {
   getHpMax,
   getStaminaMax,
 } from "./backrooms-royal-rations.js";
+import { clearSoyMilkBuffs } from "./backrooms-soy-milk.js";
+import { clearLuck } from "./backrooms-luck.js";
 import { getSanityMax } from "./backrooms-death-penalty.js";
 import { clearNightVision } from "./backrooms-night-vision.js";
 import { saveBackroomsSurvival } from "./backrooms-survival-persist.js";
@@ -197,6 +199,8 @@ export function applyMegDeathState(survival) {
     sessionStorage.removeItem(MEG_DEATH_KEY);
 
     clearRoyalRationsBuff();
+    clearSoyMilkBuffs();
+    clearLuck();
     clearNightVision();
     resetBackpack();
 
@@ -239,13 +243,27 @@ function setMegDeathOverlayMessage(survival, reason, text) {
  * 注入 M.E.G 死亡/重生策略：survival 只负责判定死亡并回调，具体跳转由本模块 closure 决定。
  * @param {import('./backrooms-survival.js').BackroomsSurvival} survival
  * @param {() => { level: number, isInMegBase?: () => boolean, getMegSpawn?: () => { x: number, z: number, yaw?: number } | null }} getCtx
- * @param {{ onMegRespawn?: (reason: string) => void, refreshLevelPass?: import('./backrooms-level-pass.js').BackroomsLevelPassId, getLevelPassYaw?: () => number, megHubPage?: string, level0Page?: string }} [options]
+ * @param {{ onMegRespawn?: (reason: string) => void, refreshLevelPass?: import('./backrooms-level-pass.js').BackroomsLevelPassId, getLevelPassYaw?: () => number, megHubPage?: string, level0Page?: string, beforeNavigate?: () => Promise<void> | void }} [options]
  */
 export function installMegCheckpointDeathHooks(survival, getCtx, options) {
   if (!survival) return;
   options = options || {};
   var megHubPage = options.megHubPage || MEG_HUB_PAGE;
   var level0Page = options.level0Page || LEVEL0_PAGE;
+
+  /** beforeNavigate 可返回 Promise（如音乐淡出），跳转等它结束 */
+  function leavePage(go) {
+    var pending = null;
+    if (typeof options.beforeNavigate === "function") {
+      try {
+        pending = options.beforeNavigate();
+      } catch (err) {
+        pending = null;
+      }
+    }
+    if (pending && typeof pending.then === "function") pending.then(go, go);
+    else go();
+  }
   /** @type {"l0_reset" | "meg_hub_redirect" | "meg_local" | null} */
   var deathPlan = null;
 
@@ -289,6 +307,8 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
       // 第 1/2 次死亡：软回 L0（保留背包/负面/积分），不再整局清档
       try {
         clearRoyalRationsBuff();
+        clearSoyMilkBuffs();
+        clearLuck();
         clearNightVision();
         survival.hp = getHpMax();
         survival.sanity = getSanityMax();
@@ -307,12 +327,16 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
         /* ignore */
       }
       grantLevelPass("l0");
-      window.location.replace(level0Page);
+      leavePage(function () {
+        window.location.replace(level0Page);
+      });
       return;
     }
     if (plan === "meg_hub_redirect") {
       prepareMegRespawnL1Entry();
-      window.location.href = megHubPage;
+      leavePage(function () {
+        window.location.href = megHubPage;
+      });
       return;
     }
     if (plan === "meg_local") {
@@ -327,6 +351,8 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
 
     try {
       clearRoyalRationsBuff();
+      clearSoyMilkBuffs();
+      clearLuck();
       clearNightVision();
       survival.hp = getHpMax();
       survival.sanity = getSanityMax();
@@ -341,7 +367,9 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
       /* ignore */
     }
     grantLevelPass("l0");
-    window.location.replace(level0Page);
+    leavePage(function () {
+      window.location.replace(level0Page);
+    });
   };
 }
 

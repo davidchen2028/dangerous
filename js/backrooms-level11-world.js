@@ -25,9 +25,6 @@ const L119_SHOP_Z = 0;
 /** B.N.T.G 大房子：右侧街，门开在房子侧面（-Z），很难发现 */
 const BNTG_X = BUILDING_X;
 const BNTG_Z = -9;
-/** 出生点（0,0）旁的 M.E.G 工作人员 */
-const STAFF_X = 0.9;
-const STAFF_Z = -3;
 
 var _boxGeo = null;
 var _materials = null;
@@ -354,68 +351,6 @@ function addSegment(root, index) {
   return { group: group, colliders: entries };
 }
 
-/** 出生点旁的 M.E.G 工作人员：程序化人形 + 不可见准心拾取盒 */
-function addStaffNpc(root, interactRoots) {
-  var group = new THREE.Group();
-  group.name = "Level11MegStaff";
-  group.position.set(STAFF_X, 0, STAFF_Z);
-  group.rotation.y = Math.atan2(-STAFF_X, -STAFF_Z);
-  root.add(group);
-
-  var uniformMat = new THREE.MeshLambertMaterial({ color: 0x2a5080, emissive: 0x0a1828 });
-  var skinMat = new THREE.MeshLambertMaterial({ color: 0xc89a6a, emissive: 0x100804 });
-  var legMat = new THREE.MeshLambertMaterial({ color: 0x1a2840, emissive: 0x060810 });
-
-  var legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.85, 0.24), legMat);
-  legL.position.set(-0.14, 0.425, 0);
-  group.add(legL);
-  var legR = legL.clone();
-  legR.position.x = 0.14;
-  group.add(legR);
-
-  var torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.72, 0.32), uniformMat);
-  torso.position.y = 1.21;
-  group.add(torso);
-
-  var head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), skinMat);
-  head.position.y = 1.72;
-  group.add(head);
-
-  var armL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.58, 0.16), uniformMat);
-  armL.position.set(-0.36, 1.18, 0);
-  group.add(armL);
-  var armR = armL.clone();
-  armR.position.x = 0.36;
-  group.add(armR);
-
-  var badgeCanvas = document.createElement("canvas");
-  badgeCanvas.width = 128;
-  badgeCanvas.height = 64;
-  var bctx = badgeCanvas.getContext("2d");
-  bctx.fillStyle = "#1a3050";
-  bctx.fillRect(0, 0, 128, 64);
-  bctx.fillStyle = "#8ec8ff";
-  bctx.font = "bold 28px system-ui, sans-serif";
-  bctx.textAlign = "center";
-  bctx.textBaseline = "middle";
-  bctx.fillText("M.E.G", 64, 32);
-  var badge = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.32, 0.16),
-    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(badgeCanvas) })
-  );
-  badge.position.set(0, 1.28, 0.17);
-  group.add(badge);
-
-  var pick = new THREE.Mesh(
-    new THREE.BoxGeometry(0.95, 1.9, 0.9),
-    new THREE.MeshBasicMaterial({ visible: false })
-  );
-  pick.position.y = 0.95;
-  pick.userData.brInteract = { kind: "l11_meg_staff" };
-  group.add(pick);
-  interactRoots.push(pick);
-}
-
 /** B.N.T.G 员工：房内的商人，外观普通制服 + 不可见拾取盒 */
 function addBntgNpc(root, interactRoots, x, z) {
   var group = new THREE.Group();
@@ -487,6 +422,77 @@ function addBntgNpc(root, interactRoots, x, z) {
   interactRoots.push(pick);
 }
 
+/** B.N.T.G 收购员：站在售货员旁，负责回收玩家物资 */
+function addBntgBuyerNpc(root, interactRoots, x, z) {
+  var group = new THREE.Group();
+  group.name = "Level11BntgBuyer";
+  group.position.set(x, 0, z);
+  group.rotation.y = Math.PI; // 面向门口（-Z）
+  root.add(group);
+
+  var uniformMat = new THREE.MeshLambertMaterial({ color: 0x35506e, emissive: 0x0a141f });
+  var skinMat = new THREE.MeshLambertMaterial({ color: 0xd0a878, emissive: 0x120a05 });
+  var legMat = new THREE.MeshLambertMaterial({ color: 0x1c2a3a, emissive: 0x060810 });
+
+  var legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.85, 0.24), legMat);
+  legL.position.set(-0.14, 0.425, 0);
+  group.add(legL);
+  var legR = legL.clone();
+  legR.position.x = 0.14;
+  group.add(legR);
+
+  var torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.72, 0.32), uniformMat);
+  torso.position.y = 1.21;
+  group.add(torso);
+
+  var head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), skinMat);
+  head.position.y = 1.72;
+  group.add(head);
+
+  var armL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.58, 0.16), uniformMat);
+  armL.position.set(-0.36, 1.18, 0);
+  group.add(armL);
+  var armR = armL.clone();
+  armR.position.x = 0.36;
+  group.add(armR);
+
+  var badgeCanvas = document.createElement("canvas");
+  badgeCanvas.width = 128;
+  badgeCanvas.height = 64;
+  var bctx = badgeCanvas.getContext("2d");
+  bctx.fillStyle = "#16324a";
+  bctx.fillRect(0, 0, 128, 64);
+  bctx.fillStyle = "#a8d4ff";
+  bctx.font = "bold 24px system-ui, sans-serif";
+  bctx.textAlign = "center";
+  bctx.textBaseline = "middle";
+  bctx.fillText("B.N.T.G 收购", 64, 32);
+  var badge = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.34, 0.17),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(badgeCanvas) })
+  );
+  badge.position.set(0, 1.28, -0.17);
+  badge.rotation.y = Math.PI;
+  group.add(badge);
+
+  // 简易柜台
+  var counter = new THREE.Mesh(
+    new THREE.BoxGeometry(2.0, 0.95, 0.7),
+    new THREE.MeshStandardMaterial({ color: 0x53606f, roughness: 0.8 })
+  );
+  counter.position.set(x, 0.475, z - 1.4);
+  root.add(counter);
+
+  var pick = new THREE.Mesh(
+    new THREE.BoxGeometry(2.2, 2.2, 2.8),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  pick.position.set(x, 1.1, z - 0.6);
+  pick.userData.brInteract = { kind: "l11_bntg_buyer" };
+  root.add(pick);
+  interactRoots.push(pick);
+}
+
 /** B.N.T.G 大房子：外观与普通民居无异，门开在侧面（-Z），内有商人 */
 function addBntgHouse(root, staticColliders, interactRoots) {
   var mats = materials();
@@ -535,6 +541,7 @@ function addBntgHouse(root, staticColliders, interactRoots) {
   root.add(lamp);
 
   addBntgNpc(root, interactRoots, x, z + 2);
+  addBntgBuyerNpc(root, interactRoots, x + 3.4, z + 2);
 }
 
 export function buildLevel11World(root) {
@@ -589,8 +596,6 @@ export function buildLevel11World(root) {
   addBntgHouse(root, staticColliders, interactRoots);
   updateStreaming(0);
   rebuildColliders();
-  // NPC 挂在常驻 root 上，不随街区流式卸载。
-  addStaffNpc(root, interactRoots);
   return {
     colliders: activeColliders,
     interactRoots: interactRoots,

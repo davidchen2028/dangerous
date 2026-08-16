@@ -477,7 +477,8 @@ body.backrooms-pointer-locked .backrooms-input {
 
 .backrooms-crosshair--interact::before,
 .backrooms-crosshair--interact::after {
-  background: rgba(255, 210, 120, 0.95);
+  background: rgba(255, 214, 60, 1);
+  box-shadow: 0 0 7px rgba(255, 200, 40, 0.9), 0 0 4px rgba(0, 0, 0, 0.65);
 }
 
 /* 火盐锁定实体：准星变黄 */
@@ -586,28 +587,55 @@ body.backrooms-pack-open .backrooms-crosshair {
   white-space: nowrap;
 }
 
-.backrooms-hud__talk {
+/* 准星下方的交互提示：位置高于快捷栏，避免被遮挡 */
+.backrooms-hud__prompt {
   position: absolute;
-  top: 58%;
+  top: calc(50% + 42px);
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   margin: 0;
-  padding: 10px 18px;
-  border-radius: 8px;
-  border: 1px solid rgba(120, 190, 255, 0.35);
-  background: rgba(0, 0, 0, 0.72);
-  font-size: 14px;
-  color: #b8dcff;
+  padding: 12px 22px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 210, 120, 0.5);
+  background: rgba(14, 11, 4, 0.8);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  color: #ffe6b0;
+  text-align: center;
+  white-space: nowrap;
 }
 
-.backrooms-hud__talk[hidden] {
+.backrooms-hud__prompt[hidden] {
   display: none;
+}
+
+.backrooms-hud__prompt kbd {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 2px 8px;
+  margin: 0 3px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 220, 150, 0.55);
+  background: rgba(255, 220, 150, 0.16);
+  font: inherit;
+  text-align: center;
+}
+
+body.backrooms-dialogue-open .backrooms-hud__prompt,
+body.backrooms-pack-open .backrooms-hud__prompt {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .backrooms-dialogue {
   position: absolute;
   left: 50%;
   bottom: 22%;
+  /* 高于输入层与 HUD，否则选项按钮点击会被输入层吃掉 */
+  z-index: 7;
   transform: translateX(-50%);
   width: min(92vw, 420px);
   padding: 14px 18px;
@@ -658,6 +686,7 @@ body.backrooms-pack-open .backrooms-crosshair {
   margin: 12px 0 0;
   font-size: 13px;
   color: #a8cce8;
+  pointer-events: auto;
 }
 
 .backrooms-dialogue__choice {
@@ -691,10 +720,14 @@ body.backrooms-pack-open .backrooms-crosshair {
 }
 
 body.backrooms-dialogue-open .backrooms-crosshair,
-body.backrooms-dialogue-open .backrooms-hud__hint,
-body.backrooms-dialogue-open .backrooms-hud__talk {
+body.backrooms-dialogue-open .backrooms-hud__hint {
   opacity: 0;
   pointer-events: none;
+}
+
+/* 死亡遮罩期间不保留对话框 */
+body.backrooms-dead .backrooms-dialogue {
+  display: none;
 }
 
 .backrooms-home-ending {
@@ -747,7 +780,7 @@ body.backrooms-dialogue-open .backrooms-hud__talk {
 
 body.backrooms-home-ending-open .backrooms-crosshair,
 body.backrooms-home-ending-open .backrooms-hud__search,
-body.backrooms-home-ending-open .backrooms-hud__talk {
+body.backrooms-home-ending-open .backrooms-hud__prompt {
   opacity: 0;
   pointer-events: none;
 }

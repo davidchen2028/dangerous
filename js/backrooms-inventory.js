@@ -11,11 +11,19 @@ export const HOTBAR_CAPACITY = 6;
 /** 后室物品图标（与主游戏 item-catalog 分离，仅 UI 用） */
 const ITEM_ICONS = {
   almond_water: "img/backrooms/almond-water.png",
+  strawberry_soy_milk: "img/backrooms/strawberry-soy-milk.png",
+  banana_soy_milk: "img/backrooms/banana-soy-milk.png",
+  strawberry_lucky_soy_milk: "img/backrooms/strawberry-soy-milk.png",
+  banana_lucky_soy_milk: "img/backrooms/banana-soy-milk.png",
+  lucky_soy_milk: "img/backrooms/lucky-soy-milk.png",
+  lucky_soy_milk_cold: "img/backrooms/lucky-soy-milk.png",
+  lucky_soy_milk_hot: "img/backrooms/lucky-soy-milk-hot.png",
   night_vision_potion: "img/backrooms/night-vision-potion.png",
   royal_rations: "img/backrooms/royal-rations.png",
   royal_rations_medium: "img/backrooms/royal-rations-medium.png",
   fire_salt: "img/backrooms/fire-salt.png",
   archive_c11: "img/backrooms/archive-viewer.png",
+  roulette: "img/backrooms/roulette-revolver.png",
   roulette_revolver: "img/backrooms/roulette-revolver.png",
 };
 
@@ -447,6 +455,26 @@ function dispatchUseItemId(itemId) {
     if (typeof window.__backroomsUseAlmondWater === "function") {
       window.__backroomsUseAlmondWater();
     }
+  } else if (itemId === "strawberry_soy_milk") {
+    if (typeof window.__backroomsUseStrawberrySoyMilk === "function") {
+      window.__backroomsUseStrawberrySoyMilk();
+    }
+  } else if (itemId === "banana_soy_milk") {
+    if (typeof window.__backroomsUseBananaSoyMilk === "function") {
+      window.__backroomsUseBananaSoyMilk();
+    }
+  } else if (
+    itemId === "lucky_soy_milk" ||
+    itemId === "strawberry_lucky_soy_milk" ||
+    itemId === "banana_lucky_soy_milk"
+  ) {
+    if (typeof window.__backroomsUseVaultSoyMilk === "function") {
+      window.__backroomsUseVaultSoyMilk(itemId);
+    }
+  } else if (itemId === "lucky_soy_milk_cold" || itemId === "lucky_soy_milk_hot") {
+    if (typeof window.__backroomsUseLuckySoyMilk === "function") {
+      window.__backroomsUseLuckySoyMilk(itemId);
+    }
   } else if (itemId === "night_vision_potion") {
     if (typeof window.__backroomsUseNightVisionPotion === "function") {
       window.__backroomsUseNightVisionPotion();
@@ -465,6 +493,10 @@ function dispatchUseItemId(itemId) {
     }
   } else if (itemId === "archive_c11") {
     useArchiveC11();
+  } else if (itemId === "roulette") {
+    if (typeof window.__backroomsUseRoulette === "function") {
+      window.__backroomsUseRoulette();
+    }
   }
 }
 
@@ -556,6 +588,9 @@ function renderGrid() {
     if (backpackSlots[i]) {
       cell.classList.add("br-pack__cell--filled");
       cell.title = backpackSlots[i].name + " · 拖到快捷栏";
+      if (backpackSlots[i].id === "lucky_soy_milk_cold") {
+        cell.title = backpackSlots[i].name + " · 把火盐拖到此格可加热";
+      }
       cell.draggable = true;
       appendItemIcon(cell, backpackSlots[i]);
       if (sellPickHandler) {
@@ -589,7 +624,10 @@ function renderHotbar() {
     if (i === selectedHotbarIndex) cell.classList.add("br-hotbar__cell--active");
     if (hotbarSlots[i]) {
       cell.classList.add("br-hotbar__cell--filled");
-      cell.title = hotbarSlots[i].name;
+      cell.title =
+        hotbarSlots[i].id === "lucky_soy_milk_cold"
+          ? hotbarSlots[i].name + " · 把火盐拖到此格可加热"
+          : hotbarSlots[i].name;
       cell.draggable = true;
       appendItemIcon(cell, hotbarSlots[i]);
     } else {
@@ -632,6 +670,30 @@ function moveItem(fromSource, fromIndex, toSource, toIndex) {
   renderHotbar();
 }
 
+/** 火盐拖到冷幸运豆奶格子 → 消耗火盐，豆奶变为热幸运豆奶 */
+function tryHeatLuckySoyMilk(fromSource, fromIndex, toSource, toIndex) {
+  var fromArr = fromSource === "hotbar" ? hotbarSlots : backpackSlots;
+  var toArr = toSource === "hotbar" ? hotbarSlots : backpackSlots;
+  if (fromIndex < 0 || fromIndex >= fromArr.length) return false;
+  if (toIndex < 0 || toIndex >= toArr.length) return false;
+  var moving = fromArr[fromIndex];
+  var dest = toArr[toIndex];
+  if (!moving || !dest) return false;
+  if (moving.id !== "fire_salt" || dest.id !== "lucky_soy_milk_cold") return false;
+  fromArr[fromIndex] = null;
+  toArr[toIndex] = {
+    id: "lucky_soy_milk_hot",
+    name: "幸运豆奶（热）",
+  };
+  persistAll();
+  renderGrid();
+  renderHotbar();
+  if (typeof window.__backroomsOnLuckySoyMilkHeated === "function") {
+    window.__backroomsOnLuckySoyMilkHeated();
+  }
+  return true;
+}
+
 function bindDragAndDrop(root) {
   root.addEventListener("dragstart", function (e) {
     var cell = e.target.closest("[data-source][data-slot]");
@@ -671,6 +733,7 @@ function bindDragAndDrop(root) {
     if (!Number.isFinite(fromIndex) || !Number.isFinite(toIndex)) return;
     if (fromSource !== "backpack" && fromSource !== "hotbar") return;
     if (toSource !== "backpack" && toSource !== "hotbar") return;
+    if (tryHeatLuckySoyMilk(fromSource, fromIndex, toSource, toIndex)) return;
     moveItem(fromSource, fromIndex, toSource, toIndex);
   });
 }
