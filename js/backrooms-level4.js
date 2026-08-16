@@ -37,6 +37,12 @@ import {
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { refreshLevel1_1OutpostChestsOnFirstL4Visit } from "./backrooms-level1-1-chests.js";
 import {
+  bindLevel4Music,
+  startLevel4Music,
+  fadeOutLevel4Music,
+  LEVEL4_MUSIC_FADE_OUT_MS as MUSIC_FADE_OUT_MS,
+} from "./backrooms-level4-music.js";
+import {
   createBackroomsFpsState,
   moveBackroomsPlayer,
   updateBackroomsPlayerPhysics,
@@ -248,6 +254,12 @@ function openBntgDialogue() {
   if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
 }
 
+function leaveLevel4(href) {
+  fadeOutLevel4Music(MUSIC_FADE_OUT_MS).then(function () {
+    window.location.href = href;
+  });
+}
+
 function exitToL1BntgBase() {
   if (transitionLock) return;
   transitionLock = true;
@@ -256,9 +268,7 @@ function exitToL1BntgBase() {
   saveBackroomsSurvival(survival);
   grantLevelPass("l1_bntg", fps.yaw);
   queueEnterLevelBanner("Level 1 · B.N.T.G. 基地");
-  window.setTimeout(function () {
-    window.location.href = "backrooms-level1-bntg-base.html";
-  }, 500);
+  leaveLevel4("backrooms-level1-bntg-base.html");
 }
 
 function handleBntgChoice(choice) {
@@ -285,9 +295,7 @@ function exitToLevel6() {
   saveBackroomsSurvival(survival);
   grantLevelPass("l6", fps.yaw);
   queueEnterLevelNumber(6);
-  window.setTimeout(function () {
-    window.location.href = "backrooms-level6.html";
-  }, 550);
+  leaveLevel4("backrooms-level6.html");
 }
 
 function exitToLevel61() {
@@ -297,9 +305,7 @@ function exitToLevel61() {
   saveBackroomsSurvival(survival);
   grantLevelPass("l6_1", fps.yaw);
   queueEnterLevelNumber("6.1");
-  window.setTimeout(function () {
-    window.location.href = "backrooms-level6-1.html";
-  }, 550);
+  leaveLevel4("backrooms-level6-1.html");
 }
 
 function tryStairsQ() {
@@ -355,7 +361,8 @@ function bindControls() {
       }
       return false;
     },
-    onPointerLockChange: function () {
+    onPointerLockChange: function (locked) {
+      if (locked) startLevel4Music();
       syncLookUi();
     },
   });
@@ -367,6 +374,7 @@ function bindControls() {
     });
   }
   bindBackroomsWindowResize(renderer, camera);
+  bindLevel4Music();
 }
 
 function init() {
@@ -418,9 +426,17 @@ function init() {
       showLootToast("皇家口粮 · 10 分钟强化");
     },
   });
-  installMegCheckpointDeathHooks(survival, function () {
-    return { level: 4 };
-  });
+  installMegCheckpointDeathHooks(
+    survival,
+    function () {
+      return { level: 4 };
+    },
+    {
+      beforeNavigate: function () {
+        return fadeOutLevel4Music(MUSIC_FADE_OUT_MS);
+      },
+    }
+  );
 
   initBackroomsTemperature(4, { rootEl: tempRootEl, fillEl: tempFillEl, valueEl: tempValueEl });
   updateMegPointsDisplay(megPointsEl);
