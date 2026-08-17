@@ -75,6 +75,8 @@ export function countBaseStorageFree() {
 /** 背包满时奖励/发放写入寄存柜。 */
 export function addToBaseStorage(item) {
   if (!item || !item.id) return false;
+  // 每次写入前重读：所有改动都即时落盘，重读可避免覆盖掉别处刚寄存的物品。
+  loadStorage();
   for (var i = 0; i < storageSlots.length; i++) {
     if (!storageSlots[i]) {
       storageSlots[i] = cloneItem(item);
@@ -198,16 +200,17 @@ function ensurePanel() {
   panelEl.id = "backroomsBaseStorage";
   panelEl.hidden = true;
   panelEl.style.cssText =
-    "position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;" +
+    "position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;" +
     "background:rgba(8,10,14,.72);font-family:ui-sans-serif,system-ui,sans-serif;color:#efe8d8;";
   panelEl.innerHTML =
     '<div style="width:min(920px,96vw);max-height:92vh;overflow:auto;background:#1c1f24;border:1px solid #6a6354;padding:1rem 1.1rem 1.2rem;">' +
-    '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:1rem;margin-bottom:.7rem;">' +
+    '<div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.7rem;">' +
+    '<button type="button" data-storage-close="1" title="关闭寄存柜" aria-label="关闭寄存柜" ' +
+    'style="flex:none;width:38px;height:38px;line-height:1;padding:0;border:1px solid #8a8272;' +
+    'border-radius:4px;background:#3a2222;color:#ffdede;font-size:1.4rem;font-weight:700;' +
+    'cursor:pointer;">✕</button>' +
     "<strong style=\"font-size:1.05rem;\">基地寄存柜 · 100 格</strong>" +
-    '<span style="opacity:.75;font-size:.85rem;">拖拽移动 · 或点击两格互换 · 死亡不会清空</span>' +
-    '<button type="button" data-storage-close="1" style="flex:none;min-width:88px;padding:.3rem .6rem;' +
-    'border:1px solid #6a6354;background:#2c3038;color:#efe8d8;font-size:.85rem;cursor:pointer;">' +
-    "关闭 (Esc)</button>" +
+    '<span style="opacity:.75;font-size:.85rem;">点左上角 ✕ 关闭 · 拖拽移动 · 或点击两格互换 · 死亡不会清空</span>' +
     "</div>" +
     '<p style="margin:.2rem 0 .55rem;opacity:.8;font-size:.86rem;">寄存区</p>' +
     '<div id="brStorageGrid" style="display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px;"></div>' +
@@ -217,15 +220,28 @@ function ensurePanel() {
     '<div id="brStorageHotbar" style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;max-width:420px;"></div>' +
     "</div>";
   document.body.appendChild(panelEl);
+
+  function isCloseTarget(e) {
+    return !!(e.target && e.target.closest && e.target.closest("[data-storage-close]"));
+  }
+  // pointerdown 捕获：即使关卡的输入层想抢这次点击，✕ 也一定能关掉面板。
+  panelEl.addEventListener(
+    "pointerdown",
+    function (e) {
+      if (!isCloseTarget(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeBaseStorage();
+    },
+    true
+  );
   panelEl.addEventListener("click", function (e) {
-    if (e.target === panelEl) {
+    if (isCloseTarget(e)) {
+      e.stopPropagation();
       closeBaseStorage();
       return;
     }
-    if (e.target.closest && e.target.closest("[data-storage-close]")) {
-      e.stopPropagation();
-      closeBaseStorage();
-    }
+    if (e.target === panelEl) closeBaseStorage();
   });
   bindStorageDragAndDrop(panelEl);
   return panelEl;

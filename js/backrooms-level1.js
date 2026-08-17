@@ -27,7 +27,7 @@ import {
   openBaseStorage,
   isBaseStorageOpen,
   wrapInventoryOpenHandler,
-} from "./backrooms-base-storage.js";
+} from "./backrooms-base-storage.js?v=2";
 import { getSellPrice } from "./backrooms-shop-prices.js";
 import {
   tryBeginMerchantTrade,

@@ -4,7 +4,10 @@
 import { addItem, countItem, removeFirstItem } from "./backrooms-inventory.js";
 import { addMegPoints, getMegPoints } from "./backrooms-meg-points.js";
 import { showBackroomsLootToast } from "./backrooms-fps-controller.js";
-import { grantItemListOrStore, removeFirstFromBaseStorage } from "./backrooms-base-storage.js";
+import {
+  grantItemListOrStore,
+  removeFirstFromBaseStorage,
+} from "./backrooms-base-storage.js?v=2";
 
 const ACCEPTED_KEY = "backrooms_tasks_accepted_v1";
 const COMPLETED_KEY = "backrooms_tasks_completed_v1";

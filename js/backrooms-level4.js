@@ -14,7 +14,7 @@ import {
   openBaseStorage,
   isBaseStorageOpen,
   wrapInventoryOpenHandler,
-} from "./backrooms-base-storage.js";
+} from "./backrooms-base-storage.js?v=2";
 import { updateMegPointsDisplay } from "./backrooms-meg-points.js";
 import {
   initBackroomsTemperature,
