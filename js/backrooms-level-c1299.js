@@ -580,6 +580,13 @@ function taskActive(id) {
   return isTaskAccepted(id) && !isTaskCompleted(id) && !isTaskDelivered(id);
 }
 
+/** 目标还没记满时才提供交互，避免记满后仍提示「可采样/可投放」。 */
+function taskNeedsMore(id) {
+  if (!taskActive(id)) return false;
+  var p = getReconProgress(id);
+  return p.count < p.target;
+}
+
 function findNearSampleZone() {
   for (var i = 0; i < sampleZones.length; i++) {
     var z = sampleZones[i];
@@ -593,6 +600,7 @@ function findNearSampleZone() {
 function findNearBeaconZone() {
   for (var i = 0; i < beaconZones.length; i++) {
     var z = beaconZones[i];
+    if (z.done) continue;
     if (dist3(z.x, z.y, z.z, fps.player.x, fps.feetY, fps.player.z) <= BEACON_REACH) {
       return z;
     }
@@ -618,15 +626,15 @@ function refreshAim() {
     aimKind = "platform";
     return;
   }
-  if (taskActive(SAMPLE_TASK) && findNearSampleZone()) {
+  if (taskNeedsMore(SAMPLE_TASK) && findNearSampleZone()) {
     aimKind = "sample";
     return;
   }
-  if (taskActive(BEACON_TASK) && findNearBeaconZone()) {
+  if (taskNeedsMore(BEACON_TASK) && findNearBeaconZone()) {
     aimKind = "beacon";
     return;
   }
-  if (taskActive(PAGES_TASK) && findNearScrapPage()) {
+  if (taskNeedsMore(PAGES_TASK) && findNearScrapPage()) {
     aimKind = "page";
     return;
   }
@@ -699,21 +707,22 @@ function tryDeployBeacon() {
     return;
   }
   removeFirstItem("beacon_c1299");
+  zone.done = true;
   zone.mesh.material = materials.platform;
   if (result.done) {
-    showToast("三枚信标全部部署 · 立刻撤向黑石浮石！", 3600);
     bleed = Math.max(bleed, 1);
     refreshBleedUi();
-    showToast("投放过程让伤口恶化，开始流血……");
-  } else {
-    showToast("信标已部署（" + result.count + "/" + result.target + "）");
-    if (Math.random() < 0.55) {
-      bleed = Math.max(bleed, 1);
-      refreshBleedUi();
-      survival.takeDamage(6);
-      showToast("漂浮投放时擦伤加重，叠上流血。");
-    }
+    showToast("三枚信标全部部署 · 投放让伤口恶化开始流血 · 立刻撤向黑石浮石！", 4200);
+    return;
   }
+  var msg = "信标已部署（" + result.count + "/" + result.target + "）";
+  if (Math.random() < 0.55) {
+    bleed = Math.max(bleed, 1);
+    refreshBleedUi();
+    survival.takeDamage(6);
+    msg += " · 漂浮投放时擦伤加重，叠上流血";
+  }
+  showToast(msg, 3200);
 }
 
 function tryPickupPage() {
@@ -735,21 +744,16 @@ function tryPickupPage() {
   else showToast("拾取残页（" + result.count + "/" + result.target + "）· 带回 L4 再读");
 }
 
+/** 撤离时才把 deferDeliver 侦查任务标为已交付；条件不足由任务模块自行拒绝。 */
 function settleDeferredTasksOnExit() {
   var msgs = [];
-  if (taskActive(SAMPLE_TASK) || (isTaskAccepted(SAMPLE_TASK) && !isTaskDelivered(SAMPLE_TASK))) {
-    var s = deliverDeferredReconTask(SAMPLE_TASK, { requireDevice: true });
-    if (s.ok && !s.already) msgs.push("汤雾样本采集 · 已可回 L4 领赏");
-  }
-  if (taskActive(BEACON_TASK) || (isTaskAccepted(BEACON_TASK) && !isTaskDelivered(BEACON_TASK))) {
-    var b = deliverDeferredReconTask(BEACON_TASK, {});
-    if (b.ok && !b.already) msgs.push("空间坐标标记 · 已可回 L4 领赏");
-  }
-  if (taskActive(PAGES_TASK) || (isTaskAccepted(PAGES_TASK) && !isTaskDelivered(PAGES_TASK))) {
-    var p = deliverDeferredReconTask(PAGES_TASK, { requireFragileCount: 4 });
-    if (p.ok && !p.already) msgs.push("飘流残页调查 · 已可回 L4 领赏");
-  }
-  if (msgs.length) showToast(msgs.join(" / "), 4200);
+  var s = deliverDeferredReconTask(SAMPLE_TASK, { requireDevice: true });
+  if (s.ok && !s.already) msgs.push("汤雾样本采集");
+  var b = deliverDeferredReconTask(BEACON_TASK, {});
+  if (b.ok && !b.already) msgs.push("空间坐标标记");
+  var p = deliverDeferredReconTask(PAGES_TASK, { requireFragileCount: 4 });
+  if (p.ok && !p.already) msgs.push("飘流残页调查");
+  if (msgs.length) showToast(msgs.join(" / ") + " · 已可回 Level 4 领赏", 4200);
 }
 
 function leaveToC12991() {

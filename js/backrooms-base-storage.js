@@ -8,6 +8,9 @@ import {
   BACKPACK_CAPACITY,
   HOTBAR_CAPACITY,
   addItem,
+  closeBackpack,
+  isBackpackOpen,
+  renderGridPublic,
 } from "./backrooms-inventory.js";
 import { showBackroomsLootToast } from "./backrooms-fps-controller.js";
 
@@ -127,6 +130,9 @@ export function grantItemListOrStore(list, onToast) {
   if (stored > 0 && typeof onToast === "function") {
     onToast("背包满了，工作人员帮你寄存了 " + stored + " 件物品（可在 L1 / L4 / L11 基地取出）");
   }
+  if (failed > 0 && typeof onToast === "function") {
+    onToast("背包与寄存柜都满了，有 " + failed + " 件物品没能收下！");
+  }
   return { stored: stored, failed: failed };
 }
 
@@ -170,13 +176,20 @@ function capacityOf(side) {
 }
 
 function swapOrMove(fromSide, fromIndex, toSide, toIndex) {
-  if (fromSide === toSide && fromIndex === toIndex) return;
+  selected = null;
+  if (fromSide === toSide && fromIndex === toIndex) {
+    renderStorageUi();
+    return;
+  }
+  if (fromIndex < 0 || fromIndex >= capacityOf(fromSide)) return;
+  if (toIndex < 0 || toIndex >= capacityOf(toSide)) return;
   var a = getSlot(fromSide, fromIndex);
   var b = getSlot(toSide, toIndex);
   setSlot(fromSide, fromIndex, b);
   setSlot(toSide, toIndex, a);
-  selected = null;
   renderStorageUi();
+  // 快捷栏是常驻 HUD，跨模块改写槽位后必须让库存模块重绘，否则显示残留旧物品。
+  renderGridPublic();
 }
 
 function ensurePanel() {
@@ -191,7 +204,10 @@ function ensurePanel() {
     '<div style="width:min(920px,96vw);max-height:92vh;overflow:auto;background:#1c1f24;border:1px solid #6a6354;padding:1rem 1.1rem 1.2rem;">' +
     '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:1rem;margin-bottom:.7rem;">' +
     "<strong style=\"font-size:1.05rem;\">基地寄存柜 · 100 格</strong>" +
-    '<span style="opacity:.75;font-size:.85rem;">拖拽移动 · 或点击两格互换 · Esc / B 关闭 · 死亡不会清空</span>' +
+    '<span style="opacity:.75;font-size:.85rem;">拖拽移动 · 或点击两格互换 · 死亡不会清空</span>' +
+    '<button type="button" data-storage-close="1" style="flex:none;min-width:88px;padding:.3rem .6rem;' +
+    'border:1px solid #6a6354;background:#2c3038;color:#efe8d8;font-size:.85rem;cursor:pointer;">' +
+    "关闭 (Esc)</button>" +
     "</div>" +
     '<p style="margin:.2rem 0 .55rem;opacity:.8;font-size:.86rem;">寄存区</p>' +
     '<div id="brStorageGrid" style="display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px;"></div>' +
@@ -202,7 +218,14 @@ function ensurePanel() {
     "</div>";
   document.body.appendChild(panelEl);
   panelEl.addEventListener("click", function (e) {
-    if (e.target === panelEl) closeBaseStorage();
+    if (e.target === panelEl) {
+      closeBaseStorage();
+      return;
+    }
+    if (e.target.closest && e.target.closest("[data-storage-close]")) {
+      e.stopPropagation();
+      closeBaseStorage();
+    }
   });
   bindStorageDragAndDrop(panelEl);
   return panelEl;
@@ -325,10 +348,15 @@ export function openBaseStorage(opts) {
   opts = opts || {};
   ensurePanel();
   loadStorage();
+  // 背包面板与寄存面板都显示同一批槽位，叠开会互相盖住并显示过期数据。
+  if (isBackpackOpen()) closeBackpack();
   open = true;
   selected = null;
+  dragging = null;
   panelEl.hidden = false;
   if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+  // 捕获阶段接管按键：关卡自己的 keydown 处理会先吃掉 Esc，冒泡监听收不到。
+  document.addEventListener("keydown", onStorageKeydown, true);
   renderStorageUi();
   if (opts.toast !== false) {
     showBackroomsLootToast("寄存柜已打开 · 把物品挪进寄存区即可离开后保管", {
@@ -342,7 +370,9 @@ export function closeBaseStorage() {
   if (!open) return;
   open = false;
   selected = null;
+  dragging = null;
   if (panelEl) panelEl.hidden = true;
+  document.removeEventListener("keydown", onStorageKeydown, true);
   persistStorage();
   if (onOpenChange) onOpenChange(false);
 }
@@ -352,13 +382,20 @@ export function toggleBaseStorage() {
   else openBaseStorage();
 }
 
-window.addEventListener("keydown", function (e) {
+/**
+ * 面板打开期间吞掉全部按键，避免 R / 数字键在整理寄存时误用道具或移动。
+ */
+function onStorageKeydown(e) {
   if (!open) return;
-  if (e.code === "Escape" || e.code === "KeyB") {
-    e.preventDefault();
+  // 放行功能键，避免面板期间无法刷新页面或开devtools。
+  if (/^F\d{1,2}$/.test(e.code)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation();
+  if (e.code === "Escape" || e.key === "Escape" || e.code === "KeyB" || e.code === "KeyQ") {
     closeBaseStorage();
   }
-});
+}
 
 /** 各关卡设置背包开关回调时包一层，避免寄存与背包叠开。 */
 export function wrapInventoryOpenHandler(fn) {

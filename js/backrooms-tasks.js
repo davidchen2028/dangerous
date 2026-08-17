@@ -732,6 +732,7 @@ export function claimTaskReward(id) {
     }
   }
   var cooldownNote = noteTaskCompletion(id);
+  publishNewlyUnlockedTasks();
   renderTaskPanel();
   if (boardOpen) renderBoard("");
   return {
@@ -741,6 +742,26 @@ export function claimTaskReward(id) {
     cooldownNote: cooldownNote,
     stored: rewardGrant.stored,
   };
+}
+
+/**
+ * 刚领赏可能满足了某个前置解锁任务的条件。
+ * 这类任务标了 alwaysOfferWhenUnlocked，立刻挂上白板，
+ * 否则要等玩家离开再进 Level 4 才会刷出来。
+ */
+function publishNewlyUnlockedTasks() {
+  var offers = readIds(BOARD_OFFERS_KEY).slice();
+  var changed = false;
+  for (var i = 0; i < TASK_DEFS.length; i++) {
+    var task = TASK_DEFS[i];
+    if (!task.alwaysOfferWhenUnlocked) continue;
+    if (!task.requiresEverCompleted || !task.requiresEverCompleted.length) continue;
+    if (!taskPrereqsMet(task) || isTaskCooling(task.id)) continue;
+    if (offers.indexOf(task.id) >= 0) continue;
+    setOfferPresent(offers, task.id, true);
+    changed = true;
+  }
+  if (changed) writeIds(BOARD_OFFERS_KEY, offers);
 }
 
 export function getFirstDeliveredUnclaimedTask() {
