@@ -291,6 +291,9 @@ let survival = null;
 /** 切出状态：idle → dashing → done */
 let clipState = "idle";
 let clipDashLeft = 0;
+/** 主迷宫探索累计秒数；满 AUTO_CLIP_TO_L1_SEC 后强制前往 L1 */
+let exploreElapsedSec = 0;
+let autoClipTriggered = false;
 
 /** @type {THREE.Group | null} */
 let level0WorldRoot = null;
@@ -298,6 +301,7 @@ let level0WorldRoot = null;
 let level0Zones = null;
 const CLIP_DASH_SPEED = 13;
 const CLIP_DASH_TIME = 0.55;
+const AUTO_CLIP_TO_L1_SEC = 55;
 
 function syncLevel0HudTitle(title) {
   var el = document.querySelector(".backrooms-hud__title");
@@ -1067,26 +1071,45 @@ function tryClipOut() {
   if (clipHintEl) clipHintEl.hidden = true;
 }
 
+function goToLevel1FromL0() {
+  if (clipState === "done") return;
+  clipState = "done";
+  fps.move.forward = false;
+  if (clipHintEl) clipHintEl.hidden = true;
+  saveBackroomsSurvival(survival);
+  try {
+    grantLevelPass("clip");
+    sessionStorage.setItem("backrooms_clip_yaw", String(fps.yaw));
+  } catch (err) {
+    /* ignore */
+  }
+  queueEnterLevelNumber(1);
+  fadeOutLevel0Music(MUSIC_FADE_OUT_MS).then(function () {
+    window.location.href = "backrooms-level1.html";
+  });
+}
+
 function updateClipDash(dt) {
   if (clipState !== "dashing") return;
   movePlayer(dt, CLIP_DASH_SPEED / fps.player.speed);
   clipDashLeft -= dt;
   var c = getSpecialWallCenter();
   if (clipDashLeft <= 0 || fps.player.x > c.x - 0.35) {
-    clipState = "done";
-    fps.move.forward = false;
-    saveBackroomsSurvival(survival);
-    try {
-      grantLevelPass("clip");
-      sessionStorage.setItem("backrooms_clip_yaw", String(fps.yaw));
-    } catch (err) {
-      /* ignore */
-    }
-    queueEnterLevelNumber(1);
-    fadeOutLevel0Music(MUSIC_FADE_OUT_MS).then(function () {
-      window.location.href = "backrooms-level1.html";
-    });
+    goToLevel1FromL0();
   }
+}
+
+/** 在主迷宫探索满 55 秒后强制切出到 Level 1（子区域不计时）。 */
+function updateAutoClipToL1(dt) {
+  if (autoClipTriggered || clipState !== "idle") return;
+  if (survival && survival.dead) return;
+  if (level0Zones && level0Zones.isInSubZone()) return;
+  if (isInventoryOpen() || isTaskUiOpen()) return;
+  exploreElapsedSec += dt;
+  if (exploreElapsedSec < AUTO_CLIP_TO_L1_SEC) return;
+  autoClipTriggered = true;
+  showBackroomsToast("空间忽然收紧——你被拖向另一层。");
+  goToLevel1FromL0();
 }
 
 const mobileLookRef = { current: null };
@@ -1364,6 +1387,7 @@ function startLoop() {
     }
     updateClipPrompt();
     updateCrosshairL0();
+    updateAutoClipToL1(dt);
     updateBackroomsTemperature(dt, performance.now());
     updateBackroomsHeatDamage(survival, performance.now());
     updateBackroomsColdDamage(
