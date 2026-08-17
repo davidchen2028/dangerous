@@ -85,9 +85,11 @@ let chunks = new Map();
 let vanishedDoors = readVanishedDoors();
 let discovered = getVisitedLevelIds();
 const symbolMaterials = new Map();
+const destinationMarkMaterials = new Map();
 
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 const symbolGeo = new THREE.PlaneGeometry(2.3, 2.3);
+const destinationMarkGeo = new THREE.PlaneGeometry(2.7, 2.7);
 const mats = {
   asphalt: new THREE.MeshStandardMaterial({ color: 0x373a3b, roughness: 0.96 }),
   concrete: new THREE.MeshStandardMaterial({ color: 0x858480, roughness: 0.92 }),
@@ -232,6 +234,97 @@ function symbolMaterial(index) {
   return symbolMaterials.get(index);
 }
 
+function makeDestinationMarkTexture(kind) {
+  var c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  var ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, 256, 256);
+  ctx.strokeStyle = "#e6bd54";
+  ctx.fillStyle = "rgba(230, 189, 84, 0.16)";
+  ctx.lineWidth = 10;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  if (kind === "warehouse") {
+    // Level 1：带卷帘门的仓库。
+    ctx.beginPath();
+    ctx.moveTo(31, 91);
+    ctx.lineTo(128, 43);
+    ctx.lineTo(225, 91);
+    ctx.lineTo(225, 218);
+    ctx.lineTo(31, 218);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeRect(70, 116, 116, 102);
+    for (var wy = 137; wy < 213; wy += 20) {
+      ctx.beginPath();
+      ctx.moveTo(70, wy);
+      ctx.lineTo(186, wy);
+      ctx.stroke();
+    }
+  } else if (kind === "office") {
+    // Level 4：多层办公室。
+    ctx.fillRect(50, 38, 156, 185);
+    ctx.strokeRect(50, 38, 156, 185);
+    ctx.strokeRect(105, 161, 46, 62);
+    for (var oy = 66; oy <= 132; oy += 33) {
+      for (var ox = 75; ox <= 168; ox += 47) {
+        ctx.strokeRect(ox, oy, 22, 18);
+      }
+    }
+    ctx.beginPath();
+    ctx.moveTo(35, 223);
+    ctx.lineTo(221, 223);
+    ctx.stroke();
+  } else {
+    // Level 11：普通住宅。
+    ctx.beginPath();
+    ctx.moveTo(31, 116);
+    ctx.lineTo(128, 42);
+    ctx.lineTo(225, 116);
+    ctx.lineTo(202, 116);
+    ctx.lineTo(202, 220);
+    ctx.lineTo(54, 220);
+    ctx.lineTo(54, 116);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeRect(104, 151, 48, 69);
+    ctx.strokeRect(68, 129, 28, 28);
+    ctx.strokeRect(160, 129, 28, 28);
+  }
+
+  var tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function destinationMarkMaterial(kind) {
+  if (!destinationMarkMaterials.has(kind)) {
+    destinationMarkMaterials.set(
+      kind,
+      new THREE.MeshBasicMaterial({
+        map: makeDestinationMarkTexture(kind),
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+      })
+    );
+  }
+  return destinationMarkMaterials.get(kind);
+}
+
+function addDestinationMark(group, kind, side, x, y, z) {
+  var mark = new THREE.Mesh(destinationMarkGeo, destinationMarkMaterial(kind));
+  mark.position.set(side === "left" ? x + 0.225 : x - 0.225, y, z);
+  mark.rotation.y = side === "left" ? Math.PI * 0.5 : -Math.PI * 0.5;
+  mark.renderOrder = 3;
+  group.add(mark);
+}
+
 function wallCollider(minX, maxX, minZ, maxZ) {
   return { kind: "wall", minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ };
 }
@@ -288,6 +381,11 @@ function buildDoor(group, record, index, side, z) {
   symbol.position.set(side === "left" ? x + 0.23 : x - 0.23, 5.5, z);
   symbol.rotation.y = side === "left" ? Math.PI * 0.5 : -Math.PI * 0.5;
   group.add(symbol);
+  if (targetId === "l1") {
+    addDestinationMark(group, "warehouse", side, x, 2.45, z);
+  } else if (targetId === "l11") {
+    addDestinationMark(group, "house", side, x, 2.45, z);
+  }
   var pick = new THREE.Mesh(boxGeo, mats.pick);
   pick.scale.set(0.9, 5.2, 5.8);
   pick.position.copy(door.position);
@@ -347,6 +445,14 @@ function buildChunk(index) {
     buildDoor(group, record, first + 3, "right", z0 + 20);
     // 第一和第二扇门之间的墙壁可切出至 Level 4。
     if (index === 0) {
+      addDestinationMark(
+        group,
+        "office",
+        "left",
+        -TUNNEL_HALF_W,
+        2.25,
+        z0 + 14
+      );
       var clipPick = new THREE.Mesh(boxGeo, mats.pick);
       clipPick.scale.set(0.8, 4.2, 4.3);
       clipPick.position.set(-TUNNEL_HALF_W + 0.3, 2.1, z0 + 14);

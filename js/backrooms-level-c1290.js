@@ -421,6 +421,73 @@ function exitThroughArchToL11() {
   }, 700);
 }
 
+/* -------------------------- 巨大落日 -------------------------- */
+
+/** 落日位置：与黄昏主光同方向、贴近地平线，距离控制在相机远裁剪面内 */
+const SUN_POS = { x: -144, y: 20, z: -94 };
+
+function makeSunDiscTexture() {
+  var c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  var ctx = c.getContext("2d");
+  var g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  g.addColorStop(0, "rgba(255, 246, 219, 1)");
+  g.addColorStop(0.4, "rgba(255, 199, 110, 1)");
+  g.addColorStop(0.68, "rgba(233, 128, 46, 0.95)");
+  g.addColorStop(0.86, "rgba(158, 66, 21, 0.42)");
+  g.addColorStop(1, "rgba(96, 38, 12, 0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 256);
+  var tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function makeSunGlowTexture() {
+  var c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  var ctx = c.getContext("2d");
+  var g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  g.addColorStop(0, "rgba(255, 176, 82, 0.55)");
+  g.addColorStop(0.35, "rgba(214, 116, 44, 0.3)");
+  g.addColorStop(0.7, "rgba(140, 62, 22, 0.12)");
+  g.addColorStop(1, "rgba(80, 34, 12, 0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 256);
+  var tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** 用 Sprite 实现：自动朝向相机，且不受雾影响 */
+function addSunLayer(root, map, size, opacity, additive, order) {
+  var sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: map,
+      transparent: true,
+      opacity: opacity,
+      depthWrite: false,
+      fog: false,
+      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    })
+  );
+  sprite.position.set(SUN_POS.x, SUN_POS.y, SUN_POS.z);
+  sprite.scale.set(size, size, 1);
+  sprite.renderOrder = order;
+  root.add(sprite);
+  return sprite;
+}
+
+function addGiantSun(root) {
+  var glowTex = makeSunGlowTexture();
+  // 外层大气霞光 → 内层光晕 → 日面本体
+  addSunLayer(root, glowTex, 340, 0.5, true, -3);
+  addSunLayer(root, glowTex, 190, 0.62, true, -2);
+  addSunLayer(root, makeSunDiscTexture(), 96, 1, false, -1);
+}
+
 /* -------------------------- 世界构建 -------------------------- */
 
 function buildWorld(root) {
@@ -489,6 +556,8 @@ function buildWorld(root) {
   colliders.push(wallCollider(AREA_HALF, AREA_HALF + 3, -AREA_HALF - 3, AREA_HALF + 3));
   colliders.push(wallCollider(-AREA_HALF - 3, AREA_HALF + 3, -AREA_HALF - 3, -AREA_HALF));
   colliders.push(wallCollider(-AREA_HALF - 3, AREA_HALF + 3, AREA_HALF, AREA_HALF + 3));
+
+  addGiantSun(root);
 
   // 永恒黄昏光照：低角度暗橘色主光 + 冷暗补光
   var dusk = new THREE.DirectionalLight(0xd07a34, 1.15);

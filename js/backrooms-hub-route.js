@@ -1,7 +1,7 @@
 /**
  * Level 1 基地后门通往枢纽的隐秘路线。
  * 观察序列：看隧道尽头 → 回头，北墙上就地裂开一条岔路口（不是传送）。
- * 走进岔路后，连续四个 T 字路口全部左转；走错方向会被走廊送回岔路口。
+ * 走进岔路后，四个 T 字路口依次左转、右转、左转、右转；走错方向会被走廊送回岔路口。
  * 尽头的 7×7 房间里 A、B 两扇门并排，先选 B 进入第二个房间，再选 A 抵达枢纽。
  */
 import * as THREE from "three";
@@ -269,14 +269,14 @@ export function createHubRoute(options) {
     built = true;
     var rx = ROUTE_X;
     var rz = ROUTE_Z;
-    // 起点朝 +Z；连续四次左转依次转向 +X、-Z、-X、+Z
+    // 起点朝 +Z；左、右、左、右依次转向 +X、+Z、+X、+Z，走成向东北的阶梯
     var p0 = { x: rx, z: rz };
-    var p1 = { x: rx, z: rz + 30 };
-    var p2 = { x: rx + 26, z: rz + 30 };
-    var p3 = { x: rx + 26, z: rz + 8 };
-    var p4 = { x: rx + 8, z: rz + 8 };
-    var room1 = { x: rx + 8, z: rz + 19 };
-    var room2 = { x: rx, z: rz + 60 };
+    var p1 = { x: rx, z: rz + 20 };
+    var p2 = { x: rx + 18, z: rz + 20 };
+    var p3 = { x: rx + 18, z: rz + 38 };
+    var p4 = { x: rx + 34, z: rz + 38 };
+    var room1 = { x: rx + 34, z: rz + 49 };
+    var room2 = { x: rx, z: rz + 80 };
 
     var roomSouthZ = room1.z - ROOM_SIZE * 0.5;
     addSegment(p0.x, p0.z, p1.x, p1.z);
@@ -312,16 +312,17 @@ export function createHubRoute(options) {
       true
     );
 
-    // 每个路口正前方封死，形成 T 字：只能左转（正确）或右转（死路）
+    // 每个路口正前方封死，形成 T 字，只剩左右两个选择
     addCap(p0.x, p0.z - CORRIDOR_W * 0.5, false);
     addCap(p1.x, p1.z + CORRIDOR_W * 0.5, false);
     addCap(p2.x + CORRIDOR_W * 0.5, p2.z, true);
-    addCap(p3.x, p3.z - CORRIDOR_W * 0.5, false);
-    addCap(p4.x - CORRIDOR_W * 0.5, p4.z, true);
+    addCap(p3.x, p3.z + CORRIDOR_W * 0.5, false);
+    addCap(p4.x + CORRIDOR_W * 0.5, p4.z, true);
 
+    // 正确方向依次是左、右、左、右；反方向都是死路
     addWrongTurn(p1.x, p1.z, p1.x - 9, p1.z);
-    addWrongTurn(p2.x, p2.z, p2.x, p2.z + 9);
-    addWrongTurn(p3.x, p3.z, p3.x + 9, p3.z);
+    addWrongTurn(p2.x, p2.z, p2.x, p2.z - 9);
+    addWrongTurn(p3.x, p3.z, p3.x - 9, p3.z);
     addWrongTurn(p4.x, p4.z, p4.x, p4.z - 9);
 
     addRoom(room1.x, room1.z, 1, true);
@@ -329,14 +330,14 @@ export function createHubRoute(options) {
 
     var lightSpots = [
       [rx, rz + 6],
-      [rx, rz + 18],
-      [rx, rz + 28],
-      [rx + 10, rz + 30],
-      [rx + 22, rz + 30],
-      [rx + 26, rz + 20],
-      [rx + 26, rz + 10],
-      [rx + 16, rz + 8],
-      [rx + 8, rz + 12],
+      [rx, rz + 15],
+      [rx + 6, rz + 20],
+      [rx + 14, rz + 20],
+      [rx + 18, rz + 26],
+      [rx + 18, rz + 34],
+      [rx + 24, rz + 38],
+      [rx + 31, rz + 38],
+      [rx + 34, rz + 42],
     ];
     for (var i = 0; i < lightSpots.length; i++) {
       var light = new THREE.PointLight(0xf2f1e7, 0.55, 14, 2);
@@ -469,7 +470,7 @@ export function createHubRoute(options) {
       if (!inRoute || !data || data.kind !== "hub_route_door") return false;
       if (data.room === 1) {
         if (data.letter === "B") {
-          pendingTeleport = { x: ROUTE_X, z: ROUTE_Z + 60, yaw: Math.PI };
+          pendingTeleport = { x: ROUTE_X, z: ROUTE_Z + 80, yaw: Math.PI };
           showToast("写着 B 的门后是另一个一模一样的 7×7 房间。");
         } else {
           sendBackToFork("写着 A 的门后是空的。你被推回了岔路口。");
