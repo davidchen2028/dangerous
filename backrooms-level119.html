@@ -7,25 +7,53 @@
   <link rel="stylesheet" href="css/backrooms-level0.css?v=22">
   <link rel="stylesheet" href="css/backrooms-survival.css?v=6">
   <style>
+    /* 滑行时只压一层水雾暗角，管道本身要看得见 */
     .br-l119-slide {
       position: fixed;
       inset: 0;
       z-index: 100;
       display: grid;
-      place-items: center;
+      align-content: end;
+      justify-items: center;
+      padding-bottom: 12vh;
       pointer-events: none;
-      background: radial-gradient(ellipse at center, rgba(40, 90, 140, 0.2), rgba(0, 10, 30, 0.72));
       opacity: 0;
       transition: opacity 0.35s linear;
+      background:
+        radial-gradient(ellipse at center, rgba(255, 255, 255, 0) 42%, rgba(12, 46, 78, 0.62) 100%),
+        radial-gradient(circle at 22% 18%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 12%),
+        radial-gradient(circle at 74% 31%, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0) 9%),
+        radial-gradient(circle at 58% 76%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 10%);
     }
     .br-l119-slide.is-on { opacity: 1; }
+    /* 向后掠过的高光条，补足速度感 */
+    .br-l119-slide::after {
+      content: "";
+      position: absolute;
+      inset: -20%;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0) 0 34px,
+        rgba(255, 255, 255, 0.07) 34px 38px
+      );
+      mix-blend-mode: screen;
+      animation: br-l119-rush 0.5s linear infinite;
+    }
+    @keyframes br-l119-rush {
+      from { transform: translateY(0); }
+      to { transform: translateY(38px); }
+    }
     .br-l119-slide__text {
+      position: relative;
       margin: 0;
       color: #eaf6ff;
-      font: 600 clamp(20px, 4vw, 36px)/1.4 system-ui, sans-serif;
+      font: 600 clamp(16px, 3vw, 26px)/1.4 system-ui, sans-serif;
       letter-spacing: 0.08em;
       text-shadow: 0 2px 12px #000;
       text-align: center;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .br-l119-slide::after { animation: none; }
     }
   </style>
 </head>
@@ -48,6 +76,6 @@
     <p class="br-l119-slide__text" id="backroomsL119SlideText">滑行中…</p>
   </div>
   <script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
-  <script type="module" src="js/backrooms-level119.js?v=2"></script>
+  <script type="module" src="js/backrooms-level119.js?v=3"></script>
 </body>
 </html>

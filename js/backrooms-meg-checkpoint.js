@@ -1,7 +1,8 @@
 /**
  * M.E.G 基地存档点：进入基地保存位置；在基地或已存档后于 L1/L2/L3 等死亡 → 在基地复活
- * 复活：保留背包 · 血量/理智/体力回满 · 清除皇家口粮与夜视药水效果
- * （与无检查点软回 L0 一致，避免「基地死亡惩罚更重」）
+ * 复活：血量/理智/体力回满 · 清除皇家口粮与夜视药水效果
+ * 掉落规则：真正死亡一律清空背包与快捷栏（基地复活与软回 L0 一致）；
+ * 唯一例外是死亡被 C-1289 接走的「没死透」情形，那条路径保留随身物品。
  */
 import {
   backpackSlots,
@@ -9,6 +10,7 @@ import {
   BACKPACK_CAPACITY,
   HOTBAR_CAPACITY,
   renderGridPublic,
+  resetBackpack,
 } from "./backrooms-inventory.js";
 import { consumeXiaoyeFullHealFlag } from "./backrooms-level2-xiaoye.js";
 import {
@@ -285,6 +287,13 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
 
   survival.onPrepareDeath = function (reason) {
     var ctx = getCtx() || {};
+    // 真正死亡一律掉落全部随身物品。被 C-1289 接走属于「没死透」，
+    // 那条路径在 onInterceptDeath 就已 return，走不到这里，因此仍然保包。
+    try {
+      resetBackpack();
+    } catch (errWipe) {
+      /* ignore */
+    }
     var inBase = ctx.level === 1 && ctx.isInMegBase && ctx.isInMegBase();
     if (!hasMegBaseCheckpoint() && !inBase) {
       deathPlan = "l0_reset";
@@ -292,8 +301,8 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
         survival,
         reason,
         reason === "sanity"
-          ? "精神崩溃 — 即将在 Level 0 醒来…"
-          : "你已死亡 — 即将在 Level 0 醒来…"
+          ? "精神崩溃 — 随身物品已全部遗失…即将在 Level 0 醒来…"
+          : "你已死亡 — 随身物品已全部遗失…即将在 Level 0 醒来…"
       );
       return;
     }
@@ -309,8 +318,8 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
       survival,
       reason,
       ctx.level !== 1
-        ? "你已死亡 — 正在传送至 M.E.G 基地…"
-        : "你已死亡 — 正在 M.E.G 基地复活…"
+        ? "你已死亡 — 随身物品已全部遗失…正在传送至 M.E.G 基地…"
+        : "你已死亡 — 随身物品已全部遗失…正在 M.E.G 基地复活…"
     );
   };
 

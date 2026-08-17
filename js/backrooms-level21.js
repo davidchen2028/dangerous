@@ -521,7 +521,7 @@ function updateInteractUi() {
   if (!data && !isInventoryOpen() && survival && !survival.dead && mapTaskPending()) {
     if (interactHintEl) {
       interactHintEl.hidden = false;
-      interactHintEl.innerHTML = "按 <kbd>Q</kbd> 绘制 Level 21 地图";
+      interactHintEl.innerHTML = "按 <kbd>E</kbd> 绘制 Level 21 地图";
     }
     if (crosshairEl) {
       crosshairEl.classList.toggle("backrooms-crosshair--hidden", false);
@@ -598,10 +598,13 @@ function tryQAction() {
     } else {
       showToast("这扇门打不开。");
     }
-    return;
   }
-  // 不在门前：若已接取「绘制 Level 21 地图」任务，则绘制地图。
-  tryDrawMap();
+}
+
+function tryEAction() {
+  if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
+  // 绘制地图用 E，不依赖准星对准门
+  if (mapTaskPending() || isTaskAccepted("map_l21")) tryDrawMap();
 }
 
 function bindControls() {
@@ -619,6 +622,11 @@ function bindControls() {
     onKeyDown: function (event) {
       if (!isInventoryOpen() && handleTaskUiKey(event)) {
         event.preventDefault();
+        return true;
+      }
+      if (event.code === "KeyE" && !event.repeat) {
+        event.preventDefault();
+        tryEAction();
         return true;
       }
       if (event.code === "KeyQ" && !event.repeat) {
@@ -681,7 +689,7 @@ function init() {
   updateMegPointsDisplay(megPointsEl);
   if (hintEl) {
     hintEl.innerHTML =
-      "Level 21 · <kbd>Q</kbd> 开门 · <kbd>WASD</kbd> 移动 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包";
+      "Level 21 · <kbd>Q</kbd> 开门 · <kbd>E</kbd> 绘制地图 · <kbd>WASD</kbd> · <kbd>B</kbd>";
   }
   bindControls();
 

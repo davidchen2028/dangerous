@@ -2,7 +2,7 @@
  * M.E.G 任务与成就：任务板数据、接取状态、成就解锁，以及白板 / Y 面板两套 UI。
  */
 import { addItem, countItem, removeFirstItem } from "./backrooms-inventory.js";
-import { addMegPoints } from "./backrooms-meg-points.js";
+import { addMegPoints, getMegPoints } from "./backrooms-meg-points.js";
 import { showBackroomsLootToast } from "./backrooms-fps-controller.js";
 
 const ACCEPTED_KEY = "backrooms_tasks_accepted_v1";
@@ -20,8 +20,27 @@ const VAULT_DRY_KEY = "backrooms_ach_vault_dry_v1";
 const DEADLINE_KEY = "backrooms_task_deadline_v1";
 /** 侦查记录进度：{ [taskId]: string[] }，元素为已记录目标的唯一标识 */
 const RECON_KEY = "backrooms_task_recon_v1";
-/** 稀有委托本次是否挂在任务板上 */
+/** 任务板当前挂出的委托 id 列表 */
 const BOARD_OFFERS_KEY = "backrooms_task_board_offers_v1";
+/** 按间隔刷新的委托上次掷点时间：{ [taskId]: epochMs } */
+const BOARD_OFFER_ROLLS_KEY = "backrooms_task_board_offer_rolls_v1";
+/** 各任务本周期内已完成次数：{ [taskId]: number } */
+const COMPLETE_COUNTS_KEY = "backrooms_task_complete_counts_v1";
+/** 各任务冷却截止：{ [taskId]: epochMs } */
+const COOLDOWN_UNTIL_KEY = "backrooms_task_cooldown_until_v1";
+/** 饮水机「已检修」标签到期：{ [coolerId]: epochMs } */
+const COOLER_INSPECTED_KEY = "backrooms_l4_cooler_inspected_v1";
+/** 巡检任务本轮已检饮水机：{ [taskId]: string[] } */
+const INSPECT_PROGRESS_KEY = "backrooms_task_inspect_progress_v1";
+/** 「断粮巡航」成就：本次断粮连续过程中已到访的路线层级 */
+const FASTING_KEY = "backrooms_ach_fasting_v1";
+
+/** 同时进行中的任务上限（已接取未领赏） */
+const MAX_ACTIVE_TASKS = 4;
+/** 花积分主动重掷任务板挂出 */
+export const BOARD_REROLL_COST = 20;
+/** 饮水机「已检修」标签持续时长 */
+export const COOLER_INSPECTED_MS = 10 * 60 * 1000;
 
 const SOY_BINGE_WINDOW_MS = 60 * 1000;
 const VAULT_DRY_LIMIT = 10;
@@ -43,7 +62,11 @@ export const TASK_DEFS = [
     packageId: "package_l1",
     packageName: "L1包裹",
     deathPenalty: 10,
-    desc: "把这件包裹送到 Level 1 的 M.E.G 基地。接取后背包里会出现待运送的包裹。中途死亡视为任务失败，扣 10 积分。",
+    offerChance: 0.8,
+    refresh: "enter",
+    completeLimit: 3,
+    cooldownMs: 5 * 60 * 1000,
+    desc: "把这件包裹送到 Level 1 的 M.E.G 基地。接取后背包里会出现待运送的包裹。中途死亡视为任务失败，扣 10 积分。完成 3 次后冷却 5 分钟。",
   },
   {
     id: "map_l21",
@@ -51,7 +74,11 @@ export const TASK_DEFS = [
     reward: 30,
     type: "map",
     drawLevelId: "l21",
-    desc: "前往 Level 21，按 Q 绘制地图，再回 Level 4 交付。若中途死亡，可重新绘制。",
+    offerChance: 0.7,
+    refresh: "enter",
+    completeLimit: 2,
+    cooldownMs: 5 * 60 * 1000,
+    desc: "前往 Level 21，按 E 绘制地图，再回 Level 4 交付。若中途死亡，可重新绘制。完成 2 次后冷却 5 分钟。",
   },
   {
     id: "recon_c1291",
@@ -59,19 +86,66 @@ export const TASK_DEFS = [
     reward: 260,
     type: "recon",
     rare: true,
-    /** 每次进入 Level 4 才重新掷一次是否挂出这张委托 */
-    offerChance: 0.15,
+    offerChance: 0.4,
+    refresh: "interval",
+    refreshIntervalMs: 3 * 60 * 1000,
     deviceId: "meg_recorder",
     deviceName: "M.E.G 特制记录设备",
     reconLevelId: "c1291",
     reconTarget: 3,
     deathPenalty: 50,
     timeLimitMs: 30 * 60 * 1000,
+    completeLimit: 1,
+    cooldownMs: 45 * 60 * 1000,
     desc:
       "极高风险委托。携带 M.E.G 特制记录设备进入 Level C-1291 井盖迷阵（死区），" +
       "对 3 个不同的井盖按 E 拍摄弹射与虚空井口现象，采集完立刻撤离，禁止长时间停留。" +
-      "限时 30 分钟，死亡或超时判定失败并扣 50 积分。层级内没有怪物实体，" +
-      "全部伤害来自井盖砸击、虚空井口与高温蒸汽。",
+      "限时 30 分钟，死亡或超时判定失败并扣 50 积分。完成 1 次后冷却 45 分钟。",
+  },
+  {
+    id: "inspect_coolers",
+    title: "前哨站饮水机巡检",
+    reward: 5,
+    type: "inspect",
+    inspectTarget: 2,
+    offerChance: 0.9,
+    refresh: "enter",
+    completeLimit: 4,
+    cooldownMs: 5 * 60 * 1000,
+    desc:
+      "在 Level 4 前哨站对 2 台饮水机按 E 完成巡检即可领赏。已检修的饮水机 10 分钟内不能再检。" +
+      "无失败惩罚。完成 4 次后冷却 5 分钟。",
+  },
+  {
+    id: "map_l13",
+    title: "绘制 Level 13 楼层平面",
+    reward: 25,
+    type: "map",
+    drawLevelId: "l13",
+    offerChance: 0.55,
+    refresh: "enter",
+    completeLimit: 2,
+    cooldownMs: 5 * 60 * 1000,
+    desc: "前往 Level 13，按 E 绘制楼层平面，再回 Level 4 交付。若中途死亡，可重新绘制。完成 2 次后冷却 5 分钟。",
+  },
+  {
+    id: "rubbing_c1290",
+    title: "C-1290 拓片",
+    reward: 100,
+    type: "recon",
+    rare: true,
+    offerChance: 0.3,
+    refresh: "interval",
+    refreshIntervalMs: 5 * 60 * 1000,
+    reconLevelId: "c1290",
+    reconTarget: 3,
+    deathPenalty: 40,
+    completeLimit: 1,
+    cooldownMs: 35 * 60 * 1000,
+    desc:
+      "极高风险委托。进入 Level C-1290 夕前石茧，趁石化尚未过半，对 3 块石碑各按 E 拓印碑文，" +
+      "拓满后立刻撤离并回 Level 4 领赏。石化满（化为雕像）或中途死亡判定失败并扣 40 积分。" +
+      "完成 1 次后冷却 35 分钟。",
   },
 ];
 
@@ -82,6 +156,18 @@ export const TASK_DEFS = [
  * levelId: 探索成就绑定的进入层级
  */
 export const ACHIEVEMENT_DEFS = [
+  // —— 〇、挑战成就（常显）——
+  {
+    id: "fasting_cruise",
+    title: "断粮巡航",
+    category: "challenge",
+    reward: 75,
+    condition:
+      "一段旅程中全程不吃不喝，到访 Level 4 → 6.1 → 11 → 119 → 0 → 1 → 1.1-1 → 1.1-2 → 2 → 3，" +
+      "最后返回 Level 4 即解锁。期间进食 / 饮用任何物品或死亡都会中断，需要重新开始。" +
+      "做此挑战期间（走到 L2 前），Level 2 的普通门必定通往 Level 3。",
+  },
+
   // —— 一、探索成就（常显）——
   { id: "reshaped_chaos", title: "重塑的混乱", category: "explore", levelId: "0.2", reward: 0, condition: "进入 Level 0.2" },
   { id: "so_cold", title: "好冷", category: "explore", levelId: "0.3", reward: 0, condition: "进入 Level 0.3（本层级无法正常离开）" },
@@ -393,30 +479,59 @@ export function deliverPackageTask(id) {
   return { ok: true, task: task };
 }
 
-/** 回到 L4 向 M.E.G 成员结算任务并发放积分。 */
+/** 回到 L4 向 M.E.G 成员结算任务并发放积分。可重复接取的任务领赏后会清掉接取状态并计入次数上限。 */
 export function claimTaskReward(id) {
   var task = getTaskDef(id);
   if (!task) return { ok: false, reason: "没有这个任务" };
   if (!isTaskDelivered(id)) return { ok: false, reason: "任务还没有交付" };
   if (isTaskCompleted(id)) return { ok: false, reason: "奖励已经领取" };
-  var completed = getCompletedTaskIds();
-  completed.push(id);
-  writeIds(COMPLETED_KEY, completed);
+
   addMegPoints(task.reward);
   clearTaskDeadline(id);
   clearReconProgress(id);
+  clearInspectProgress(id);
   if (task.deviceId) {
     while (countItem(task.deviceId) > 0) {
       if (!removeFirstItem(task.deviceId)) break;
     }
   }
+
+  // 可重复任务：领赏后从接取/交付列表移除，计入完成次数；达上限则进入冷却。
+  var accepted = getAcceptedTaskIds();
+  var ai = accepted.indexOf(id);
+  if (ai >= 0) {
+    accepted.splice(ai, 1);
+    writeIds(ACCEPTED_KEY, accepted);
+  }
+  var delivered = getDeliveredTaskIds();
+  var di = delivered.indexOf(id);
+  if (di >= 0) {
+    delivered.splice(di, 1);
+    writeIds(DELIVERED_KEY, delivered);
+  }
+  // 永久完成标记仅用于非重复旧逻辑兼容；有次数上限的任务不写入。
+  if (!(task.completeLimit > 0)) {
+    var completed = getCompletedTaskIds();
+    if (completed.indexOf(id) < 0) {
+      completed.push(id);
+      writeIds(COMPLETED_KEY, completed);
+    }
+  }
+  var cooldownNote = noteTaskCompletion(id);
   renderTaskPanel();
-  return { ok: true, task: task, reward: task.reward };
+  if (boardOpen) renderBoard("");
+  return {
+    ok: true,
+    task: task,
+    reward: task.reward,
+    cooldownNote: cooldownNote,
+  };
 }
 
 export function getFirstDeliveredUnclaimedTask() {
   var delivered = getDeliveredTaskIds();
   for (var i = 0; i < delivered.length; i++) {
+    // 可重复任务领赏后会移出 delivered，因此这里只需看仍在交付列表里的
     if (!isTaskCompleted(delivered[i])) return getTaskDef(delivered[i]);
   }
   return null;
@@ -487,6 +602,70 @@ function recordVisit(levelId) {
   writeIds(VISITED_KEY, ids);
 }
 
+/* ------------------------------ 断粮巡航成就 ------------------------------ */
+
+const FASTING_ACH_ID = "fasting_cruise";
+/** 需要在一次断粮过程中全部到访的层级 */
+const FASTING_ROUTE = [
+  "l4",
+  "l6_1",
+  "l11",
+  "l119",
+  "l0",
+  "l1",
+  "l1.1",
+  "l1.1-2",
+  "l2",
+  "l3",
+];
+/** 走到 L2 之前应当到访的层级 —— 用于判定 L2 门是否强制通往 L3 */
+const FASTING_PRE_L2 = ["l4", "l6_1", "l11", "l119", "l0", "l1", "l1.1", "l1.1-2"];
+
+function isFastingUnlocked() {
+  return getUnlockedAchievementIds().indexOf(FASTING_ACH_ID) >= 0;
+}
+
+/** 进入路线层级时记录（非路线层级不影响，也不会打断连续性）。 */
+function recordFastingVisit(levelId) {
+  if (isFastingUnlocked()) return;
+  if (FASTING_ROUTE.indexOf(levelId) < 0) return;
+  var visited = readIds(FASTING_KEY);
+  if (visited.indexOf(levelId) >= 0) return;
+  visited.push(levelId);
+  writeIds(FASTING_KEY, visited);
+}
+
+/** 回到 L4 且路线全部到访 → 解锁并清空进度。 */
+function maybeCompleteFasting(onToast) {
+  if (isFastingUnlocked()) return;
+  var visited = readIds(FASTING_KEY);
+  for (var i = 0; i < FASTING_ROUTE.length; i++) {
+    if (visited.indexOf(FASTING_ROUTE[i]) < 0) return;
+  }
+  unlockAchievement(FASTING_ACH_ID, onToast);
+  writeIds(FASTING_KEY, []);
+}
+
+/** 进食 / 饮用 / 死亡时打断断粮连续性。 */
+export function noteFastingBroken() {
+  if (isFastingUnlocked()) return;
+  if (!readIds(FASTING_KEY).length) return;
+  writeIds(FASTING_KEY, []);
+}
+
+/**
+ * 断粮巡航是否已进行到「即将进入 L2」的阶段 —— 此时 L2 普通门必定通往 L3。
+ * 供 Level 2 门逻辑调用。
+ */
+export function isFastingRunActive() {
+  if (isFastingUnlocked()) return false;
+  var visited = readIds(FASTING_KEY);
+  for (var i = 0; i < FASTING_PRE_L2.length; i++) {
+    if (visited.indexOf(FASTING_PRE_L2[i]) < 0) return false;
+  }
+  return true;
+}
+
 /**
  * 进入某层级：记录通关进度、解锁探索成就、刷新合集；
  * 并清空本层「濒死」标记，开始新的逃离判定窗口。
@@ -495,8 +674,19 @@ export function markLevelEntered(levelId, onToast) {
   writeFlag(CRIT_HP_KEY, false);
   writeFlag(CRIT_SAN_KEY, false);
   recordVisit(levelId);
-  // 每次踏进 Level 4 才重掷稀有委托是否挂在任务板上。
-  if (levelId === "l4") rollRareBoardOffers();
+  recordFastingVisit(levelId);
+  // 每次踏进 Level 4：重掷「进层刷新」的委托；间隔类委托另行计时。
+  if (levelId === "l4") {
+    // 有次数上限的任务视为可重复：清掉旧的永久完成标记，避免卡死接取。
+    var completed = getCompletedTaskIds().filter(function (id) {
+      var t = getTaskDef(id);
+      return !(t && t.completeLimit > 0);
+    });
+    writeIds(COMPLETED_KEY, completed);
+    rollEnterBoardOffers();
+    refreshIntervalBoardOffers();
+    maybeCompleteFasting(onToast);
+  }
 
   var def = null;
   for (var i = 0; i < ACHIEVEMENT_DEFS.length; i++) {
@@ -707,7 +897,17 @@ export function acceptTask(id) {
   if (!task) return { ok: false, reason: "没有这个任务" };
   if (isTaskAccepted(id)) return { ok: false, reason: "这个任务已经接取了" };
   if (isTaskCompleted(id)) return { ok: false, reason: "这个任务已经完成了" };
-  // 包裹类要放入待运送包裹，侦查类要发下记录设备；地图类无需道具。
+  if (isTaskCooling(id)) {
+    return {
+      ok: false,
+      reason: "该任务冷却中，还剩 " + formatRemaining(getTaskCooldownRemainingMs(id)),
+    };
+  }
+  if (!isTaskOnBoard(task)) return { ok: false, reason: "白板上没有这个委托" };
+  if (countActiveTasks() >= MAX_ACTIVE_TASKS) {
+    return { ok: false, reason: "手头任务已满（最多同时 " + MAX_ACTIVE_TASKS + " 个）" };
+  }
+  // 包裹类要放入待运送包裹，侦查类要发下记录设备；地图/巡检类无需道具。
   if (task.packageId) {
     if (!addItem({ id: task.packageId, name: task.packageName })) {
       return { ok: false, reason: "背包和快捷栏已满，放不下包裹" };
@@ -722,12 +922,13 @@ export function acceptTask(id) {
   ids.push(id);
   writeIds(ACCEPTED_KEY, ids);
   clearReconProgress(id);
+  clearInspectProgress(id);
   if (task.timeLimitMs > 0) setTaskDeadline(id, task.timeLimitMs);
   else clearTaskDeadline(id);
   return { ok: true, task: task };
 }
 
-/** 在 Level 21 按 Q 绘制地图，进入「回 L4 交付」状态。 */
+/** 在指定层级按 E 绘制地图，进入「回 L4 交付」状态。 */
 export function deliverMapTask(id) {
   var task = getTaskDef(id);
   if (!task || task.type !== "map") return { ok: false, reason: "没有这个任务" };
@@ -743,34 +944,315 @@ export function deliverMapTask(id) {
   return { ok: true, task: task };
 }
 
-/* ------------------------------ 稀有委托挂出 ------------------------------ */
+/* ------------------------------ 任务板挂出 ------------------------------ */
+
+function taskOfferChance(task) {
+  if (task.offerChance == null) return 1;
+  return task.offerChance;
+}
+
+function taskRefreshMode(task) {
+  return task.refresh === "interval" ? "interval" : "enter";
+}
+
+function countActiveTasks() {
+  return getAcceptedTaskIds().length;
+}
+
+export function isTaskCooling(id) {
+  pruneExpiredCooldowns();
+  var map = readMap(COOLDOWN_UNTIL_KEY);
+  var until = map[id];
+  return typeof until === "number" && Number.isFinite(until) && Date.now() < until;
+}
+
+export function getTaskCooldownRemainingMs(id) {
+  if (!isTaskCooling(id)) return null;
+  var until = readMap(COOLDOWN_UNTIL_KEY)[id];
+  return Math.max(0, until - Date.now());
+}
+
+function pruneExpiredCooldowns() {
+  var map = readMap(COOLDOWN_UNTIL_KEY);
+  var now = Date.now();
+  var changed = false;
+  var keys = Object.keys(map);
+  for (var i = 0; i < keys.length; i++) {
+    var until = map[keys[i]];
+    if (typeof until !== "number" || !Number.isFinite(until) || now >= until) {
+      delete map[keys[i]];
+      changed = true;
+    }
+  }
+  if (changed) writeMap(COOLDOWN_UNTIL_KEY, map);
+}
 
 /**
- * 稀有委托每次进入 Level 4 重掷一次是否挂上任务板；
- * 已接取但没完成的稀有委托始终保留在板上。
+ * 领赏后计入完成次数；达到 completeLimit 则进入冷却并清零计数。
+ * @returns {string} 可选提示文案
  */
-function rollRareBoardOffers() {
-  var offers = [];
+function noteTaskCompletion(id) {
+  var task = getTaskDef(id);
+  if (!task || !(task.completeLimit > 0)) return "";
+  var counts = readMap(COMPLETE_COUNTS_KEY);
+  var n = (typeof counts[id] === "number" ? counts[id] : 0) + 1;
+  if (n >= task.completeLimit) {
+    counts[id] = 0;
+    writeMap(COMPLETE_COUNTS_KEY, counts);
+    var cd = task.cooldownMs > 0 ? task.cooldownMs : 5 * 60 * 1000;
+    var untilMap = readMap(COOLDOWN_UNTIL_KEY);
+    untilMap[id] = Date.now() + cd;
+    writeMap(COOLDOWN_UNTIL_KEY, untilMap);
+    var offers = readIds(BOARD_OFFERS_KEY).slice();
+    setOfferPresent(offers, id, false);
+    writeIds(BOARD_OFFERS_KEY, offers);
+    return "已达次数上限，冷却 " + Math.round(cd / 60000) + " 分钟";
+  }
+  counts[id] = n;
+  writeMap(COMPLETE_COUNTS_KEY, counts);
+  var left = task.completeLimit - n;
+  return left > 0 ? "本周期还可完成 " + left + " 次" : "";
+}
+
+function shouldKeepOffer(task) {
+  return isTaskAccepted(task.id) || isTaskDelivered(task.id);
+}
+
+function rollOfferOnce(task) {
+  if (shouldKeepOffer(task)) return true;
+  if (isTaskCooling(task.id)) return false;
+  return Math.random() < taskOfferChance(task);
+}
+
+function setOfferPresent(offers, taskId, present) {
+  var idx = offers.indexOf(taskId);
+  if (present && idx < 0) offers.push(taskId);
+  if (!present && idx >= 0) offers.splice(idx, 1);
+}
+
+/**
+ * 每次进入 Level 4 重掷「进层刷新」委托；间隔类委托的挂出状态保留不动。
+ * 已接取 / 已交付的委托始终保留在板上；冷却中的不挂出。
+ */
+function rollEnterBoardOffers() {
+  var offers = readIds(BOARD_OFFERS_KEY).slice();
   for (var i = 0; i < TASK_DEFS.length; i++) {
     var task = TASK_DEFS[i];
-    if (!task.rare) continue;
-    if (isTaskCompleted(task.id)) continue;
-    if (isTaskAccepted(task.id) || isTaskDelivered(task.id)) {
-      offers.push(task.id);
+    if (taskRefreshMode(task) !== "enter") continue;
+    if (shouldKeepOffer(task)) {
+      setOfferPresent(offers, task.id, true);
       continue;
     }
-    var chance = task.offerChance == null ? 0.15 : task.offerChance;
-    if (Math.random() < chance) offers.push(task.id);
+    if (isTaskCooling(task.id)) {
+      setOfferPresent(offers, task.id, false);
+      continue;
+    }
+    setOfferPresent(offers, task.id, rollOfferOnce(task));
   }
   writeIds(BOARD_OFFERS_KEY, offers);
 }
 
-function isTaskOnBoard(task) {
-  if (!task.rare) return true;
-  if (isTaskAccepted(task.id) || isTaskDelivered(task.id) || isTaskCompleted(task.id)) {
-    return true;
+/**
+ * 按各自间隔重掷「间隔刷新」委托。
+ * 若从未掷过，立刻掷一次；之后每隔 refreshIntervalMs 再掷。
+ */
+function refreshIntervalBoardOffers() {
+  var offers = readIds(BOARD_OFFERS_KEY).slice();
+  var rolls = readMap(BOARD_OFFER_ROLLS_KEY);
+  var now = Date.now();
+  var changed = false;
+  for (var i = 0; i < TASK_DEFS.length; i++) {
+    var task = TASK_DEFS[i];
+    if (taskRefreshMode(task) !== "interval") continue;
+    if (shouldKeepOffer(task)) {
+      if (offers.indexOf(task.id) < 0) {
+        offers.push(task.id);
+        changed = true;
+      }
+      continue;
+    }
+    if (isTaskCooling(task.id)) {
+      if (offers.indexOf(task.id) >= 0) {
+        setOfferPresent(offers, task.id, false);
+        changed = true;
+      }
+      continue;
+    }
+    var interval = task.refreshIntervalMs > 0 ? task.refreshIntervalMs : 3 * 60 * 1000;
+    var last = rolls[task.id];
+    var due =
+      typeof last !== "number" ||
+      !Number.isFinite(last) ||
+      now - last >= interval;
+    if (!due) continue;
+    setOfferPresent(offers, task.id, rollOfferOnce(task));
+    rolls[task.id] = now;
+    changed = true;
   }
+  if (changed) {
+    writeIds(BOARD_OFFERS_KEY, offers);
+    writeMap(BOARD_OFFER_ROLLS_KEY, rolls);
+    if (boardOpen) renderBoard("");
+  }
+}
+
+function isTaskOnBoard(task) {
+  if (shouldKeepOffer(task)) return true;
+  if (isTaskCooling(task.id)) return false;
+  if (task.offerChance == null) return true;
   return readIds(BOARD_OFFERS_KEY).indexOf(task.id) >= 0;
+}
+
+/**
+ * 花积分强制重掷任务板挂出（冷却中的仍不出现；已接取的保留）。
+ */
+export function rerollBoardOffersWithPoints() {
+  if (getMegPoints() < BOARD_REROLL_COST) {
+    return { ok: false, reason: "积分不足（需要 " + BOARD_REROLL_COST + "）" };
+  }
+  addMegPoints(-BOARD_REROLL_COST);
+  rollEnterBoardOffers();
+  // 间隔类也立刻重掷一次
+  var offers = readIds(BOARD_OFFERS_KEY).slice();
+  var rolls = readMap(BOARD_OFFER_ROLLS_KEY);
+  var now = Date.now();
+  for (var i = 0; i < TASK_DEFS.length; i++) {
+    var task = TASK_DEFS[i];
+    if (taskRefreshMode(task) !== "interval") continue;
+    if (shouldKeepOffer(task)) {
+      setOfferPresent(offers, task.id, true);
+      continue;
+    }
+    if (isTaskCooling(task.id)) {
+      setOfferPresent(offers, task.id, false);
+      continue;
+    }
+    setOfferPresent(offers, task.id, rollOfferOnce(task));
+    rolls[task.id] = now;
+  }
+  writeIds(BOARD_OFFERS_KEY, offers);
+  writeMap(BOARD_OFFER_ROLLS_KEY, rolls);
+  if (boardOpen) renderBoard("已花费 " + BOARD_REROLL_COST + " 积分刷新委托。");
+  return { ok: true, cost: BOARD_REROLL_COST };
+}
+
+/* ---------------------------- 饮水机巡检 ---------------------------- */
+
+function pruneInspectedCoolers() {
+  var map = readMap(COOLER_INSPECTED_KEY);
+  var now = Date.now();
+  var changed = false;
+  var keys = Object.keys(map);
+  for (var i = 0; i < keys.length; i++) {
+    var until = map[keys[i]];
+    if (typeof until !== "number" || !Number.isFinite(until) || now >= until) {
+      delete map[keys[i]];
+      changed = true;
+    }
+  }
+  if (changed) writeMap(COOLER_INSPECTED_KEY, map);
+  return map;
+}
+
+export function isCoolerInspected(coolerId) {
+  if (!coolerId) return false;
+  var map = pruneInspectedCoolers();
+  var until = map[coolerId];
+  return typeof until === "number" && Date.now() < until;
+}
+
+export function getCoolerInspectedRemainingMs(coolerId) {
+  if (!isCoolerInspected(coolerId)) return null;
+  return Math.max(0, pruneInspectedCoolers()[coolerId] - Date.now());
+}
+
+function markCoolerInspectedTag(coolerId) {
+  var map = pruneInspectedCoolers();
+  map[coolerId] = Date.now() + COOLER_INSPECTED_MS;
+  writeMap(COOLER_INSPECTED_KEY, map);
+}
+
+function readInspectProgress(id) {
+  var map = readMap(INSPECT_PROGRESS_KEY);
+  var list = map[id];
+  return Array.isArray(list) ? list.slice() : [];
+}
+
+function writeInspectProgress(id, list) {
+  var map = readMap(INSPECT_PROGRESS_KEY);
+  map[id] = list;
+  writeMap(INSPECT_PROGRESS_KEY, map);
+}
+
+function clearInspectProgress(id) {
+  var map = readMap(INSPECT_PROGRESS_KEY);
+  if (map[id] == null) return;
+  delete map[id];
+  writeMap(INSPECT_PROGRESS_KEY, map);
+}
+
+export function getInspectProgress(id) {
+  var task = getTaskDef(id);
+  return {
+    count: readInspectProgress(id).length,
+    target: task && task.inspectTarget ? task.inspectTarget : 0,
+  };
+}
+
+/**
+ * Level 4 对饮水机按 E：记录巡检。检满后自动领赏。
+ */
+export function recordCoolerInspect(coolerId) {
+  var task = getTaskDef("inspect_coolers");
+  if (!task) return { ok: false, reason: "没有这个任务" };
+  if (!isTaskAccepted(task.id)) return { ok: false, reason: "你还没有接取巡检任务" };
+  if (isTaskDelivered(task.id) || isTaskCompleted(task.id)) {
+    return { ok: false, reason: "巡检已经完成了" };
+  }
+  if (!coolerId) return { ok: false, reason: "无效的饮水机" };
+  if (isCoolerInspected(coolerId)) {
+    var left = getCoolerInspectedRemainingMs(coolerId);
+    return {
+      ok: false,
+      reason:
+        "这台饮水机已检修" +
+        (left != null ? "（约 " + Math.ceil(left / 60000) + " 分钟后可再检）" : ""),
+    };
+  }
+  var list = readInspectProgress(task.id);
+  if (list.indexOf(coolerId) >= 0) {
+    return { ok: false, reason: "这台你已经巡检过了，换一台" };
+  }
+  list.push(coolerId);
+  writeInspectProgress(task.id, list);
+  markCoolerInspectedTag(coolerId);
+  var target = task.inspectTarget || 2;
+  if (list.length < target) {
+    renderTaskPanel();
+    return {
+      ok: true,
+      done: false,
+      count: list.length,
+      target: target,
+      task: task,
+    };
+  }
+  // 检满：标记交付并立刻领赏（本任务无需再找 M.E.G）
+  var delivered = getDeliveredTaskIds();
+  if (delivered.indexOf(task.id) < 0) {
+    delivered.push(task.id);
+    writeIds(DELIVERED_KEY, delivered);
+  }
+  var claim = claimTaskReward(task.id);
+  return {
+    ok: true,
+    done: true,
+    count: list.length,
+    target: target,
+    task: task,
+    reward: claim.ok ? claim.reward : 0,
+    cooldownNote: claim.cooldownNote || "",
+  };
 }
 
 /* ---------------------------- 限时任务与侦查记录 ---------------------------- */
@@ -824,6 +1306,11 @@ export function getReconProgress(id) {
     count: readReconProgress(id).length,
     target: task && task.reconTarget ? task.reconTarget : 0,
   };
+}
+
+/** 已记录 / 已拓印的目标标识列表（供关卡显示单个目标是否已完成）。 */
+export function getReconRecordedKeys(id) {
+  return readReconProgress(id);
 }
 
 /**
@@ -891,6 +1378,7 @@ function failTask(task, reasonText, onToast) {
   }
   clearTaskDeadline(task.id);
   clearReconProgress(task.id);
+  clearInspectProgress(task.id);
   var penalty = task.deathPenalty || 0;
   if (penalty > 0) addMegPoints(-penalty);
   toast(
@@ -926,12 +1414,13 @@ export function damageCarriedTaskItems(chance, onToast) {
 let nextDeadlineCheckAt = 0;
 
 /**
- * 限时任务超时结算。由生存循环每帧调用，内部按秒节流。
+ * 限时任务超时结算，并顺带刷新「间隔挂出」的委托。由生存循环每帧调用，内部按秒节流。
  */
 export function checkTaskDeadlines(onToast) {
   var now = Date.now();
   if (now < nextDeadlineCheckAt) return;
   nextDeadlineCheckAt = now + 1000;
+  refreshIntervalBoardOffers(false);
   var map = readMap(DEADLINE_KEY);
   var ids = Object.keys(map);
   for (var i = 0; i < ids.length; i++) {
@@ -955,6 +1444,8 @@ export function checkTaskDeadlines(onToast) {
  * 死亡结算：包裹类任务失败（移除任务与包裹、扣分）；地图类作废其绘制进度（可重绘）。
  */
 export function failTasksOnDeath(onToast) {
+  // 死亡打断「断粮巡航」连续性（无论有没有接取的任务）。
+  noteFastingBroken();
   var accepted = getAcceptedTaskIds();
   if (!accepted.length) return;
   var toast = typeof onToast === "function" ? onToast : defaultToast;
@@ -1006,7 +1497,7 @@ export function failTasksOnDeath(onToast) {
 
 /* ------------------------------ 白板任务面板 ------------------------------ */
 
-const STYLE_HREF = "css/backrooms-tasks.css?v=2";
+const STYLE_HREF = "css/backrooms-tasks.css?v=3";
 let stylesReady = false;
 
 /** 没有在 HTML 里手动引入样式的关卡，这里补上 */
@@ -1044,9 +1535,19 @@ function taskProgressText(task) {
   var text;
   if (task.type === "recon") {
     var p = getReconProgress(task.id);
-    text = "进行中 · 已记录 " + p.count + " / " + p.target;
+    var verb = task.reconLevelId === "c1290" ? "已拓印" : "已记录";
+    text = "进行中 · " + verb + " " + p.count + " / " + p.target;
+  } else if (task.type === "inspect") {
+    var ip = getInspectProgress(task.id);
+    text = "进行中 · 已巡检 " + ip.count + " / " + ip.target;
   } else if (task.type === "map") {
-    text = "进行中 · 前往 Level 21 按 Q 绘制";
+    var lvl =
+      task.drawLevelId === "l13"
+        ? "Level 13"
+        : task.drawLevelId === "l21"
+          ? "Level 21"
+          : task.drawLevelId || "目标层级";
+    text = "进行中 · 前往 " + lvl + " 按 E 绘制";
   } else {
     text = "进行中 · 携带" + (task.packageName || task.deviceName || "任务物品");
   }
@@ -1056,19 +1557,35 @@ function taskProgressText(task) {
 }
 
 function taskStatusLabel(task) {
+  if (isTaskCooling(task.id)) {
+    return "冷却中 · 还剩 " + formatRemaining(getTaskCooldownRemainingMs(task.id));
+  }
   if (isTaskCompleted(task.id)) return "已完成";
   if (isTaskDelivered(task.id)) return "已交付 · 回 Level 4 领赏";
-  if (isTaskAccepted(task.id)) return "已接取";
+  if (isTaskAccepted(task.id)) {
+    if (task.type === "inspect") {
+      var ip = getInspectProgress(task.id);
+      return "已接取 · 巡检 " + ip.count + " / " + ip.target;
+    }
+    return "已接取";
+  }
+  var counts = readMap(COMPLETE_COUNTS_KEY);
+  var n = typeof counts[task.id] === "number" ? counts[task.id] : 0;
+  if (task.completeLimit > 0) {
+    return "可接取 · 本周期 " + n + " / " + task.completeLimit;
+  }
   return "可接取";
 }
 
 function renderBoard(note) {
   if (!boardEl) return;
   var listHtml = "";
+  var shown = 0;
   for (var i = 0; i < TASK_DEFS.length; i++) {
     var task = TASK_DEFS[i];
     if (!isTaskOnBoard(task)) continue;
-    var taken = isTaskAccepted(task.id) || isTaskCompleted(task.id);
+    shown += 1;
+    var taken = isTaskAccepted(task.id) || isTaskDelivered(task.id);
     var selected = boardSelectedId === task.id;
     listHtml +=
       '<li class="br-board__task' +
@@ -1097,10 +1614,18 @@ function renderBoard(note) {
         : "") +
       "</li>";
   }
+  if (!shown) {
+    listHtml =
+      '<li class="br-board__empty">当前没有挂出的委托。可按 <kbd>R</kbd> 花费 ' +
+      BOARD_REROLL_COST +
+      " 积分刷新。</li>";
+  }
   boardEl.querySelector(".br-board__list").innerHTML = listHtml;
   var noteEl = boardEl.querySelector(".br-board__note");
   noteEl.textContent = note || "";
   noteEl.hidden = !note;
+  var ptsEl = boardEl.querySelector(".br-board__points");
+  if (ptsEl) ptsEl.textContent = "当前积分 " + getMegPoints();
 }
 
 function ensureBoardDom() {
@@ -1114,10 +1639,15 @@ function ensureBoardDom() {
   boardEl.setAttribute("aria-label", "M.E.G 任务板");
   boardEl.innerHTML =
     '<div class="br-board__sheet">' +
+    '<div class="br-board__head">' +
     '<p class="br-board__title">M.E.G · 任务板</p>' +
+    '<p class="br-board__points">当前积分 0</p>' +
+    "</div>" +
     '<ul class="br-board__list"></ul>' +
     '<p class="br-board__note" hidden></p>' +
-    '<p class="br-board__foot">单击任务查看 · <kbd>A</kbd> 接取 · <kbd>Q</kbd> / <kbd>Esc</kbd> 离开</p>' +
+    '<p class="br-board__foot">单击任务 · <kbd>A</kbd> 接取 · <kbd>R</kbd> 花 ' +
+    BOARD_REROLL_COST +
+    " 积分刷新 · <kbd>Q</kbd> / <kbd>Esc</kbd> 离开 · 列表可滚轮下滑</p>" +
     "</div>";
   document.body.appendChild(boardEl);
 
@@ -1170,6 +1700,12 @@ function confirmBoardSelection() {
   var msg = "已接取：" + result.task.title + (gained ? " · 获得" + gained : "");
   if (result.task.timeLimitMs > 0) {
     msg += " · 限时 " + Math.round(result.task.timeLimitMs / 60000) + " 分钟";
+  }
+  if (result.task.type === "inspect") {
+    msg += " · 对饮水机按 E 巡检";
+  }
+  if (result.task.type === "map") {
+    msg += " · 目标层按 E 绘制";
   }
   renderBoard(msg);
   if (boardToast) boardToast(msg);
@@ -1340,6 +1876,12 @@ export function handleTaskUiKey(e) {
   if (boardOpen) {
     if (e.code === "KeyA") {
       confirmBoardSelection();
+      return true;
+    }
+    if (e.code === "KeyR") {
+      var reroll = rerollBoardOffersWithPoints();
+      if (!reroll.ok) renderBoard(reroll.reason || "刷新失败");
+      else if (boardToast) boardToast("任务板已刷新 · -" + reroll.cost + " 积分");
       return true;
     }
     if (e.code === "Escape" || e.code === "KeyQ") {

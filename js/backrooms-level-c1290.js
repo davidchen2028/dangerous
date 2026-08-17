@@ -27,7 +27,17 @@ import {
   ensurePetrifyOverlay as ensureSharedPetrifyOverlay,
   updatePetrifyOverlay as updateSharedPetrifyOverlay,
 } from "./backrooms-petrify.js";
-import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
+import {
+  markLevelEntered,
+  handleTaskUiKey,
+  isTaskUiOpen,
+  isTaskAccepted,
+  isTaskDelivered,
+  isTaskCompleted,
+  recordReconSighting,
+  getReconProgress,
+  getReconRecordedKeys,
+} from "./backrooms-tasks.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -67,9 +77,22 @@ const ARCH_X = -34;
 const ARCH_Z = 18;
 const ARCH_USE_DIST = 2.6;
 
+/** 「C-1290 拓片」任务：石化未过半时对 3 块石碑各按 E 拓印 */
+const RUB_TASK_ID = "rubbing_c1290";
+const RUB_DIST = 2.4;
+/** 石化超过此比例后无法再拓印 */
+const PETRIFY_RUB_MAX = 0.5;
+/** 3 块可拓印石碑的位置（靠近出生点、远离教堂中心，留出拓印时间） */
+const RUB_STELE_POS = [
+  { x: 0, z: 40, id: "rub_1" },
+  { x: 8, z: 45, id: "rub_2" },
+  { x: -8, z: 45, id: "rub_3" },
+];
+
 const colliders = [];
 const blackPools = [];
 const glyphMaterials = [];
+const taskSteles = [];
 const fps = createBackroomsFpsState({
   player: { x: 0, z: AREA_HALF - 8, radius: 0.34, speed: 3.6 },
 });
@@ -94,7 +117,6 @@ let survival = null;
 let petrify = 0;
 let audio = null;
 let transitionLock = false;
-let nearArch = false;
 
 function wallCollider(minX, maxX, minZ, maxZ) {
   return { kind: "wall", minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ };
@@ -254,6 +276,54 @@ function addStele(root, x, z, seed) {
   colliders.push(wallCollider(x - 0.35, x + 0.35, z - 0.12, z + 0.12));
 }
 
+/* -------------------------- 拓片任务石碑 -------------------------- */
+
+function addTaskStele(root, x, z, id, seed) {
+  var g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = Math.atan2(fps.player.x - x, fps.player.z - z); // 正面朝向出生点
+  var h = 2.5;
+  box(g, 0.86, h, 0.22, 0, h * 0.5, 0, STONE, false);
+  var glyphMat = new THREE.MeshStandardMaterial({
+    map: makeGlyphTexture(seed),
+    transparent: true,
+    opacity: 0.95,
+    roughness: 1,
+    emissive: 0x8a4a1e,
+    emissiveIntensity: 0.55,
+  });
+  var plane = new THREE.Mesh(new THREE.PlaneGeometry(0.68, h - 0.4), glyphMat);
+  plane.position.set(0, h * 0.5, 0.12);
+  g.add(plane);
+  // 顶部微光帮助定位
+  var glow = new THREE.PointLight(0xffcf8a, 0.7, 9, 2);
+  glow.position.set(0, h + 0.5, 0);
+  g.add(glow);
+  root.add(g);
+  colliders.push(wallCollider(x - 0.43, x + 0.43, z - 0.14, z + 0.14));
+  taskSteles.push({ x: x, z: z, id: id, glyphMat: glyphMat });
+}
+
+function addTaskSteles(root) {
+  var i;
+  for (i = 0; i < RUB_STELE_POS.length; i++) {
+    var p = RUB_STELE_POS[i];
+    addTaskStele(root, p.x, p.z, p.id, i * 17.3 + 4.1);
+  }
+}
+
+/** 已拓印的石碑：让碑文变淡，作为已完成的视觉反馈 */
+function applyRubbedVisuals() {
+  var done = getReconRecordedKeys(RUB_TASK_ID);
+  var i;
+  for (i = 0; i < taskSteles.length; i++) {
+    if (done.indexOf(taskSteles[i].id) >= 0) {
+      taskSteles[i].glyphMat.emissiveIntensity = 0.04;
+      taskSteles[i].glyphMat.opacity = 0.32;
+    }
+  }
+}
+
 /* -------------------------- 黑色腐蚀液 -------------------------- */
 
 function addBlackPool(root, x, z, r) {
@@ -391,19 +461,72 @@ function isNearArch() {
   return Math.hypot(fps.player.x - ARCH_X, fps.player.z - ARCH_Z) <= ARCH_USE_DIST;
 }
 
-function updateArchUi() {
+function isRubTaskActive() {
+  return (
+    isTaskAccepted(RUB_TASK_ID) &&
+    !isTaskDelivered(RUB_TASK_ID) &&
+    !isTaskCompleted(RUB_TASK_ID)
+  );
+}
+
+function nearTaskStele() {
+  var i;
+  for (i = 0; i < taskSteles.length; i++) {
+    var s = taskSteles[i];
+    if (Math.hypot(fps.player.x - s.x, fps.player.z - s.z) <= RUB_DIST) return s;
+  }
+  return null;
+}
+
+function updateInteractUi() {
   if (transitionLock) return;
-  var near = isNearArch();
-  if (near === nearArch) return;
-  nearArch = near;
-  if (crosshairEl) crosshairEl.classList.toggle("backrooms-crosshair--interact", near);
+  var hint = null;
+  if (isNearArch()) {
+    hint = "按 Q 穿过希腊拱门（前往 Level 11）";
+  } else if (isRubTaskActive()) {
+    var s = nearTaskStele();
+    if (s) {
+      if (petrify >= PETRIFY_RUB_MAX) {
+        hint = "石化已过半，手不听使唤，无法再拓印";
+      } else if (getReconRecordedKeys(RUB_TASK_ID).indexOf(s.id) >= 0) {
+        hint = "这块石碑已拓印，去拓另一块";
+      } else {
+        var p = getReconProgress(RUB_TASK_ID);
+        hint = "按 E 拓印碑文（" + p.count + " / " + p.target + "）";
+      }
+    }
+  }
+  var interactive = hint != null;
+  if (crosshairEl) crosshairEl.classList.toggle("backrooms-crosshair--interact", interactive);
   if (interactHintEl) {
-    if (near) {
-      interactHintEl.textContent = "按 Q 穿过希腊拱门（前往 Level 11）";
+    if (hint) {
+      interactHintEl.textContent = hint;
       interactHintEl.hidden = false;
     } else {
       interactHintEl.hidden = true;
     }
+  }
+}
+
+function tryRubStele() {
+  if (transitionLock) return;
+  if (!isRubTaskActive()) return;
+  var s = nearTaskStele();
+  if (!s) return;
+  if (petrify >= PETRIFY_RUB_MAX) {
+    showToast("石化已过半，手不听使唤，无法再拓印。");
+    return;
+  }
+  var res = recordReconSighting(RUB_TASK_ID, s.id);
+  if (!res.ok) {
+    if (res.reason) showToast(res.reason);
+    return;
+  }
+  applyRubbedVisuals();
+  if (res.done) {
+    showToast("拓片完成（" + res.count + " / " + res.target + "）· 立刻撤离，回 Level 4 领赏！");
+  } else {
+    showToast("拓印成功（" + res.count + " / " + res.target + "）");
   }
 }
 
@@ -550,6 +673,7 @@ function buildWorld(root) {
 
   buildChurch(root);
   buildGreekArch(root);
+  addTaskSteles(root);
 
   // 边界空气墙
   colliders.push(wallCollider(-AREA_HALF - 3, -AREA_HALF, -AREA_HALF - 3, AREA_HALF + 3));
@@ -717,6 +841,11 @@ function bindControls() {
         if (isNearArch()) exitThroughArchToL11();
         return true;
       }
+      if (event.code === "KeyE" && !event.repeat) {
+        event.preventDefault();
+        tryRubStele();
+        return true;
+      }
       if (event.code === "KeyB" && !event.repeat) {
         event.preventDefault();
         toggleBackpack();
@@ -752,6 +881,7 @@ function init() {
   root.name = "BackroomsLevelC1290";
   scene.add(root);
   buildWorld(root);
+  applyRubbedVisuals();
   ensurePetrifyOverlay();
 
   survival = new BackroomsSurvival();
@@ -803,7 +933,7 @@ function init() {
       });
     }
     updatePetrify(dt);
-    updateArchUi();
+    updateInteractUi();
 
     // 碑文随时间缓慢磨损淡化
     if (glyphMaterials.length) {

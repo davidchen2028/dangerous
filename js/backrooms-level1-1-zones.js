@@ -441,6 +441,7 @@ export function createLevel1_1ZoneManager(deps) {
     teleportTo(world2.corridorSpawn);
     syncHudTitle();
     showEnterLevelBanner("L1.1-2");
+    markLevelEntered("l1.1-2", deps.showToast);
     return true;
   }
 

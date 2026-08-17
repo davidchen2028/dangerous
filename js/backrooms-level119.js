@@ -23,6 +23,7 @@ import {
   queueEnterLevelBanner,
 } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import { markLevelEntered } from "./backrooms-tasks.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -51,6 +52,9 @@ const WALL_H = 5.2;
 const EYE_HEIGHT = 1.65;
 const AIM_MAX = 4.5;
 const SLIDE_DURATION = 20;
+/** 滑行管道另建在房间正下方远处，靠远裁剪面天然遮住房间 */
+const RIDE_ORIGIN_Y = -300;
+const RIDE_RADIUS = 1.7;
 
 const SLIDE_DEFS = [
   {
@@ -149,6 +153,17 @@ let sliding = false;
 let slideTimer = 0;
 let activeSlide = null;
 let lastSlideHint = -1;
+/** 第一视角滑行管道 */
+let rideRoot = null;
+let rideCurve = null;
+let rideTubeGeo = null;
+let rideTubeMat = null;
+let rideWaterGeo = null;
+let rideWaterMat = null;
+let rideScrollTex = null;
+let rideLight = null;
+let rideBank = 0;
+let baseFov = 72;
 
 function wallCollider(minX, maxX, minZ, maxZ) {
   return { kind: "wall", minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ };
@@ -332,6 +347,173 @@ function exitGoto(slide) {
   window.location.href = slide.page;
 }
 
+/* ---------------------- 第一视角滑行管道 ---------------------- */
+
+function slideSeed(id) {
+  var seed = 0;
+  for (var i = 0; i < id.length; i++) seed += id.charCodeAt(i) * (i + 3);
+  return seed;
+}
+
+function rideRand(seed) {
+  var s = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+/** 每条滑梯按 id 生成一条固定的螺旋下降管道，形状各不相同 */
+function buildRideCurve(def) {
+  var seed = slideSeed(def.id);
+  var turns = 3 + rideRand(seed) * 1.8;
+  var baseR = 11 + rideRand(seed + 5) * 6;
+  var drop = 54 + rideRand(seed + 9) * 28;
+  var wobble = 2.2 + rideRand(seed + 13) * 2.8;
+  var dir = rideRand(seed + 17) > 0.5 ? 1 : -1;
+  var pts = [];
+  for (var i = 0; i <= 96; i++) {
+    var t = i / 96;
+    var ang = dir * (t * Math.PI * 2 * turns) + Math.sin(t * 5.3 + seed) * 0.55;
+    var r = baseR + Math.sin(t * 7.1 + seed * 0.7) * wobble;
+    pts.push(
+      new THREE.Vector3(
+        Math.cos(ang) * r,
+        RIDE_ORIGIN_Y - t * drop + Math.sin(t * 9.4 + seed) * 1.2,
+        Math.sin(ang) * r
+      )
+    );
+  }
+  return new THREE.CatmullRomCurve3(pts, false, "catmullrom", 0.5);
+}
+
+/**
+ * 沿管道滚动的水纹环带，是速度感的主要来源。
+ * TubeGeometry 的 uv.x 沿管道长度、uv.y 绕圆周，所以环带必须画成竖条（沿 u 变化），
+ * 再滚动 offset.x 才会呈现向前冲的效果，而不是绕着管壁打转。
+ */
+function makeRideStreakTexture(seed) {
+  var c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 64;
+  var ctx = c.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, 256, 64);
+  for (var i = 0; i < 38; i++) {
+    var x = rideRand(seed + i * 3.7) * 256;
+    var w = 1 + rideRand(seed + i * 5.1) * 5;
+    var a = 0.1 + rideRand(seed + i * 7.3) * 0.32;
+    ctx.fillStyle = "rgba(126, 184, 226, " + a.toFixed(3) + ")";
+    ctx.fillRect(x, 0, w, 64);
+  }
+  var tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(24, 1);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function disposeRide() {
+  if (rideRoot && scene) scene.remove(rideRoot);
+  if (rideTubeGeo) rideTubeGeo.dispose();
+  if (rideWaterGeo) rideWaterGeo.dispose();
+  if (rideTubeMat) rideTubeMat.dispose();
+  if (rideWaterMat) rideWaterMat.dispose();
+  if (rideScrollTex) rideScrollTex.dispose();
+  rideRoot = null;
+  rideCurve = null;
+  rideTubeGeo = null;
+  rideTubeMat = null;
+  rideWaterGeo = null;
+  rideWaterMat = null;
+  rideScrollTex = null;
+  rideLight = null;
+  rideBank = 0;
+}
+
+function buildRide(def) {
+  disposeRide();
+  if (!scene) return;
+  var seed = slideSeed(def.id);
+  rideCurve = buildRideCurve(def);
+  rideRoot = new THREE.Group();
+  rideRoot.name = "L119SlideRide";
+  rideScrollTex = makeRideStreakTexture(seed);
+
+  // 管壁：从内侧观察，所以用 BackSide
+  rideTubeGeo = new THREE.TubeGeometry(rideCurve, 320, RIDE_RADIUS, 20, false);
+  rideTubeMat = new THREE.MeshStandardMaterial({
+    color: def.color,
+    map: rideScrollTex,
+    roughness: 0.3,
+    metalness: 0.06,
+    emissive: def.color,
+    emissiveIntensity: 0.24,
+    side: THREE.BackSide,
+  });
+  rideRoot.add(new THREE.Mesh(rideTubeGeo, rideTubeMat));
+
+  // 贴着管壁的一层水膜，制造湿滑反光
+  rideWaterGeo = new THREE.TubeGeometry(rideCurve, 200, RIDE_RADIUS * 0.86, 16, false);
+  rideWaterMat = new THREE.MeshStandardMaterial({
+    color: 0x8ed2f2,
+    map: rideScrollTex,
+    transparent: true,
+    opacity: 0.3,
+    roughness: 0.1,
+    metalness: 0.22,
+    side: THREE.BackSide,
+    depthWrite: false,
+  });
+  var water = new THREE.Mesh(rideWaterGeo, rideWaterMat);
+  water.renderOrder = 2;
+  rideRoot.add(water);
+
+  rideLight = new THREE.PointLight(0xffffff, 1.6, 26, 2);
+  rideRoot.add(rideLight);
+  rideRoot.add(new THREE.AmbientLight(0xdceefb, 0.55));
+  scene.add(rideRoot);
+}
+
+function clampBank(v) {
+  if (v > 0.78) return 0.78;
+  if (v < -0.78) return -0.78;
+  return v;
+}
+
+function updateRideCamera(dt) {
+  if (!rideCurve || !camera) return;
+  var t = Math.min(1, slideTimer / SLIDE_DURATION);
+  var ahead = Math.min(1, t + 0.014);
+  var pos = rideCurve.getPointAt(t);
+  var look = rideCurve.getPointAt(ahead);
+  // 视点压在管道下半部，像是真的坐在水流上
+  var seatDrop = RIDE_RADIUS * 0.45;
+  var bobY = Math.sin(slideTimer * 9.1) * 0.06;
+  var bobX = Math.sin(slideTimer * 5.7) * 0.09;
+
+  camera.position.set(pos.x + bobX, pos.y - seatDrop + bobY, pos.z);
+  camera.up.set(0, 1, 0);
+  camera.lookAt(look.x, look.y - seatDrop, look.z);
+
+  // 用相邻切线的水平叉积估算转弯方向，转弯时向内侧倾斜
+  var tanA = rideCurve.getTangentAt(t);
+  var tanB = rideCurve.getTangentAt(Math.min(1, t + 0.02));
+  var cross = tanA.x * tanB.z - tanA.z * tanB.x;
+  var targetBank = clampBank(-cross * 30);
+  rideBank += (targetBank - rideBank) * Math.min(1, dt * 6);
+  camera.rotateZ(rideBank + Math.sin(slideTimer * 7.3) * 0.035);
+
+  // 中段加速时视野拉宽，强化俯冲感
+  var rush = 0.55 + 0.45 * Math.sin(t * Math.PI);
+  camera.fov = baseFov + 11 * rush;
+  camera.updateProjectionMatrix();
+
+  if (rideLight) rideLight.position.set(look.x, look.y, look.z);
+  if (rideScrollTex) {
+    // offset.x 递增 → 环带向管道起点（身后）掠去，才是前进的方向
+    rideScrollTex.offset.x = (rideScrollTex.offset.x + dt * (1.2 + rush * 0.9)) % 1;
+  }
+}
+
 function finishSlide() {
   if (!activeSlide) return;
   var slide = activeSlide;
@@ -339,6 +521,15 @@ function finishSlide() {
   sliding = false;
   slideTimer = 0;
   if (slideOverlayEl) slideOverlayEl.classList.remove("is-on");
+  disposeRide();
+  if (camera) {
+    // 归还被滑行接管的相机状态：视野、侧倾与欧拉顺序
+    camera.fov = baseFov;
+    camera.updateProjectionMatrix();
+    camera.rotation.order = "YXZ";
+    camera.rotation.z = 0;
+    camera.up.set(0, 1, 0);
+  }
 
   if (slide.outcome === "death") {
     showToast("黑白滑梯尽头只有黑暗…");
@@ -368,6 +559,15 @@ function beginSlide(slide) {
   activeSlide = slide;
   slideTimer = 0;
   lastSlideHint = -1;
+  buildRide(slide);
+  updateRideCamera(0);
+  // 滑行期间主循环不跑 updateInteractUi，交互提示与准星必须在这里主动收掉
+  currentAimPick = null;
+  if (interactHintEl) interactHintEl.hidden = true;
+  if (crosshairEl) {
+    crosshairEl.classList.add("backrooms-crosshair--hidden");
+    crosshairEl.classList.remove("backrooms-crosshair--interact");
+  }
   if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
   if (slideOverlayEl) slideOverlayEl.classList.add("is-on");
   if (slideTextEl) {
@@ -391,17 +591,7 @@ function updateSlide(dt) {
         "滑行中……还剩 <strong>" + left + "</strong> 秒";
     }
   }
-  if (camera) {
-    camera.position.set(
-      Math.sin(slideTimer * 1.7) * 0.35,
-      1.2 + Math.sin(slideTimer * 3.1) * 0.12,
-      Math.cos(slideTimer * 1.3) * 0.25
-    );
-    camera.rotation.order = "YXZ";
-    camera.rotation.x = -0.35 + Math.sin(slideTimer * 2.2) * 0.08;
-    camera.rotation.y = slideTimer * 0.35;
-    camera.rotation.z = Math.sin(slideTimer * 2.8) * 0.18;
-  }
+  updateRideCamera(dt);
   if (slideTimer >= SLIDE_DURATION) {
     saveBackroomsSurvival(survival);
     finishSlide();
@@ -491,10 +681,12 @@ function init() {
     return;
   }
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l119", showToast);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xb9d4e8);
   scene.fog = new THREE.Fog(0xb9d4e8, 10, 36);
   camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 60);
+  baseFov = camera.fov;
   var gfx = resolveBackroomsGfxProfile();
   renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
   applyBackroomsRendererSize(renderer, window.innerWidth, window.innerHeight, gfx);

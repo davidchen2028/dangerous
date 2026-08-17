@@ -51,6 +51,10 @@ import {
   markLevelEntered,
   getFirstDeliveredUnclaimedTask,
   claimTaskReward,
+  isTaskAccepted,
+  recordCoolerInspect,
+  isCoolerInspected,
+  getCoolerInspectedRemainingMs,
 } from "./backrooms-tasks.js";
 import {
   createBackroomsFpsState,
@@ -131,8 +135,6 @@ let dialogueKind = "";
 const DRAINED_COOLERS_KEY = "backrooms_l4_drained_coolers_v1";
 /** @type {Set<string>} */
 let drainedCoolers = new Set();
-/** 提示文案缓存，避免每帧写 DOM */
-let waterHintDrained = false;
 
 function loadDrainedCoolers() {
   try {
@@ -282,11 +284,55 @@ function updateWaterHint() {
     return;
   }
   waterHintEl.hidden = false;
+  var coolerId = aimedCoolerId();
+  var inspected = isCoolerInspected(coolerId);
   var drained = isAimedCoolerDrained();
-  if (drained !== waterHintDrained) {
-    waterHintDrained = drained;
-    waterHintEl.innerHTML = drained ? "这台饮水机已经空了" : "按 <kbd>Q</kbd> 接水";
+  var canInspect =
+    isTaskAccepted("inspect_coolers") &&
+    !inspected;
+  var html;
+  if (inspected) {
+    var left = getCoolerInspectedRemainingMs(coolerId);
+    html =
+      "已检修" +
+      (left != null ? " · 约 " + Math.ceil(left / 60000) + " 分钟后清除" : "");
+    if (!drained) html += " · 按 <kbd>Q</kbd> 接水";
+  } else if (canInspect && drained) {
+    html = "按 <kbd>E</kbd> 巡检（已无水）";
+  } else if (canInspect) {
+    html = "按 <kbd>E</kbd> 巡检 · 按 <kbd>Q</kbd> 接水";
+  } else {
+    html = drained ? "这台饮水机已经空了" : "按 <kbd>Q</kbd> 接水";
   }
+  if (html !== waterHintEl.innerHTML) waterHintEl.innerHTML = html;
+}
+
+function tryCoolerInspectE() {
+  if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
+  if (!isAimWaterCooler()) return;
+  if (!isTaskAccepted("inspect_coolers")) {
+    showLootToast("尚未接取饮水机巡检任务");
+    return;
+  }
+  var result = recordCoolerInspect(aimedCoolerId());
+  if (!result.ok) {
+    showLootToast(result.reason || "无法巡检");
+    return;
+  }
+  updateMegPointsDisplay(megPointsEl);
+  if (result.done) {
+    var msg =
+      "巡检完成 · +" +
+      (result.reward || 5) +
+      " 积分";
+    if (result.cooldownNote) msg += " · " + result.cooldownNote;
+    showLootToast(msg);
+  } else {
+    showLootToast(
+      "已检修（" + result.count + "/" + result.target + "）· 标签将保留 10 分钟"
+    );
+  }
+  updateWaterHint();
 }
 
 function updateInteractHint() {
@@ -438,7 +484,9 @@ function handleBntgChoice(choice) {
       return;
     }
     updateMegPointsDisplay(megPointsEl);
-    showLootToast("任务完成：" + task.title + " · +" + result.reward + " 积分");
+    var msg = "任务完成：" + task.title + " · +" + result.reward + " 积分";
+    if (result.cooldownNote) msg += " · " + result.cooldownNote;
+    showLootToast(msg);
   } else if (dialogueKind === "meg") acceptMegTaskBoard();
   else exitToL1BntgBase();
 }
@@ -527,6 +575,11 @@ function bindControls() {
       if (e.code === "KeyB" && !e.repeat) {
         e.preventDefault();
         toggleBackpack();
+        return true;
+      }
+      if (e.code === "KeyE" && !e.repeat) {
+        e.preventDefault();
+        tryCoolerInspectE();
         return true;
       }
       if (e.code === "KeyQ" && !e.repeat) {

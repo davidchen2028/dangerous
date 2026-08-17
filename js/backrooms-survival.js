@@ -58,6 +58,7 @@ import {
   noteCriticalVitals,
   noteSoyMilkDrunk,
   noteLuckySoyMilkOutcome,
+  noteFastingBroken,
   checkTaskDeadlines,
 } from "./backrooms-tasks.js";
 
@@ -100,22 +101,27 @@ export function registerBackroomsInventoryUseHandlers(survival, options) {
   options = options || {};
   window.__backroomsUseAlmondWater = function () {
     if (!survival || !survival.useAlmondWater()) return;
+    noteFastingBroken();
     if (options.onAlmondWaterUsed) options.onAlmondWaterUsed();
   };
   window.__backroomsUseStrawberrySoyMilk = function () {
     if (!survival || !survival.useStrawberrySoyMilk()) return;
+    noteFastingBroken();
     if (options.onStrawberrySoyMilkUsed) options.onStrawberrySoyMilkUsed();
   };
   window.__backroomsUseBananaSoyMilk = function () {
     if (!survival || !survival.useBananaSoyMilk()) return;
+    noteFastingBroken();
     if (options.onBananaSoyMilkUsed) options.onBananaSoyMilkUsed();
   };
   window.__backroomsUseLuckySoyMilk = function (itemId) {
     if (!survival || !survival.useLuckySoyMilk(itemId)) return;
+    noteFastingBroken();
     if (options.onLuckySoyMilkUsed) options.onLuckySoyMilkUsed(itemId);
   };
   window.__backroomsUseVaultSoyMilk = function (itemId) {
     if (!survival || !survival.useVaultSoyMilk(itemId)) return;
+    noteFastingBroken();
     if (options.onVaultSoyMilkUsed) options.onVaultSoyMilkUsed(itemId);
   };
   window.__backroomsOnLuckySoyMilkHeated = function () {
@@ -126,10 +132,12 @@ export function registerBackroomsInventoryUseHandlers(survival, options) {
   }
   window.__backroomsUseRoyalRations = function () {
     if (!survival || !survival.useRoyalRations()) return;
+    noteFastingBroken();
     if (options.onRoyalRationsUsed) options.onRoyalRationsUsed();
   };
   window.__backroomsUseRoyalRationsMedium = function () {
     if (!survival || !survival.useRoyalRationsMedium()) return;
+    noteFastingBroken();
     if (options.onRoyalRationsUsed) options.onRoyalRationsUsed();
   };
   window.__backroomsUseRoulette = function () {

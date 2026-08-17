@@ -93,7 +93,7 @@ function addBox(root, w, h, d, x, y, z, material) {
   return mesh;
 }
 
-import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
+import { markLevelEntered, handleTaskUiKey, isTaskUiOpen, isTaskAccepted, isTaskDelivered, isTaskCompleted, deliverMapTask } from "./backrooms-tasks.js";
 
 function showToast(message) {
   showBackroomsLootToast(message, { durationMs: 2600 });
@@ -382,23 +382,39 @@ function resolveInteract() {
 
 function updateInteractUi() {
   var data = resolveInteract();
-  var hidden = isInventoryOpen() || dialogueOpen || !survival || survival.dead || !data;
+  var mapPending =
+    isTaskAccepted("map_l13") &&
+    !isTaskDelivered("map_l13") &&
+    !isTaskCompleted("map_l13");
+  var hidden =
+    isInventoryOpen() ||
+    dialogueOpen ||
+    !survival ||
+    survival.dead ||
+    (!data && !mapPending);
   if (interactHintEl) {
     interactHintEl.hidden = hidden;
     if (!hidden) {
-      if (data.kind === "l13_faceling") {
+      if (data && data.kind === "l13_faceling") {
         interactHintEl.innerHTML = "无面灵前台 · 按 <kbd>Q</kbd> 对话";
-      } else if (data.kind === "l13_pipe") {
+      } else if (data && data.kind === "l13_pipe") {
         interactHintEl.innerHTML = "管道口 · 按 <kbd>Q</kbd> 切入";
-      } else if (roomAssigned) {
-        interactHintEl.innerHTML = "303 房间地板 · 按 <kbd>Q</kbd> 切出";
-      } else {
-        interactHintEl.innerHTML = "303 房间地板 · 先去前台办理入住";
+      } else if (data && data.kind === "l13_room303_floor") {
+        if (roomAssigned) {
+          interactHintEl.innerHTML = "303 房间地板 · 按 <kbd>Q</kbd> 切出";
+        } else {
+          interactHintEl.innerHTML = "303 房间地板 · 先去前台办理入住";
+        }
+      } else if (mapPending) {
+        interactHintEl.innerHTML = "按 <kbd>E</kbd> 绘制 Level 13 楼层平面";
       }
     }
   }
   if (crosshairEl) {
-    crosshairEl.classList.toggle("backrooms-crosshair--hidden", hidden && !data);
+    crosshairEl.classList.toggle(
+      "backrooms-crosshair--hidden",
+      isInventoryOpen() || dialogueOpen || !survival || survival.dead
+    );
     crosshairEl.classList.toggle("backrooms-crosshair--interact", !hidden && !!data);
   }
 }
@@ -425,6 +441,29 @@ function exitPipeToLevel3() {
   window.setTimeout(function () {
     window.location.href = "backrooms-level3.html";
   }, 500);
+}
+
+function tryDrawMapL13() {
+  if (isTaskCompleted("map_l13")) {
+    showToast("楼层平面任务已经完成了。");
+    return;
+  }
+  if (!isTaskAccepted("map_l13")) return;
+  if (isTaskDelivered("map_l13")) {
+    showToast("平面图已经绘制好了，回 Level 4 交付。");
+    return;
+  }
+  var r = deliverMapTask("map_l13");
+  if (r.ok) {
+    showToast("你绘制好了 Level 13 的楼层平面 · 回 Level 4 交付领取 25 积分");
+  } else {
+    showToast(r.reason || "无法绘制平面图");
+  }
+}
+
+function tryEAction() {
+  if (dialogueOpen || transitionLock || isInventoryOpen() || !survival || survival.dead) return;
+  tryDrawMapL13();
 }
 
 function tryQAction() {
@@ -465,6 +504,11 @@ function bindControls() {
       tryBackroomsJump(fps, 8);
     },
     onKeyDown: function (event) {
+      if (event.code === "KeyE" && !event.repeat) {
+        event.preventDefault();
+        tryEAction();
+        return true;
+      }
       if (event.code === "KeyQ" && !event.repeat) {
         event.preventDefault();
         tryQAction();

@@ -1,5 +1,5 @@
 /**
- * 死亡时 90% 概率转入 Level C-1289（已在 C-1289~C-1299 内则不再转入）。
+ * 死亡时 9% 概率转入 Level C-1289（已在 C-1289~C-1299 内则不再转入）。
  */
 import {
   clearRoyalRationsBuff,
@@ -15,7 +15,7 @@ import { grantLevelPass } from "./backrooms-level-pass.js";
 import { queueEnterLevelBanner } from "./backrooms-level-enter.js";
 
 export const C1289_PAGE = "backrooms-level-c1289.html";
-export const C1289_DEATH_CHANCE = 0.9;
+export const C1289_DEATH_CHANCE = 0.09;
 
 /** @param {number | string | null | undefined} level */
 export function isC1289FamilyLevel(level) {

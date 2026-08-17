@@ -3,6 +3,7 @@
  */
 import * as THREE from "three";
 import { getLevel2EntityCorridorArm } from "./backrooms-level2-xiaoye.js";
+import { isFastingRunActive } from "./backrooms-tasks.js";
 
 var _doorBoxScratch = new THREE.Box3();
 
@@ -412,6 +413,8 @@ export function updateLevel2Doors(doors, dt) {
 export function getLevel2DoorTransition(doors, px, pz) {
   if (!doors) return null;
   if (doors.l3 && doors.l3.open && pointInPassage(doors.l3.passage, px, pz)) {
+    // 「断粮巡航」挑战进行中：普通门必定通往 Level 3。
+    if (isFastingRunActive()) return "l3";
     return doors.l3.l3Dest === "l4" ? "l4" : "l3";
   }
   if (doors.l283 && doors.l283.open && pointInPassage(doors.l283.passage, px, pz)) {
