@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <title>后室 Level C-1293 — 故此悬置</title>
+  <link rel="stylesheet" href="css/backrooms-level0.css?v=22">
+  <link rel="stylesheet" href="css/backrooms-survival.css?v=6">
+</head>
+<body class="backrooms-level1 backrooms-level-c1293">
+  <canvas id="backroomsCanvas" aria-label="后室 Level C-1293"></canvas>
+  <canvas id="backroomsStormTear" width="320" height="180" aria-hidden="true"
+    style="position:fixed;inset:0;width:100%;height:100%;z-index:4;pointer-events:none;image-rendering:pixelated;mix-blend-mode:screen;"></canvas>
+  <div id="backroomsInput" class="backrooms-input" aria-hidden="true"></div>
+  <div class="backrooms-crosshair" id="backroomsCrosshair" aria-hidden="true"></div>
+  <div class="backrooms-hud">
+    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level C-1293 · 故此悬置 · 生存难度 死区</p>
+    <div class="backrooms-nav"><div class="backrooms-nav__row">
+      <p class="backrooms-temp" id="backroomsTemp"><span class="backrooms-temp__label">温度</span><span class="backrooms-temp__meter"><span class="backrooms-temp__fill" id="backroomsTempFill"></span></span><strong class="backrooms-temp__value" id="backroomsTempValue">—</strong></p>
+      <p class="backrooms-points"><span class="backrooms-points__label">积分点</span><strong class="backrooms-points__value" id="backroomsMegPoints">0</strong></p>
+    </div></div>
+    <div aria-label="精神完整度" style="display:flex;align-items:center;gap:.5rem;max-width:360px;margin:.4rem 0 .2rem;">
+      <span style="white-space:nowrap;">精神完整度</span>
+      <span style="display:block;flex:1;height:9px;background:rgba(10,12,13,.72);border:1px solid rgba(220,224,224,.55);overflow:hidden;">
+        <span id="backroomsMindFill" style="display:block;width:100%;height:100%;background:linear-gradient(90deg,#d9d6cb,#f1f1ee);transition:width .16s linear;"></span>
+      </span>
+      <strong id="backroomsMindValue">100%</strong>
+    </div>
+    <p class="backrooms-hud__hint" id="backroomsHint">加载中…</p>
+    <p class="backrooms-hud__loot" id="backroomsLootToast" hidden></p>
+    <div class="backrooms-hud__error" id="backroomsError" hidden></div>
+  </div>
+  <script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
+  <script type="module" src="js/backrooms-level-c1293.js?v=1"></script>
+</body>
+</html>

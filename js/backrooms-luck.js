@@ -12,28 +12,46 @@ const MERCHANT_LOCK_MS = 2 * 60 * 1000;
 let stumbleUntil = 0;
 let nextStumbleCheck = 0;
 
+/** 模块级缓存，避免每帧反复 JSON.parse sessionStorage */
+var cachedMod = null;
+var cacheValid = false;
+
+function invalidateLuckCache() {
+  cacheValid = false;
+  cachedMod = null;
+}
+
 function readMod() {
+  if (cacheValid) return cachedMod;
+  cacheValid = true;
   try {
     var raw = sessionStorage.getItem(LUCK_MOD_KEY);
-    if (!raw) return null;
-    var parsed = JSON.parse(raw);
-    if (!parsed || !Number.isFinite(parsed.delta) || !Number.isFinite(parsed.until)) {
+    if (!raw) {
+      cachedMod = null;
       return null;
     }
-    return parsed;
+    var parsed = JSON.parse(raw);
+    if (!parsed || !Number.isFinite(parsed.delta) || !Number.isFinite(parsed.until)) {
+      cachedMod = null;
+      return null;
+    }
+    cachedMod = parsed;
+    return cachedMod;
   } catch (err) {
+    cachedMod = null;
     return null;
   }
 }
 
 function writeMod(delta, until) {
   try {
-    sessionStorage.setItem(
-      LUCK_MOD_KEY,
-      JSON.stringify({ delta: delta, until: until })
-    );
+    var mod = { delta: delta, until: until };
+    sessionStorage.setItem(LUCK_MOD_KEY, JSON.stringify(mod));
+    cachedMod = mod;
+    cacheValid = true;
     return true;
   } catch (err) {
+    invalidateLuckCache();
     return false;
   }
 }
@@ -44,6 +62,7 @@ export function clearLuck() {
   } catch (err) {
     /* ignore */
   }
+  invalidateLuckCache();
 }
 
 /** @returns {number} */

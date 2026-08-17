@@ -30,6 +30,7 @@ import {
   getMerchantLockRemainingMs,
   shouldGiveLuckyMerchantGift,
 } from "./backrooms-luck.js";
+import { handleTaskUiKey, isTaskUiOpen, noteVaultTenPull } from "./backrooms-tasks.js";
 import {
   initBackroomsTemperature,
   updateBackroomsTemperature,
@@ -468,6 +469,8 @@ function handleVaultChoice(choice) {
   }
   pendingVaultDraw = roll;
   closeVaultDialogue();
+  // 十连抽在幸运豆奶幸运状态下完成 → 幸运眷顾
+  if (choice === "b") noteVaultTenPull();
   enterVaultRoom();
 }
 
@@ -549,12 +552,16 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen() || dialogueOpen;
+      return isInventoryOpen() || dialogueOpen || isTaskUiOpen();
     },
     onJump: function () {
       tryBackroomsJump(fps, JUMP_SPEED);
     },
     onKeyDown: function (e) {
+      if (!dialogueOpen && !isInventoryOpen() && handleTaskUiKey(e)) {
+        e.preventDefault();
+        return true;
+      }
       if (dialogueOpen && !e.repeat) {
         if (e.code === "KeyA") handleVaultChoice("a");
         else if (e.code === "KeyB") handleVaultChoice("b");
@@ -654,6 +661,7 @@ function init() {
       (!survival || !survival.dead) &&
       !isInventoryOpen() &&
       !dialogueOpen &&
+      !isTaskUiOpen() &&
       !transitionLock
     ) {
       var mul =

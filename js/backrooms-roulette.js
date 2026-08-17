@@ -209,13 +209,13 @@ export function playBackroomsRoulette(survival, onPull) {
 
   keyHandler = function (e) {
     if (e.repeat) return;
+    // 遮罩期间吞掉全部按键，避免快捷栏 R / 1-6 误用道具。
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
     if (e.code === "Space" || e.code === "Enter") {
-      e.preventDefault();
-      e.stopPropagation();
       resolvePull();
     } else if (e.code === "Escape" && !spun) {
-      e.preventDefault();
-      e.stopPropagation();
       closeOverlay();
     }
   };

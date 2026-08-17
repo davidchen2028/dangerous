@@ -85,6 +85,8 @@ function showError(msg) {
   errorEl.innerHTML = "<p><strong>Level 7 无法启动</strong></p><p>" + msg + "</p>";
 }
 
+import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
+
 function showToast(msg) {
   showBackroomsLootToast(msg, { durationMs: 2600 });
 }
@@ -204,13 +206,17 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen();
+      return isInventoryOpen() || isTaskUiOpen();
     },
     onJump: function () {
       if (inWater || transitionLock) return;
       tryBackroomsJump(fps, 8);
     },
     onKeyDown: function (e) {
+      if (!isInventoryOpen() && handleTaskUiKey(e)) {
+        e.preventDefault();
+        return true;
+      }
       if (e.code === "KeyB" && !e.repeat) {
         e.preventDefault();
         toggleBackpack();
@@ -238,6 +244,7 @@ function init() {
   }
 
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l7", showToast);
   fps.feetY = PLATFORM_TOP_Y;
   fps.grounded = true;
 
@@ -334,7 +341,7 @@ function init() {
     _physOpts.ceilingY = null;
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
 
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock && !isTaskUiOpen()) {
       var mul = inWater
         ? WATER_SPEED_MUL
         : survival && sprinting

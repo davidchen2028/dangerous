@@ -197,6 +197,8 @@ function initSurvivalHud() {
   });
 }
 
+import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
+
 function showLootToast(text) {
   showBackroomsLootToast(text);
   lootToastUntil = performance.now() + 2200;
@@ -399,12 +401,16 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen();
+      return isInventoryOpen() || isTaskUiOpen();
     },
     onJump: function () {
       tryBackroomsJump(fps, JUMP_SPEED);
     },
     onKeyDown: function (e) {
+      if (!isInventoryOpen() && handleTaskUiKey(e)) {
+        e.preventDefault();
+        return true;
+      }
       if (e.code === "KeyB" && !e.repeat) {
         e.preventDefault();
         toggleBackpack();
@@ -434,6 +440,7 @@ function onResize() {
 function init() {
   if (!enforceLevel2EntryOrRedirect()) return;
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l2", showLootToast);
   if (!canvas) throw new Error("找不到 canvas");
 
   scene = new THREE.Scene();
@@ -506,7 +513,7 @@ function startLoop() {
     _physOpts.bodyHeight = BODY_HEIGHT;
     _physOpts.ceilingY = CORRIDOR_HEIGHT;
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen()) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !isTaskUiOpen()) {
       var speedMul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)

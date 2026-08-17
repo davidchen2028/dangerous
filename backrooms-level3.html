@@ -6,11 +6,39 @@
   <title>后室 Level 3 — 发电站</title>
   <link rel="stylesheet" href="css/backrooms-level0.css?v=22">
   <link rel="stylesheet" href="css/backrooms-survival.css?v=6">
+  <style>
+    .backrooms-l3-warning {
+      position: fixed;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      margin: 0;
+      padding: 0 12px;
+      max-width: 92vw;
+      text-align: center;
+      white-space: nowrap;
+      font-size: 12px;
+      line-height: 1.4;
+      letter-spacing: 0.06em;
+      color: rgba(228, 224, 210, 0.62);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+      pointer-events: none;
+      user-select: none;
+      z-index: 40;
+    }
+    @media (max-width: 560px) {
+      .backrooms-l3-warning {
+        font-size: 10px;
+        white-space: normal;
+      }
+    }
+  </style>
 </head>
 <body class="backrooms-level1 backrooms-level2">
   <canvas id="backroomsCanvas" aria-label="后室 Level 3"></canvas>
   <div id="backroomsInput" class="backrooms-input" aria-hidden="true"></div>
   <div class="backrooms-crosshair" id="backroomsCrosshair" aria-hidden="true"></div>
+  <p class="backrooms-l3-warning" aria-hidden="true">不要试图去破坏这里，不要试图去滥用后室的资源，否则……</p>
   <div class="backrooms-hud">
     <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level 3 · 发电站 · 生存难度 4</p>
     <div class="backrooms-nav" aria-label="状态">
@@ -42,6 +70,6 @@
     }
   }
   </script>
-  <script type="module" src="js/backrooms-level3.js?v=24"></script>
+  <script type="module" src="js/backrooms-level3.js?v=25"></script>
 </body>
 </html>

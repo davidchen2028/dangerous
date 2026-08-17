@@ -38,8 +38,25 @@ function pipeAppearsThisRun() {
   }
 }
 
+function sharedDodecaGeo() {
+  if (!_dodecaGeo) _dodecaGeo = new THREE.DodecahedronGeometry(1, 0);
+  return _dodecaGeo;
+}
+var _dodecaGeo = null;
+/** @type {Record<number, THREE.ConeGeometry>} */
+var _coneGeos = Object.create(null);
+var _plankBoxGeo = null;
+
+function sharedConeGeo(radiusKey, height) {
+  var key = radiusKey + ":" + height.toFixed(2);
+  if (!_coneGeos[key]) {
+    _coneGeos[key] = new THREE.ConeGeometry(0.45 + radiusKey * 0.13, height, 7);
+  }
+  return _coneGeos[key];
+}
+
 function addRock(parent, x, y, z, sx, sy, sz, mat, seed) {
-  var rock = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), mat);
+  var rock = new THREE.Mesh(sharedDodecaGeo(), mat);
   rock.position.set(x, y, z);
   rock.scale.set(sx, sy, sz);
   rock.rotation.set(seed * 0.31, seed * 0.53, seed * 0.17);
@@ -53,10 +70,7 @@ function addStalactites(parent, mat) {
     var x = -24 + ((i * 17) % 49);
     var z = -33 + ((i * 29) % 67);
     var h = 1.4 + ((i * 13) % 32) * 0.11;
-    var cone = new THREE.Mesh(
-      new THREE.ConeGeometry(0.45 + (i % 5) * 0.13, h, 7),
-      mat
-    );
+    var cone = new THREE.Mesh(sharedConeGeo(i % 5, h), mat);
     cone.position.set(x, L8_WALL_H - h * 0.5 - 0.2, z);
     cone.rotation.z = Math.PI;
     parent.add(cone);
@@ -101,9 +115,10 @@ function addWoodenFallPlank(parent, interactRoots) {
     emissive: 0x120904,
     emissiveIntensity: 0.12,
   });
+  if (!_plankBoxGeo) _plankBoxGeo = new THREE.BoxGeometry(1.05, 0.16, 6.8);
   var i;
   for (i = -2; i <= 2; i++) {
-    var plank = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.16, 6.8), wood);
+    var plank = new THREE.Mesh(_plankBoxGeo, wood);
     plank.position.set(i * 1.03, 0.24 + Math.abs(i) * 0.015, 0);
     plank.rotation.y = i * 0.012;
     group.add(plank);

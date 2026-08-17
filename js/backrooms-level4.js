@@ -43,6 +43,16 @@ import {
   LEVEL4_MUSIC_FADE_OUT_MS as MUSIC_FADE_OUT_MS,
 } from "./backrooms-level4-music.js";
 import {
+  openTaskBoard,
+  isTaskBoardUnlocked,
+  unlockTaskBoard,
+  isTaskUiOpen,
+  handleTaskUiKey,
+  markLevelEntered,
+  getFirstDeliveredUnclaimedTask,
+  claimTaskReward,
+} from "./backrooms-tasks.js";
+import {
   createBackroomsFpsState,
   moveBackroomsPlayer,
   updateBackroomsPlayerPhysics,
@@ -79,6 +89,7 @@ const tempValueEl = document.getElementById("backroomsTempValue");
 const dialogueEl = document.getElementById("backroomsDialogue");
 const dialogueTextEl = document.getElementById("backroomsDialogueText");
 const dialogueChoicesEl = document.getElementById("backroomsDialogueChoices");
+const dialogueSpeakerEl = document.getElementById("backroomsDialogueSpeaker");
 
 const LOOK_SENS = 0.0022;
 const AIM_INTERACT_MAX = 3.2;
@@ -114,6 +125,45 @@ let currentAimPick = null;
 let lootToastUntil = 0;
 let transitionLock = false;
 let dialogueOpen = false;
+/** "bntg" | "meg" */
+let dialogueKind = "";
+/** 已接过水的饮水机 id；每台只出一瓶 */
+const DRAINED_COOLERS_KEY = "backrooms_l4_drained_coolers_v1";
+/** @type {Set<string>} */
+let drainedCoolers = new Set();
+/** 提示文案缓存，避免每帧写 DOM */
+let waterHintDrained = false;
+
+function loadDrainedCoolers() {
+  try {
+    var parsed = JSON.parse(sessionStorage.getItem(DRAINED_COOLERS_KEY) || "[]");
+    if (Array.isArray(parsed)) drainedCoolers = new Set(parsed);
+  } catch (err) {
+    /* ignore */
+  }
+}
+
+function markCoolerDrained(id) {
+  if (!id) return;
+  drainedCoolers.add(id);
+  try {
+    sessionStorage.setItem(
+      DRAINED_COOLERS_KEY,
+      JSON.stringify(Array.from(drainedCoolers))
+    );
+  } catch (err) {
+    /* ignore */
+  }
+}
+
+function aimedCoolerId() {
+  if (!currentAimPick || !currentAimPick.data) return "";
+  return currentAimPick.data.id || "";
+}
+
+function isAimedCoolerDrained() {
+  return drainedCoolers.has(aimedCoolerId());
+}
 
 function showError(msg) {
   if (!errorEl) return;
@@ -202,18 +252,46 @@ function isAimBntgLiaison() {
   return currentAimPick.distance <= AIM_INTERACT_MAX;
 }
 
+function isAimMegMember() {
+  if (!currentAimPick || !currentAimPick.data) return false;
+  if (currentAimPick.data.kind !== "l4_meg_member") return false;
+  return currentAimPick.distance <= AIM_INTERACT_MAX;
+}
+
+function isAimTaskBoard() {
+  if (!currentAimPick || !currentAimPick.data) return false;
+  if (currentAimPick.data.kind !== "l4_task_board") return false;
+  return currentAimPick.distance <= AIM_INTERACT_MAX;
+}
+
+function hudBlocked() {
+  return (
+    isInventoryOpen() ||
+    dialogueOpen ||
+    isTaskUiOpen() ||
+    !survival ||
+    survival.dead ||
+    transitionLock
+  );
+}
+
 function updateWaterHint() {
   if (!waterHintEl) return;
-  if (isInventoryOpen() || dialogueOpen || !survival || survival.dead || transitionLock) {
+  if (hudBlocked() || !isAimWaterCooler()) {
     waterHintEl.hidden = true;
     return;
   }
-  waterHintEl.hidden = !isAimWaterCooler();
+  waterHintEl.hidden = false;
+  var drained = isAimedCoolerDrained();
+  if (drained !== waterHintDrained) {
+    waterHintDrained = drained;
+    waterHintEl.innerHTML = drained ? "这台饮水机已经空了" : "按 <kbd>Q</kbd> 接水";
+  }
 }
 
 function updateInteractHint() {
   if (!interactHintEl) return;
-  if (isInventoryOpen() || dialogueOpen || !survival || survival.dead || transitionLock) {
+  if (hudBlocked()) {
     interactHintEl.hidden = true;
     return;
   }
@@ -232,26 +310,96 @@ function updateInteractHint() {
     interactHintEl.innerHTML = "按 <kbd>Q</kbd> 与 B.N.T.G. 联络员交谈";
     return;
   }
+  if (isAimMegMember()) {
+    interactHintEl.hidden = false;
+    interactHintEl.innerHTML = "按 <kbd>Q</kbd> 与 M.E.G 成员交谈";
+    return;
+  }
+  if (isAimTaskBoard()) {
+    interactHintEl.hidden = false;
+    interactHintEl.innerHTML = "按 <kbd>Q</kbd> 查看任务板";
+    return;
+  }
   interactHintEl.hidden = true;
 }
 
 function closeBntgDialogue() {
   dialogueOpen = false;
+  dialogueKind = "";
   document.body.classList.remove("backrooms-dialogue-open");
   if (dialogueEl) dialogueEl.hidden = true;
 }
 
-function openBntgDialogue() {
+function openDialogue(kind, text, choicesHtml) {
   if (!dialogueEl || !dialogueTextEl || !dialogueChoicesEl) return;
   dialogueOpen = true;
+  dialogueKind = kind;
   document.body.classList.add("backrooms-dialogue-open");
   dialogueEl.hidden = false;
-  dialogueTextEl.textContent =
-    "M.E.G. 的任务人员还没到岗。你要不要先去 Level 1 的 B.N.T.G. 基地？那里与 Level 1 主区域不相通。";
-  dialogueChoicesEl.innerHTML =
-    '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="a"><kbd>A</kbd> 前往基地</button>' +
-    '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 暂时不去</button>';
+  if (dialogueSpeakerEl) {
+    dialogueSpeakerEl.textContent =
+      kind.indexOf("meg") === 0 ? "M.E.G 成员" : "B.N.T.G. 联络员";
+  }
+  dialogueTextEl.textContent = text;
+  dialogueChoicesEl.innerHTML = choicesHtml;
   if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+}
+
+function openBntgDialogue() {
+  openDialogue(
+    "bntg",
+    "你要不要去 Level 1 的 B.N.T.G. 基地？那里与 Level 1 主区域不相通。",
+    '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="a"><kbd>A</kbd> 前往基地</button>' +
+      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 暂时不去</button>'
+  );
+}
+
+function openMegDialogue() {
+  var deliveredTask = getFirstDeliveredUnclaimedTask();
+  if (deliveredTask) {
+    openDialogue(
+      "meg_reward",
+      "你完成任务了。",
+      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="a"><kbd>A</kbd> 领取 ' +
+        deliveredTask.reward +
+        ' 积分</button>'
+    );
+    return;
+  }
+  if (isTaskBoardUnlocked()) {
+    openDialogue(
+      "meg",
+      "任务板就在墙上，自己挑吧。",
+      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 知道了</button>'
+    );
+    return;
+  }
+  openDialogue(
+    "meg",
+    "你想做任务吗？",
+    '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="a"><kbd>A</kbd> 想</button>' +
+      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 不想</button>'
+  );
+}
+
+/** 同意做任务：墙上挂出任务白板 */
+function acceptMegTaskBoard() {
+  closeBntgDialogue();
+  if (isTaskBoardUnlocked()) return;
+  unlockTaskBoard();
+  // colliders / interactRoots 是同一数组引用，区块重建后无需重新取。
+  if (level4World && level4World.rebuildOutpost) level4World.rebuildOutpost();
+  showLootToast("M.E.G 成员在墙上挂出了任务白板 · 按 Q 查看");
+}
+
+function tryTaskBoardQ() {
+  if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
+  if (!isAimTaskBoard()) return;
+  openTaskBoard({
+    onToast: function (msg) {
+      showLootToast(msg);
+    },
+  });
 }
 
 function leaveLevel4(href) {
@@ -273,19 +421,44 @@ function exitToL1BntgBase() {
 
 function handleBntgChoice(choice) {
   if (!dialogueOpen) return;
-  if (choice === "a") exitToL1BntgBase();
-  else closeBntgDialogue();
+  if (choice !== "a") {
+    closeBntgDialogue();
+    return;
+  }
+  if (dialogueKind === "meg_reward") {
+    var task = getFirstDeliveredUnclaimedTask();
+    if (!task) {
+      closeBntgDialogue();
+      return;
+    }
+    var result = claimTaskReward(task.id);
+    closeBntgDialogue();
+    if (!result.ok) {
+      showLootToast(result.reason || "无法领取奖励");
+      return;
+    }
+    updateMegPointsDisplay(megPointsEl);
+    showLootToast("任务完成：" + task.title + " · +" + result.reward + " 积分");
+  } else if (dialogueKind === "meg") acceptMegTaskBoard();
+  else exitToL1BntgBase();
 }
 
 function tryWaterCoolerQ() {
   if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
   if (!isAimWaterCooler()) return;
+  var coolerId = aimedCoolerId();
+  // 每台饮水机只出一瓶，避免对着同一台无限接水。
+  if (drainedCoolers.has(coolerId)) {
+    showLootToast("这台饮水机已经空了");
+    return;
+  }
   if (!survival.addItem({ id: "almond_water", name: "杏仁水" })) {
     showLootToast("背包已满");
     return;
   }
+  markCoolerDrained(coolerId);
   saveBackroomsSurvival(survival);
-  showLootToast("接了一瓶杏仁水");
+  showLootToast("接了一瓶杏仁水 · 这台饮水机空了");
 }
 
 function exitToLevel6() {
@@ -327,12 +500,17 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen() || dialogueOpen;
+      return isInventoryOpen() || dialogueOpen || isTaskUiOpen();
     },
     onJump: function () {
       tryBackroomsJump(fps, JUMP_SPEED);
     },
     onKeyDown: function (e) {
+      // 任务板 / 成就面板优先吃掉按键（也负责 Y 开关面板）
+      if (!dialogueOpen && !isInventoryOpen() && handleTaskUiKey(e)) {
+        e.preventDefault();
+        return true;
+      }
       if (dialogueOpen) {
         if (e.code === "KeyA" && !e.repeat) {
           e.preventDefault();
@@ -356,6 +534,8 @@ function bindControls() {
         if (isAimStairsDown()) tryStairsQ();
         else if (isAimVendingL61()) tryVendingQ();
         else if (isAimBntgLiaison()) openBntgDialogue();
+        else if (isAimMegMember()) openMegDialogue();
+        else if (isAimTaskBoard()) tryTaskBoardQ();
         else tryWaterCoolerQ();
         return true;
       }
@@ -380,7 +560,9 @@ function bindControls() {
 function init() {
   if (!enforceEntryOrRedirect()) return;
   refreshLevel1_1OutpostChestsOnFirstL4Visit();
+  loadDrainedCoolers();
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l4", showLootToast);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);
@@ -457,7 +639,13 @@ function init() {
     _physOpts.bodyHeight = BODY_HEIGHT;
     _physOpts.ceilingY = L4_WALL_H;
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock && !dialogueOpen) {
+    if (
+      (!survival || !survival.dead) &&
+      !isInventoryOpen() &&
+      !transitionLock &&
+      !dialogueOpen &&
+      !isTaskUiOpen()
+    ) {
       var mul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
@@ -472,15 +660,18 @@ function init() {
     updateInteractHint();
     applyBackroomsCamera(fps, camera, EYE_HEIGHT);
     if (crosshairEl) {
-      var hideXh = isInventoryOpen() || dialogueOpen || !survival || survival.dead;
+      var hideXh =
+        isInventoryOpen() || dialogueOpen || isTaskUiOpen() || !survival || survival.dead;
       crosshairEl.classList.toggle("backrooms-crosshair--hidden", hideXh);
       crosshairEl.classList.toggle(
         "backrooms-crosshair--interact",
         !hideXh &&
-          (isAimWaterCooler() ||
+          ((isAimWaterCooler() && !isAimedCoolerDrained()) ||
             isAimStairsDown() ||
             isAimVendingL61() ||
-            isAimBntgLiaison())
+            isAimBntgLiaison() ||
+            isAimMegMember() ||
+            isAimTaskBoard())
       );
     }
     updateBackroomsTemperature(dt, performance.now());

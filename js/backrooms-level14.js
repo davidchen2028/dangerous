@@ -49,6 +49,12 @@ const FOG_COLOR = 0x4a2450;
 const TREE_HEIGHT = 12.5;
 const TREE_TRUNK_RADIUS = 0.55;
 
+/** 跨次进入复用已解析的 GLB 模板，避免重复解析与材质重建 */
+var _cachedTreeTemplate = null;
+var _cachedLeafTemplate = null;
+var _treeLoadWaiters = null;
+var _leafLoadWaiters = null;
+
 /** 每段提示停留 8 秒 */
 const INTRO_STEP_MS = 8000;
 /** 进入 40 秒后开始每秒扣 50 理智 */
@@ -82,6 +88,8 @@ let survival = null;
 let enteredAt = 0;
 let introStep = 0;
 let introNextAt = 0;
+
+import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
 
 function showToast(message) {
   showBackroomsLootToast(message, { durationMs: 2600 });
@@ -262,33 +270,52 @@ function scatterTrees(root) {
     colliders.push(wallCollider(spot.x - pad, spot.x + pad, spot.z - pad, spot.z + pad));
   }
 
-  new GLTFLoader().load(
-    TREE_GLB_URL,
-    function (gltf) {
-      var template = gltf.scene;
-      // 图片里的树干近乎剪影，统一压成暗紫褐色。
-      template.traverse(function (child) {
-        if (!child.isMesh) return;
-        child.material = new THREE.MeshStandardMaterial({
-          color: 0x2a1a2e,
-          roughness: 0.96,
-        });
-      });
-      if (!normalizeToHeight(template, TREE_HEIGHT)) return;
-      var j;
-      for (j = 0; j < placeholders.length; j++) {
-        var entry = placeholders[j];
-        var model = template.clone(true);
-        model.scale.multiplyScalar(0.85 + seededRandom(entry.seed * 7.7) * 0.45);
-        entry.holder.remove(entry.fallback);
-        entry.holder.add(model);
-      }
-    },
-    undefined,
-    function () {
-      // 加载失败时保留程序化枯树。
+  function applyTreeTemplate(template) {
+    if (!template) return;
+    var j;
+    for (j = 0; j < placeholders.length; j++) {
+      var entry = placeholders[j];
+      var model = template.clone(true);
+      model.scale.multiplyScalar(0.85 + seededRandom(entry.seed * 7.7) * 0.45);
+      entry.holder.remove(entry.fallback);
+      entry.holder.add(model);
     }
-  );
+  }
+
+  if (_cachedTreeTemplate) {
+    applyTreeTemplate(_cachedTreeTemplate);
+    return;
+  }
+  if (!_treeLoadWaiters) {
+    _treeLoadWaiters = [];
+    new GLTFLoader().load(
+      TREE_GLB_URL,
+      function (gltf) {
+        var template = gltf.scene;
+        // 图片里的树干近乎剪影，统一压成暗紫褐色。
+        template.traverse(function (child) {
+          if (!child.isMesh) return;
+          child.material = new THREE.MeshStandardMaterial({
+            color: 0x2a1a2e,
+            roughness: 0.96,
+          });
+        });
+        if (!normalizeToHeight(template, TREE_HEIGHT)) {
+          _treeLoadWaiters = null;
+          return;
+        }
+        _cachedTreeTemplate = template;
+        var waiters = _treeLoadWaiters || [];
+        _treeLoadWaiters = null;
+        for (var w = 0; w < waiters.length; w++) waiters[w](template);
+      },
+      undefined,
+      function () {
+        _treeLoadWaiters = null;
+      }
+    );
+  }
+  _treeLoadWaiters.push(applyTreeTemplate);
 }
 
 function scatterLeaves(root) {
@@ -296,28 +323,47 @@ function scatterLeaves(root) {
   host.name = "L14FallenLeaves";
   root.add(host);
 
-  new GLTFLoader().load(
-    LEAF_GLB_URL,
-    function (gltf) {
-      tintLeafRed(gltf.scene);
-      var template = flattenLeafToGround(gltf.scene, 0.34);
-      if (!template) return;
-      var i;
-      for (i = 0; i < 420; i++) {
-        var leaf = template.clone(true);
-        var x = (seededRandom(i * 3.11 + 91) - 0.5) * FOREST_HALF * 1.9;
-        var z = (seededRandom(i * 4.53 + 37) - 0.5) * FOREST_HALF * 1.9;
-        leaf.position.set(x, 0.012, z);
-        leaf.rotation.y = seededRandom(i * 8.9) * Math.PI * 2;
-        leaf.scale.multiplyScalar(0.7 + seededRandom(i * 1.9) * 0.9);
-        host.add(leaf);
-      }
-    },
-    undefined,
-    function () {
-      // 地面已有红叶纹理，缺少模型也能表现落叶层。
+  function placeLeaves(template) {
+    if (!template) return;
+    var i;
+    for (i = 0; i < 420; i++) {
+      var leaf = template.clone(true);
+      var x = (seededRandom(i * 3.11 + 91) - 0.5) * FOREST_HALF * 1.9;
+      var z = (seededRandom(i * 4.53 + 37) - 0.5) * FOREST_HALF * 1.9;
+      leaf.position.set(x, 0.012, z);
+      leaf.rotation.y = seededRandom(i * 8.9) * Math.PI * 2;
+      leaf.scale.multiplyScalar(0.7 + seededRandom(i * 1.9) * 0.9);
+      host.add(leaf);
     }
-  );
+  }
+
+  if (_cachedLeafTemplate) {
+    placeLeaves(_cachedLeafTemplate);
+    return;
+  }
+  if (!_leafLoadWaiters) {
+    _leafLoadWaiters = [];
+    new GLTFLoader().load(
+      LEAF_GLB_URL,
+      function (gltf) {
+        tintLeafRed(gltf.scene);
+        var template = flattenLeafToGround(gltf.scene, 0.34);
+        if (!template) {
+          _leafLoadWaiters = null;
+          return;
+        }
+        _cachedLeafTemplate = template;
+        var waiters = _leafLoadWaiters || [];
+        _leafLoadWaiters = null;
+        for (var w = 0; w < waiters.length; w++) waiters[w](template);
+      },
+      undefined,
+      function () {
+        _leafLoadWaiters = null;
+      }
+    );
+  }
+  _leafLoadWaiters.push(placeLeaves);
 }
 
 function buildWorld(root) {
@@ -413,12 +459,16 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen();
+      return isInventoryOpen() || isTaskUiOpen();
     },
     onJump: function () {
       tryBackroomsJump(fps, 8);
     },
     onKeyDown: function (event) {
+      if (!isInventoryOpen() && handleTaskUiKey(event)) {
+        event.preventDefault();
+        return true;
+      }
       if (event.code === "KeyB" && !event.repeat) {
         event.preventDefault();
         toggleBackpack();
@@ -436,6 +486,7 @@ function init() {
     return;
   }
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l14", showToast);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.FogExp2(FOG_COLOR, 0.038);
@@ -496,7 +547,7 @@ function init() {
       survival.update(dt, _survCtx);
     }
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen()) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !isTaskUiOpen()) {
       var mul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)

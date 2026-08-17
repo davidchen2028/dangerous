@@ -1,0 +1,319 @@
+/* M.E.G 任务板（全屏白板）与成就/任务面板 */
+
+.br-board,
+.br-tasks {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.br-board[hidden],
+.br-tasks[hidden] {
+  display: none;
+}
+
+/* —— 白板：铺满整个屏幕 —— */
+.br-board__sheet {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: clamp(20px, 5vh, 54px) clamp(18px, 6vw, 90px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: #f2f5f7;
+  color: #1d242c;
+  border: 14px solid #b9c2ca;
+  overflow: auto;
+}
+
+.br-board__title {
+  margin: 0;
+  font-size: clamp(20px, 3.2vw, 34px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #16324a;
+}
+
+.br-board__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.br-board__task {
+  padding: 16px 20px;
+  border: 2px solid #c3ccd4;
+  border-left: 8px solid #2b6ea8;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.br-board__task--selected {
+  border-color: #d79a1f;
+  border-left-color: #d79a1f;
+  background: #fffaee;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.br-board__task--taken {
+  opacity: 0.62;
+  cursor: default;
+}
+
+.br-board__task-head {
+  margin: 0 0 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  font-size: clamp(16px, 2.1vw, 22px);
+  font-weight: 700;
+}
+
+.br-board__task-reward {
+  color: #b3760b;
+  white-space: nowrap;
+}
+
+.br-board__task-desc {
+  margin: 0;
+  font-size: clamp(13px, 1.5vw, 16px);
+  line-height: 1.6;
+  color: #46525e;
+}
+
+.br-board__task-state {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #6a7681;
+}
+
+.br-board__confirm {
+  margin: 10px 0 0;
+  padding: 9px 14px;
+  border-radius: 6px;
+  background: #fdf1cf;
+  border: 1px solid #d79a1f;
+  font-size: clamp(14px, 1.7vw, 18px);
+  font-weight: 700;
+  color: #7a4f05;
+}
+
+.br-board__note {
+  margin: 0;
+  padding: 11px 16px;
+  border-radius: 6px;
+  background: #e6eef5;
+  border: 1px solid #a9c0d4;
+  font-size: 14px;
+  color: #1c3d5a;
+}
+
+.br-board__foot {
+  margin: auto 0 0;
+  font-size: 13px;
+  color: #6a7681;
+}
+
+.br-board kbd,
+.br-tasks kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 1px 6px;
+  margin: 0 2px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  background: rgba(0, 0, 0, 0.06);
+  font: inherit;
+  text-align: center;
+}
+
+/* —— 成就 / 任务面板 —— */
+.br-tasks {
+  background: rgba(6, 10, 16, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.br-tasks__sheet {
+  position: relative;
+  width: min(680px, 92vw);
+  max-height: 82vh;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 58px 26px 22px;
+  border-radius: 12px;
+  border: 1px solid #3a4658;
+  background: #12161d;
+  color: #e7eef6;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+}
+
+.br-tasks__toggle {
+  position: absolute;
+  left: 18px;
+  top: 16px;
+  padding: 7px 18px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 212, 121, 0.6);
+  background: rgba(255, 212, 121, 0.14);
+  color: #ffe6ad;
+  font: 700 15px/1.2 inherit;
+  cursor: pointer;
+}
+
+.br-tasks__toggle:hover {
+  background: rgba(255, 212, 121, 0.24);
+}
+
+.br-tasks__toggle--close {
+  min-width: 40px;
+  font-size: 18px;
+  line-height: 1;
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e7eef6;
+}
+
+.br-tasks__title {
+  margin: 0 0 14px;
+  font-size: 17px;
+  font-weight: 700;
+  text-align: right;
+  color: #b8dcff;
+}
+
+.br-tasks__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.br-tasks__row {
+  padding: 13px 16px;
+  border-radius: 8px;
+  border: 1px solid #33404f;
+  background: #171d26;
+}
+
+.br-tasks__row-head {
+  margin: 0 0 5px;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.br-tasks__reward {
+  color: #ffd479;
+  white-space: nowrap;
+}
+
+.br-tasks__row-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #a9b6c4;
+}
+
+.br-tasks__row-state {
+  margin: 7px 0 0;
+  font-size: 12px;
+  color: #7f8fa0;
+}
+
+.br-tasks__empty {
+  padding: 22px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: #8794a3;
+}
+
+/* 成就格子：全部显示，可点击查看条件 */
+.br-tasks__ach {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border-radius: 8px;
+  border: 1px solid #33404f;
+  background: #171d26;
+  cursor: pointer;
+}
+
+.br-tasks__ach:hover {
+  border-color: #55647a;
+}
+
+.br-tasks__ach-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.br-tasks__ach-tag {
+  font-size: 12px;
+  color: #7f8fa0;
+  white-space: nowrap;
+}
+
+/* 已完成：金色背景 */
+.br-tasks__ach--gold {
+  border-color: #e7b83c;
+  background: linear-gradient(120deg, #f6cf5a, #d99a1c);
+  color: #3a2a05;
+  box-shadow: 0 3px 14px rgba(217, 154, 28, 0.35);
+}
+
+.br-tasks__ach--gold .br-tasks__ach-tag {
+  color: #6a4d09;
+  font-weight: 700;
+}
+
+/* 未完成：不隐藏，仅弱化显示 */
+.br-tasks__ach--locked {
+  opacity: 0.78;
+}
+
+.br-tasks__ach--locked .br-tasks__ach-name {
+  color: #b7c2ce;
+  font-weight: 600;
+}
+
+/* 详情页里表示该成就已完成的金色卡片 */
+.br-tasks__row--gold {
+  border-color: #e7b83c;
+  background: linear-gradient(120deg, #f6cf5a, #d99a1c);
+  color: #3a2a05;
+}
+
+.br-tasks__row--gold .br-tasks__row-desc,
+.br-tasks__row--gold .br-tasks__row-state {
+  color: #5a4207;
+}
+
+.br-tasks__foot {
+  margin: 16px 0 0;
+  font-size: 12px;
+  color: #7f8fa0;
+}
+
+/* 任务 UI 打开时收起 HUD 与快捷栏 */
+body.backrooms-taskui-open .backrooms-crosshair,
+body.backrooms-taskui-open .backrooms-hud__prompt,
+body.backrooms-taskui-open .backrooms-hud__hint,
+body.backrooms-taskui-open .br-hotbar {
+  opacity: 0;
+  pointer-events: none;
+}

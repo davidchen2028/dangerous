@@ -67,6 +67,7 @@ import {
 import { BLUE_HOLE_CELL, buildBlueHole } from "./backrooms-level0-03.js?v=1";
 import { createLevel0ZoneManager } from "./backrooms-level0-zones.js";
 import { grantLevelPass, consumeLevel0CarryEntry } from "./backrooms-level-pass.js";
+import { handleTaskUiKey, isTaskUiOpen, markLevelEntered } from "./backrooms-tasks.js";
 import {
   mountLevel0WallDecor,
   updateClipWallVortex,
@@ -999,12 +1000,16 @@ function bindControls() {
     lookSens: DEFAULT_LOOK_SENS,
     mobileLookRef: mobileLookRef,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen();
+      return isInventoryOpen() || isTaskUiOpen();
     },
     onJump: function () {
       tryJump();
     },
     onKeyDown: function (e) {
+      if (!isInventoryOpen() && handleTaskUiKey(e)) {
+        e.preventDefault();
+        return true;
+      }
       if (e.code === "KeyQ" && !e.repeat) {
         e.preventDefault();
         tryPrimaryQAction();
@@ -1072,6 +1077,7 @@ function init() {
     resetMegPoints();
   }
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l0");
   validateMatrix();
 
   level0GfxProfile = resolveBackroomsGfxProfile();
@@ -1210,7 +1216,7 @@ function startLoop() {
 
     updatePlayerPhysics(dt);
     if (level0Zones) level0Zones.updateLevel02Hazards(dt);
-    if ((!survival || !survival.dead) && !isInventoryOpen()) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !isTaskUiOpen()) {
       var speedMul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)

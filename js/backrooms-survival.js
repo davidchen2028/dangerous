@@ -54,6 +54,12 @@ import {
   updateDeathHallucinations,
   clearDeathPenalties,
 } from "./backrooms-death-penalty.js";
+import {
+  noteCriticalVitals,
+  noteSoyMilkDrunk,
+  noteLuckySoyMilkOutcome,
+  checkTaskDeadlines,
+} from "./backrooms-tasks.js";
 
 /** 兼容旧引用 — 后室不再使用主游戏 playerInventory 数组 */
 export const playerInventory = [];
@@ -147,6 +153,7 @@ export class BackroomsSurvival {
     this._deathSnapshot = null;
     this.onPrepareDeath = options.onPrepareDeath || null;
     this.onDeath = options.onDeath || null;
+    this.onInterceptDeath = options.onInterceptDeath || null;
     this.rootEl = null;
     this.deathEl = null;
     this._fillHp = null;
@@ -290,6 +297,12 @@ export class BackroomsSurvival {
     this.stamina = Math.min(staCap, this.stamina);
     this.sanity = Math.min(getSanityMax(), this.sanity);
 
+    if (!this.dead) {
+      noteCriticalVitals(this.hp, this.sanity);
+      // 限时任务超时结算（内部按秒节流）
+      checkTaskDeadlines();
+    }
+
     if (this.sanity <= 0 && !this.sanityBreaking) {
       this.triggerSanityBreak();
     }
@@ -429,8 +442,9 @@ export class BackroomsSurvival {
 
   useStrawberrySoyMilk() {
     if (this.dead) return false;
-    if (!removeFirstItem("strawberry_soy_milk")) return false;
+    if (countItem("strawberry_soy_milk") < 1) return false;
     if (!activateStrawberrySoyMilkBuff()) return false;
+    if (!removeFirstItem("strawberry_soy_milk")) return false;
     var sanCap = getSanityMax();
     var restore = Math.max(
       1,
@@ -438,6 +452,7 @@ export class BackroomsSurvival {
     );
     this.sanity = Math.min(sanCap, this.sanity + restore);
     this.refreshHud();
+    noteSoyMilkDrunk("strawberry");
     return true;
   }
 
@@ -447,6 +462,7 @@ export class BackroomsSurvival {
     var hpCap = getHpMax();
     this.hp = Math.min(hpCap, this.hp + BANANA_SOY_MILK_HEAL);
     this.refreshHud();
+    noteSoyMilkDrunk("banana");
     return true;
   }
 
@@ -459,13 +475,16 @@ export class BackroomsSurvival {
     if (id !== LUCKY_SOY_MILK_COLD_ID && id !== LUCKY_SOY_MILK_HOT_ID) {
       return false;
     }
-    if (!removeFirstItem(id)) return false;
+    if (countItem(id) < 1) return false;
     var delta =
       id === LUCKY_SOY_MILK_HOT_ID
         ? LUCKY_SOY_MILK_HOT_LUCK
         : LUCKY_SOY_MILK_COLD_LUCK;
     if (!applyLuckySoyMilkLuck(delta)) return false;
+    if (!removeFirstItem(id)) return false;
     this.refreshHud();
+    noteSoyMilkDrunk("lucky");
+    noteLuckySoyMilkOutcome(delta >= 0 ? "lucky" : "unlucky");
     return true;
   }
 
@@ -478,22 +497,28 @@ export class BackroomsSurvival {
     ) {
       return false;
     }
-    if (!removeFirstItem(itemId)) return false;
+    if (countItem(itemId) < 1) return false;
 
     if (itemId === "banana_lucky_soy_milk") {
+      if (!removeFirstItem(itemId)) return false;
       this.hp = Math.min(getHpMax(), this.hp + BANANA_SOY_MILK_HEAL);
       showBackroomsLootToast(
         "香蕉温润的力量抚平了你身上一部分伤痛",
         { durationMs: 3000 }
       );
+      noteSoyMilkDrunk("banana");
     } else if (itemId === "strawberry_lucky_soy_milk") {
-      activateStrawberryLuckySoyMilkBuff();
+      if (!activateStrawberryLuckySoyMilkBuff()) return false;
+      if (!removeFirstItem(itemId)) return false;
       // 只提高上限，不改变当前理智。
       showBackroomsLootToast(
         "草莓香甜漫开，你的精神承受能力短暂变强",
         { durationMs: 3000 }
       );
+      noteSoyMilkDrunk("strawberry");
     } else {
+      if (!removeFirstItem(itemId)) return false;
+      noteSoyMilkDrunk("lucky");
       var roll = Math.random();
       if (roll < 0.45) {
         applyLuckySoyMilkLuck(100, LUCKY_VAULT_SOY_MILK_DURATION_MS);
@@ -501,18 +526,21 @@ export class BackroomsSurvival {
           "喝下豆奶，心里莫名感觉安稳，周遭似乎变得顺遂起来",
           { durationMs: 3600 }
         );
+        noteLuckySoyMilkOutcome("lucky");
       } else if (roll < 0.9) {
         applyLuckySoyMilkLuck(-100, LUCKY_VAULT_SOY_MILK_DURATION_MS);
         showBackroomsLootToast(
           "喝下豆奶，一阵不安涌上心头，预感坏事将要发生",
           { durationMs: 3600 }
         );
+        noteLuckySoyMilkOutcome("unlucky");
       } else {
         clearLuck();
         showBackroomsLootToast(
           "豆奶下肚，身体没有产生任何奇异感受",
           { durationMs: 3000 }
         );
+        noteLuckySoyMilkOutcome("none");
       }
     }
     this.refreshHud();
@@ -521,19 +549,21 @@ export class BackroomsSurvival {
 
   useRoyalRations() {
     if (this.dead) return false;
-    if (!removeFirstItem("royal_rations")) return false;
+    if (countItem("royal_rations") < 1) return false;
     if (!activateRoyalRationsBuff()) return false;
+    if (!removeFirstItem("royal_rations")) return false;
     this.hp = getHpMax();
     this.stamina = getStaminaMax();
     this.refreshHud();
     return true;
   }
 
-  /** 中等大小皇家口粮：从背包消耗一份后生效 */
+  /** 中等大小皇家口粮：先激活 buff，成功后再从背包消耗 */
   useRoyalRationsMedium() {
     if (this.dead) return false;
-    if (!removeFirstItem("royal_rations_medium")) return false;
+    if (countItem("royal_rations_medium") < 1) return false;
     if (!activateRoyalRationsMediumBuff()) return false;
+    if (!removeFirstItem("royal_rations_medium")) return false;
     this.hp = getHpMax();
     this.stamina = getStaminaMax();
     this.refreshHud();
@@ -603,6 +633,10 @@ export class BackroomsSurvival {
 
   triggerDeath(reason) {
     if (this.dead) return;
+    // 死亡拦截：返回 true 表示本次「不真正死亡」（如被带往 C-1289），中止死亡流程。
+    if (this.onInterceptDeath && this.onInterceptDeath(reason)) {
+      return;
+    }
     if (this.onPrepareDeath) {
       this.onPrepareDeath(reason);
     }

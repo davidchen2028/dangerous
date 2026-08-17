@@ -28,6 +28,7 @@ import {
   createLevel1_1_4Clumps,
 } from "./backrooms-clump-ai.js";
 import { showEnterLevelBanner } from "./backrooms-level-enter.js";
+import { markLevelEntered } from "./backrooms-tasks.js";
 
 /**
  * @param {object} deps
@@ -401,6 +402,7 @@ export function createLevel1_1ZoneManager(deps) {
     teleportTo(world.corridorSpawn);
     syncHudTitle();
     showEnterLevelBanner("L1.1-1");
+    markLevelEntered("l1.1", deps.showToast);
     return true;
   }
 

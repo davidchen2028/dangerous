@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <title>后室 Level C-1291 — 井盖迷阵</title>
+  <link rel="stylesheet" href="css/backrooms-level0.css?v=22">
+  <link rel="stylesheet" href="css/backrooms-survival.css?v=6">
+</head>
+<body class="backrooms-level1 backrooms-level-c1291">
+  <canvas id="backroomsCanvas" aria-label="后室 Level C-1291"></canvas>
+  <div id="backroomsInput" class="backrooms-input" aria-hidden="true"></div>
+  <div class="backrooms-crosshair" id="backroomsCrosshair" aria-hidden="true"></div>
+  <div class="backrooms-hud">
+    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level C-1291 · 井盖迷阵 · 生存难度 死区</p>
+    <div class="backrooms-nav"><div class="backrooms-nav__row">
+      <p class="backrooms-temp" id="backroomsTemp"><span class="backrooms-temp__label">温度</span><span class="backrooms-temp__meter"><span class="backrooms-temp__fill" id="backroomsTempFill"></span></span><strong class="backrooms-temp__value" id="backroomsTempValue">—</strong></p>
+      <p class="backrooms-points"><span class="backrooms-points__label">积分点</span><strong class="backrooms-points__value" id="backroomsMegPoints">0</strong></p>
+    </div></div>
+    <p class="backrooms-hud__hint" id="backroomsHint">加载中…</p>
+    <p class="backrooms-hud__hint" id="backroomsTaskStatus" hidden></p>
+    <p class="backrooms-hud__prompt" id="backroomsInteractHint" hidden></p>
+    <p class="backrooms-hud__loot" id="backroomsLootToast" hidden></p>
+    <div class="backrooms-hud__error" id="backroomsError" hidden></div>
+  </div>
+  <script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
+  <script type="module" src="js/backrooms-level-c1291.js?v=1"></script>
+</body>
+</html>

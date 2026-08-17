@@ -42,6 +42,15 @@ import {
   queueEnterLevelBanner,
 } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import {
+  isPetrifyActive,
+  getPetrify,
+  setPetrify,
+  clearPetrify,
+  ensurePetrifyOverlay,
+  updatePetrifyOverlay,
+  petrifySpeedMul,
+} from "./backrooms-petrify.js";
 import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
 import { getBuyPrice, getSellPrice } from "./backrooms-shop-prices.js";
 import {
@@ -70,6 +79,7 @@ import {
   DEFAULT_GRAVITY,
 } from "./backrooms-fps-controller.js";
 import { buildLevel11World } from "./backrooms-level11-world.js";
+import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
 
 const levelRaw = document.body.dataset.level || "9";
 const level = Number(levelRaw);
@@ -118,10 +128,18 @@ let bulkSellPromptEl = null;
 let bulkSellPromptTimer = null;
 let sandFaintTimer = 0;
 let sandFaintOverlay = null;
+/** 来自 C-1290 希腊拱门的石化状态，在 L11 继续蔓延 */
+let petrifyActive = false;
+let petrifyValue = 0;
+let petrifyStage = -1;
 
 /** L10 岔路：主路 z≈22 向右拐的小道尽头 → L11 */
 const L10_FORK_Z = 22;
 const L10_FORK_EXIT_X = 24;
+/** L75 管道深处的橙色地面 → L16 冰层 */
+const L75_ORANGE_X = 8.5;
+const L75_ORANGE_Z = 14.5;
+const L75_ORANGE_HALF = 1.6;
 const AIM_MAX = 4.2;
 const SAND_FAINT_DURATION = 4.5;
 const fps = createBackroomsFpsState({
@@ -138,6 +156,39 @@ const _physOpts = {
 function showToast(msg) {
   showBackroomsLootToast(msg, { durationMs: 2500 });
   lootToastUntil = performance.now() + 2500;
+}
+
+/** L11 中继续的石化进程（来自 C-1290 希腊拱门）：约 1 分钟满 */
+const PETRIFY_L11_SECONDS = 60;
+
+function updatePetrifyContinuation(dt) {
+  if (!survival || survival.dead || transitionLock) return;
+  petrifyValue = Math.min(1, petrifyValue + dt / PETRIFY_L11_SECONDS);
+  setPetrify(petrifyValue);
+  updatePetrifyOverlay(petrifyValue);
+  if (survival.sanity > 18) {
+    survival.sanity = Math.max(18, survival.sanity - 0.5 * dt);
+  }
+  var stage = petrifyValue >= 0.8 ? 3 : petrifyValue >= 0.55 ? 2 : petrifyValue >= 0.25 ? 1 : 0;
+  if (stage > petrifyStage) {
+    petrifyStage = stage;
+    if (stage === 1) showToast("一种宁静的倦怠涌上来……你不太想再挣扎了。");
+    else if (stage === 2) showToast("皮肤下透出大理石般的纹理，正从手脚向躯干蔓延。");
+    else if (stage === 3) showToast("身体越来越沉重，几乎抬不动脚。");
+  }
+  if (petrifyValue >= 1) {
+    // 完全石化：清理状态后死亡
+    petrifyActive = false;
+    clearPetrify();
+    survival.triggerDeath("petrify");
+  }
+}
+
+/** 离开 L11 前主动结束石化（避免状态无限蔓延到无关层级） */
+function endPetrifyOnExit() {
+  if (!petrifyActive) return;
+  petrifyActive = false;
+  clearPetrify();
 }
 
 function wallCollider(minX, maxX, minZ, maxZ) {
@@ -197,7 +248,47 @@ function buildLevel75(root) {
     light.position.set(0, 4.2, i);
     root.add(light);
   }
+  // 管道深处地面上的一块橙色区域：踩上去会被带到 Level 16。
+  var orange = new THREE.MeshStandardMaterial({
+    color: 0xd4762a,
+    emissive: 0x3a1a06,
+    emissiveIntensity: 0.5,
+    roughness: 0.7,
+    metalness: 0.15,
+  });
+  addBox(
+    root,
+    L75_ORANGE_HALF * 2,
+    0.06,
+    L75_ORANGE_HALF * 2,
+    L75_ORANGE_X,
+    0.12,
+    L75_ORANGE_Z,
+    orange
+  );
+  var glow = new THREE.PointLight(0xff9a48, 0.7, 9, 2);
+  glow.position.set(L75_ORANGE_X, 1.4, L75_ORANGE_Z);
+  root.add(glow);
   root.add(new THREE.AmbientLight(0x64707c, 0.55));
+}
+
+function isLevel75OrangePatch(px, pz) {
+  return (
+    Math.abs(px - L75_ORANGE_X) <= L75_ORANGE_HALF &&
+    Math.abs(pz - L75_ORANGE_Z) <= L75_ORANGE_HALF
+  );
+}
+
+function exitLevel75ToL16() {
+  if (transitionLock) return;
+  transitionLock = true;
+  showToast("橙色的地面下传来风声，寒气涌上来…");
+  if (survival) saveBackroomsSurvival(survival);
+  grantLevelPass("l16", fps.yaw);
+  queueEnterLevelNumber(16);
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level16.html";
+  }, 550);
 }
 
 function buildLevel10(root) {
@@ -257,6 +348,7 @@ function exitLevel10ToL11() {
 function exitLevel11ToL13() {
   if (transitionLock) return;
   transitionLock = true;
+  endPetrifyOnExit();
   showToast("你走进了黄色高楼…");
   if (survival) saveBackroomsSurvival(survival);
   grantLevelPass("l13", fps.yaw);
@@ -269,6 +361,7 @@ function exitLevel11ToL13() {
 function exitLevel11ToL119() {
   if (transitionLock) return;
   transitionLock = true;
+  endPetrifyOnExit();
   showToast("你推开 Alom Wotor 的门——一股氯水味扑面而来…");
   if (survival) saveBackroomsSurvival(survival);
   grantLevelPass("l119", fps.yaw);
@@ -277,6 +370,27 @@ function exitLevel11ToL119() {
     window.location.href = "backrooms-level119.html";
   }, 450);
 }
+
+/**
+ * L11 左侧街的三栋异常建筑 → C-129x 死区。
+ * @param {"c1291"} pass
+ */
+function exitLevel11ToCLevel(pass, page, toast) {
+  if (transitionLock) return;
+  transitionLock = true;
+  endPetrifyOnExit();
+  showToast(toast);
+  if (survival) saveBackroomsSurvival(survival);
+  grantLevelPass(pass, fps.yaw);
+  queueEnterLevelBanner(C_LEVEL_BANNERS[pass] || "Level " + pass);
+  window.setTimeout(function () {
+    window.location.href = page;
+  }, 600);
+}
+
+const C_LEVEL_BANNERS = {
+  c1291: "Level C-1291 · 井盖迷阵",
+};
 
 function ensureSandFaintOverlay() {
   if (sandFaintOverlay) return sandFaintOverlay;
@@ -294,6 +408,7 @@ function exitLevel11ToL48() {
   if (transitionLock) return;
   transitionLock = true;
   ensureSandFaintOverlay().style.opacity = "1";
+  endPetrifyOnExit();
   showToast("沙子灌进喉咙——你晕了过去…");
   if (survival) saveBackroomsSurvival(survival);
   grantLevelPass("l48", fps.yaw);
@@ -308,6 +423,9 @@ function restoreDefaultHint() {
   if (level === 10) {
     hintEl.innerHTML =
       "Level 10 · 沿土路前进 · 留意岔路小道 · <kbd>WASD</kbd> 移动 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包";
+  } else if (level === 75) {
+    hintEl.innerHTML =
+      "Level 75 · 管道深处有一块橙色的地面 · <kbd>WASD</kbd> 移动 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包";
   } else {
     hintEl.innerHTML =
       "Level " +
@@ -499,6 +617,7 @@ function openBntgVendor() {
 function escortTo(pass, page, banner) {
   if (transitionLock) return;
   transitionLock = true;
+  endPetrifyOnExit();
   closeDialogue();
   showToast("B.N.T.G 员工护送你前往 " + banner + "…");
   if (survival) saveBackroomsSurvival(survival);
@@ -769,9 +888,13 @@ function bindControls() {
     inputEl: inputEl,
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
-    shouldBlockPointerLock: function () { return isInventoryOpen() || dialogueOpen; },
+    shouldBlockPointerLock: function () { return isInventoryOpen() || dialogueOpen || isTaskUiOpen(); },
     onJump: function () { tryBackroomsJump(fps, 8); },
     onKeyDown: function (e) {
+      if (!dialogueOpen && !isInventoryOpen() && handleTaskUiKey(e)) {
+        e.preventDefault();
+        return true;
+      }
       if (dialogueOpen) {
         if (buyerMode) {
           if (e.code === "Escape" && !e.repeat) {
@@ -870,6 +993,8 @@ function init() {
     return;
   }
   showEnterLevelBannerIfQueued();
+  if (level === 10) markLevelEntered("l10", showToast);
+  else if (level === 11) markLevelEntered("l11", showToast);
   scene = new THREE.Scene();
   var outdoor = level === 10 || level === 11;
   var bg = level === 75 ? 0x303840 : outdoor ? 0xa7d9ed : 0x030509;
@@ -892,6 +1017,13 @@ function init() {
     levelWorld = buildLevel11World(root);
     colliders = levelWorld.colliders;
     interactRoots = levelWorld.interactRoots || [];
+    if (isPetrifyActive()) {
+      petrifyActive = true;
+      petrifyValue = getPetrify() || 0;
+      ensurePetrifyOverlay();
+      updatePetrifyOverlay(petrifyValue);
+      showToast("石化仍在你身上蔓延……");
+    }
   }
   else if (level === 10) buildLevel10(root);
   else buildLevel9(root);
@@ -935,14 +1067,16 @@ function init() {
     _physOpts.gravity = DEFAULT_GRAVITY;
     _physOpts.ceilingY = wallH;
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock && !dialogueOpen) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock && !dialogueOpen && !isTaskUiOpen()) {
       var mul = survival && sprinting
         ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
         : 1;
+      if (petrifyActive) mul *= petrifySpeedMul(petrifyValue);
       moveBackroomsPlayer(fps, dt, mul, function (nx, nz) {
         return resolveBackroomsMoveCollisions(nx, nz, fps.player.radius, colliders);
       });
     }
+    if (petrifyActive) updatePetrifyContinuation(dt);
     if (
       level === 10 &&
       !transitionLock &&
@@ -951,6 +1085,15 @@ function init() {
       isLevel10ForkToL11(fps.player.x, fps.player.z)
     ) {
       exitLevel10ToL11();
+    }
+    if (
+      level === 75 &&
+      !transitionLock &&
+      survival &&
+      !survival.dead &&
+      isLevel75OrangePatch(fps.player.x, fps.player.z)
+    ) {
+      exitLevel75ToL16();
     }
     if (
       level === 11 &&
@@ -973,6 +1116,18 @@ function init() {
       levelWorld.isLevel119Entrance(fps.player.x, fps.player.z)
     ) {
       exitLevel11ToL119();
+    }
+    if (level === 11 && !transitionLock && survival && !survival.dead && levelWorld) {
+      if (
+        levelWorld.isLevelC1291Entrance &&
+        levelWorld.isLevelC1291Entrance(fps.player.x, fps.player.z)
+      ) {
+        exitLevel11ToCLevel(
+          "c1291",
+          "backrooms-level-c1291.html",
+          "你走进漆黑的居民楼——脚下传来金属哐当的巨响…"
+        );
+      }
     }
     updateSandRoomFaint(dt);
     applyBackroomsCamera(fps, camera, 1.65);

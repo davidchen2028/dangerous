@@ -26,6 +26,7 @@ import {
   showEnterLevelBannerIfQueued,
   showEnterLevelBanner,
 } from "./backrooms-level-enter.js";
+import { markLevelEntered } from "./backrooms-tasks.js";
 
 /** @typedef {"red" | "02" | "03"} Level0SubZoneId */
 
@@ -338,6 +339,7 @@ export function createLevel0ZoneManager(deps) {
     applyLevel02Atmosphere(true);
     syncHudTitle();
     showEnterLevelBanner("level0.2");
+    markLevelEntered("0.2", deps.showToast);
     if (level02FxRoot) level02FxRoot.visible = true;
     if (!level02Hazards) {
       level02Hazards = createLevel02EnterHazards(deps.scene, {
@@ -372,6 +374,7 @@ export function createLevel0ZoneManager(deps) {
     applyLevel03Atmosphere(true);
     syncHudTitle();
     showEnterLevelBanner("level0.3");
+    markLevelEntered("0.3", deps.showToast);
     return true;
   }
 

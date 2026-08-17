@@ -77,11 +77,19 @@ export function resolveCircleAgainstColliders(px, pz, radius, colliders, nearPad
   var c;
   var out;
   var moved;
+  var list = colliders;
+  // 大量 collider 时用空间分桶，避免每帧全量遍历。
+  if (colliders && colliders.length > 48) {
+    list = queryColliderBucket(colliders, px, pz, radius + nearPad);
+  }
 
   for (iter = 0; iter < maxIter; iter++) {
     moved = false;
-    for (i = 0; i < colliders.length; i++) {
-      c = colliders[i];
+    if (iter > 0 && list !== colliders && colliders.length > 48) {
+      list = queryColliderBucket(colliders, px, pz, radius + nearPad);
+    }
+    for (i = 0; i < list.length; i++) {
+      c = list[i];
       if (c.ghost) continue;
       if (
         px + radius < c.minX - nearPad ||
@@ -104,6 +112,71 @@ export function resolveCircleAgainstColliders(px, pz, radius, colliders, nearPad
   _resolveOut.x = px;
   _resolveOut.z = pz;
   return _resolveOut;
+}
+
+const SPATIAL_CELL = 16;
+/** @type {object[]} */
+const _bucketQuery = [];
+var _queryMark = 1;
+
+function ensureColliderSpatial(colliders) {
+  var cache = colliders.__brSpatial;
+  if (cache && cache.len === colliders.length) return cache;
+  var map = Object.create(null);
+  var i;
+  for (i = 0; i < colliders.length; i++) {
+    var box = colliders[i];
+    if (!box || box.ghost) continue;
+    var x0 = Math.floor(box.minX / SPATIAL_CELL);
+    var x1 = Math.floor(box.maxX / SPATIAL_CELL);
+    var z0 = Math.floor(box.minZ / SPATIAL_CELL);
+    var z1 = Math.floor(box.maxZ / SPATIAL_CELL);
+    var x;
+    var z;
+    for (x = x0; x <= x1; x++) {
+      for (z = z0; z <= z1; z++) {
+        var key = x + "," + z;
+        if (!map[key]) map[key] = [];
+        map[key].push(box);
+      }
+    }
+  }
+  cache = { map: map, len: colliders.length };
+  try {
+    colliders.__brSpatial = cache;
+  } catch (err) {
+    /* 只读数组时忽略缓存 */
+  }
+  return cache;
+}
+
+function queryColliderBucket(colliders, px, pz, pad) {
+  var spatial = ensureColliderSpatial(colliders);
+  var map = spatial.map;
+  var x0 = Math.floor((px - pad) / SPATIAL_CELL);
+  var x1 = Math.floor((px + pad) / SPATIAL_CELL);
+  var z0 = Math.floor((pz - pad) / SPATIAL_CELL);
+  var z1 = Math.floor((pz + pad) / SPATIAL_CELL);
+  _bucketQuery.length = 0;
+  _queryMark++;
+  if (_queryMark > 1e9) _queryMark = 1;
+  var mark = _queryMark;
+  var x;
+  var z;
+  var i;
+  for (x = x0; x <= x1; x++) {
+    for (z = z0; z <= z1; z++) {
+      var bucket = map[x + "," + z];
+      if (!bucket) continue;
+      for (i = 0; i < bucket.length; i++) {
+        var box = bucket[i];
+        if (box.__brQMark === mark) continue;
+        box.__brQMark = mark;
+        _bucketQuery.push(box);
+      }
+    }
+  }
+  return _bucketQuery;
 }
 
 /** 玩家到 AABB 最近距离（用于交互判定） */

@@ -4,6 +4,7 @@
 import { addItem, countUsedSlots, countUsedHotbarSlots } from "./backrooms-inventory.js";
 import { addMegPoints, getMegPoints } from "./backrooms-meg-points.js";
 import { getLuck } from "./backrooms-luck.js";
+import { noteVaultDraw } from "./backrooms-tasks.js";
 
 export const VAULT_SINGLE_COST = 50;
 export const VAULT_TEN_COST = 450;
@@ -159,6 +160,11 @@ export function rollTradeVault(count) {
   addMegPoints(-cost);
   var rolls = [];
   for (var i = 0; i < pulls; i++) rolls.push(rollOne());
+  try {
+    noteVaultDraw(rolls, pulls);
+  } catch (err) {
+    /* ignore */
+  }
   return { ok: true, pulls: pulls, rolls: rolls };
 }
 
@@ -175,15 +181,22 @@ export function claimTradeVault(pending) {
   for (var i = 0; i < pending.rolls.length; i++) {
     var roll = pending.rolls[i];
     var def = ITEMS[roll.id];
-    var added = 0;
-    for (var n = 0; n < roll.wanted; n++) {
-      if (!addItem(def)) break;
-      added++;
-    }
-    if (added < 1) {
+    var wanted = Math.max(1, roll.wanted | 0);
+    // 整抽要么一次放完，要么整抽跳过退款，避免「放进 2 个丢掉第 3 个」。
+    if (freeSlots() < wanted) {
       skipped++;
       continue;
     }
+    var added = 0;
+    for (var n = 0; n < wanted; n++) {
+      if (!addItem(def)) break;
+      added++;
+    }
+    if (added < wanted) {
+      // 竞态：已装入一部分但未满，按剩余数量比例退该抽积分。
+      skipped += (wanted - added) / wanted;
+    }
+    if (added < 1) continue;
     results.push({
       id: roll.id,
       name: roll.name,
@@ -192,7 +205,7 @@ export function claimTradeVault(pending) {
     });
   }
   var unit = pending.pulls === 10 ? VAULT_TEN_UNIT : VAULT_SINGLE_COST;
-  var refunded = skipped > 0 ? skipped * unit : 0;
+  var refunded = skipped > 0 ? Math.round(skipped * unit) : 0;
   if (refunded) addMegPoints(refunded);
   return { ok: true, results: results, refunded: refunded };
 }

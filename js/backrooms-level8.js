@@ -111,6 +111,8 @@ function showError(msg) {
   errorEl.innerHTML = "<p><strong>Level 8 无法启动</strong></p><p>" + msg + "</p>";
 }
 
+import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
+
 function showLootToast(msg) {
   showBackroomsLootToast(msg, { durationMs: 2600 });
   lootToastUntil = performance.now() + 2600;
@@ -306,9 +308,13 @@ function bindControls() {
     inputEl: inputEl,
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
-    shouldBlockPointerLock: function () { return isInventoryOpen(); },
+    shouldBlockPointerLock: function () { return isInventoryOpen() || isTaskUiOpen(); },
     onJump: function () { tryBackroomsJump(fps, JUMP_SPEED); },
     onKeyDown: function (e) {
+      if (!isInventoryOpen() && handleTaskUiKey(e)) {
+        e.preventDefault();
+        return true;
+      }
       if (e.code === "KeyB" && !e.repeat) {
         e.preventDefault();
         toggleBackpack();
@@ -329,6 +335,7 @@ function bindControls() {
 function init() {
   if (!enforceEntryOrRedirect()) return;
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l8", showLootToast);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);
@@ -403,7 +410,7 @@ function init() {
     _physOpts.gravity = DEFAULT_GRAVITY;
     _physOpts.ceilingY = L8_WALL_H;
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock && !isTaskUiOpen()) {
       var mul = survival && sprinting
         ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
         : 1;

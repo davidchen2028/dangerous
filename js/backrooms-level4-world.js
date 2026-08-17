@@ -4,12 +4,16 @@
 import * as THREE from "three";
 import { resolveBackroomsGfxProfile } from "./backrooms-gfx-profile.js";
 import { createPointLightPool } from "./backrooms-point-light-pool.js";
+import { isTaskBoardUnlocked } from "./backrooms-tasks.js";
 
 export const L4_CHUNK_SIZE = 24;
 export const L4_WALL_H = 2.75;
 export const L4_STREAM_RADIUS = 2;
 export const L4_SPAWN_X = 0;
 export const L4_SPAWN_Z = 2;
+/** M.E.G 前哨站所在的固定区块 */
+const OUTPOST_CX = 1;
+const OUTPOST_CZ = 0;
 
 const DESK_W = 1.45;
 const DESK_D = 0.72;
@@ -190,6 +194,24 @@ function sharedMaterials() {
       color: _vendingLabelTex ? 0xffffff : 0x222222,
       roughness: 0.7,
       metalness: 0,
+    }),
+    snackA: new THREE.MeshStandardMaterial({ color: 0xe85d4c, roughness: 0.6 }),
+    snackB: new THREE.MeshStandardMaterial({ color: 0xf0c040, roughness: 0.6 }),
+    snackC: new THREE.MeshStandardMaterial({ color: 0x4caf7a, roughness: 0.6 }),
+    snackD: new THREE.MeshStandardMaterial({ color: 0x5b7fd6, roughness: 0.6 }),
+    megWall: new THREE.MeshStandardMaterial({ color: 0xd9dde2, roughness: 0.86 }),
+    megBlue: new THREE.MeshStandardMaterial({ color: 0x214f7a, roughness: 0.68 }),
+    megDark: new THREE.MeshStandardMaterial({ color: 0x26313b, roughness: 0.75 }),
+    megSkin: new THREE.MeshStandardMaterial({ color: 0xc89a76, roughness: 0.82 }),
+    megSign: new THREE.MeshStandardMaterial({
+      map: megL4SignTexture() || undefined,
+      color: 0xffffff,
+      roughness: 0.55,
+    }),
+    megTaskBoard: new THREE.MeshStandardMaterial({
+      map: megTaskBoardTexture() || undefined,
+      color: 0xffffff,
+      roughness: 0.45,
     }),
   };
   return _mats;
@@ -632,18 +654,15 @@ function addVendingMachineToL61(group, colliders, interactRoots, vx, vz, mats) {
   label.scale.set(0.95, 0.28, 0.04);
   group.add(label);
 
-  // 窗口里几排“零食”色块
-  var snackColors = [0xe85d4c, 0xf0c040, 0x4caf7a, 0x5b7fd6];
+  // 窗口里几排“零食”色块（共享材质，避免 chunk unload/reload 泄漏）
+  var snackMats = [mats.snackA, mats.snackB, mats.snackC, mats.snackD];
   var r;
   var c;
   for (r = 0; r < 3; r++) {
     for (c = 0; c < 3; c++) {
       var snack = new THREE.Mesh(
         sharedBoxGeometry(),
-        new THREE.MeshStandardMaterial({
-          color: snackColors[(r + c) % snackColors.length],
-          roughness: 0.6,
-        })
+        snackMats[(r + c) % snackMats.length]
       );
       snack.position.set(vx - 0.28 + c * 0.28, 0.75 + r * 0.38, vz + 0.28);
       snack.scale.set(0.2, 0.22, 0.16);
@@ -722,17 +741,48 @@ function megL4SignTexture() {
   return _megL4SignTex;
 }
 
-/** 出生区东侧固定区块：空置的 M.E.G Level 4 任务前哨站 + B.N.T.G 联络员 */
+var _megTaskBoardTex = null;
+function megTaskBoardTexture() {
+  if (_megTaskBoardTex) return _megTaskBoardTex;
+  var canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 256;
+  var ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#f4f7f9";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "#b7c0c8";
+  ctx.lineWidth = 10;
+  ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+  ctx.fillStyle = "#16324a";
+  ctx.font = "bold 40px Arial, PingFang SC, Microsoft YaHei, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("M.E.G 任务板", 256, 62);
+  ctx.strokeStyle = "#2b6ea8";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(60, 82);
+  ctx.lineTo(452, 82);
+  ctx.stroke();
+  ctx.fillStyle = "#46525e";
+  ctx.font = "26px Arial, PingFang SC, Microsoft YaHei, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("· 给 Level 1 基地运一个包裹", 62, 130);
+  ctx.fillStyle = "#8a949d";
+  ctx.font = "22px Arial, PingFang SC, Microsoft YaHei, sans-serif";
+  ctx.fillText("按 Q 查看详情", 62, 218);
+  _megTaskBoardTex = new THREE.CanvasTexture(canvas);
+  _megTaskBoardTex.colorSpace = THREE.SRGBColorSpace;
+  return _megTaskBoardTex;
+}
+
+/** 出生区东侧固定区块：M.E.G Level 4 任务前哨站 + B.N.T.G 联络员 */
 function addMegL4Outpost(group, batches, colliders, interactRoots, ox, oz, mats) {
-  var wallMat = new THREE.MeshStandardMaterial({ color: 0xd9dde2, roughness: 0.86 });
-  var blueMat = new THREE.MeshStandardMaterial({ color: 0x214f7a, roughness: 0.68 });
-  var darkMat = new THREE.MeshStandardMaterial({ color: 0x26313b, roughness: 0.75 });
-  var skinMat = new THREE.MeshStandardMaterial({ color: 0xc89a76, roughness: 0.82 });
-  var signMat = new THREE.MeshStandardMaterial({
-    map: megL4SignTexture() || undefined,
-    color: 0xffffff,
-    roughness: 0.55,
-  });
+  var wallMat = mats.megWall;
+  var blueMat = mats.megBlue;
+  var darkMat = mats.megDark;
+  var skinMat = mats.megSkin;
+  var signMat = mats.megSign;
   var minX = ox - 9;
   var maxX = ox + 9;
   var minZ = oz - 8;
@@ -756,13 +806,58 @@ function addMegL4Outpost(group, batches, colliders, interactRoots, ox, oz, mats)
   sign.scale.set(0.08, 0.6, 3.6);
   group.add(sign);
 
-  // 任务发布台目前空置。
+  // 任务发布台。
   queueBox(batches, "megDesk", darkMat, ox + 4.8, 0.55, oz, 1.0, 1.1, 7.5, 0, true, true);
   pushBoxCollider(colliders, ox + 4.25, ox + 5.35, oz - 3.8, oz + 3.8);
   var board = new THREE.Mesh(sharedBoxGeometry(), blueMat);
   board.position.set(maxX - 0.18, 1.55, oz);
   board.scale.set(0.08, 1.3, 5.8);
   group.add(board);
+
+  // 任务白板：M.E.G 成员同意后才挂上墙。
+  if (isTaskBoardUnlocked()) {
+    var taskBoard = new THREE.Mesh(sharedBoxGeometry(), mats.megTaskBoard);
+    taskBoard.position.set(ox, 1.6, minZ + 0.2);
+    taskBoard.scale.set(4.2, 1.9, 0.1);
+    tagShadowMesh(taskBoard, false, true);
+    group.add(taskBoard);
+
+    // 拾取盒略微探出墙体碰撞面，保证准星先命中白板而不是被墙挡掉。
+    var boardPick = new THREE.Mesh(sharedBoxGeometry(), mats.invisiblePick);
+    boardPick.position.set(ox, 1.6, minZ + 0.3);
+    boardPick.scale.set(4.2, 2.0, 0.2);
+    boardPick.userData.brInteract = { kind: "l4_task_board" };
+    group.add(boardPick);
+    interactRoots.push(boardPick);
+  }
+
+  // M.E.G 成员：站在任务发布台后，同意后会挂出任务白板。
+  var megNpc = new THREE.Group();
+  megNpc.name = "L4MegMember";
+  megNpc.position.set(ox + 6.2, 0, oz);
+  megNpc.userData.brInteract = { kind: "l4_meg_member" };
+  var megLegs = new THREE.Mesh(sharedBoxGeometry(), darkMat);
+  megLegs.position.y = 0.48;
+  megLegs.scale.set(0.42, 0.95, 0.34);
+  megNpc.add(megLegs);
+  var megTorso = new THREE.Mesh(sharedBoxGeometry(), blueMat);
+  megTorso.position.y = 1.18;
+  megTorso.scale.set(0.68, 0.75, 0.38);
+  megNpc.add(megTorso);
+  var megHead = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8), skinMat);
+  megHead.position.y = 1.82;
+  megNpc.add(megHead);
+  var megBadge = new THREE.Mesh(sharedBoxGeometry(), mats.lightPanel);
+  megBadge.position.set(-0.35, 1.28, 0);
+  megBadge.scale.set(0.025, 0.1, 0.16);
+  megNpc.add(megBadge);
+  var megPick = new THREE.Mesh(sharedBoxGeometry(), mats.invisiblePick);
+  megPick.position.y = 1.05;
+  megPick.scale.set(0.9, 2.2, 0.9);
+  megNpc.add(megPick);
+  group.add(megNpc);
+  interactRoots.push(megNpc);
+  pushBoxCollider(colliders, ox + 5.8, ox + 6.6, oz - 0.4, oz + 0.4);
 
   // B.N.T.G 联络员。
   var npc = new THREE.Group();
@@ -832,7 +927,7 @@ function loadChunk(cx, cz, ctx) {
     addWindowWall(batches, colliders, ox, oz - half + 0.15, 0, true, mats);
   }
 
-  var isMegOutpost = cx === 1 && cz === 0;
+  var isMegOutpost = cx === OUTPOST_CX && cz === OUTPOST_CZ;
   var rng = mulberry32((cx * 73856093) ^ (cz * 19349663));
   var slots = [
     [-6, -5],
@@ -893,6 +988,11 @@ function loadChunk(cx, cz, ctx) {
     ctx.interactRoots.push(chunkInteractRoots[i]);
   }
   for (i = 0; i < colliders.length; i++) ctx.colliders.push(colliders[i]);
+  try {
+    delete ctx.colliders.__brSpatial;
+  } catch (err) {
+    /* ignore */
+  }
 
   ctx.chunks.set(key, {
     group: group,
@@ -924,6 +1024,11 @@ function unloadChunk(key, ctx) {
     var c = record.colliders[i];
     var idx = ctx.colliders.indexOf(c);
     if (idx >= 0) ctx.colliders.splice(idx, 1);
+  }
+  try {
+    delete ctx.colliders.__brSpatial;
+  } catch (err) {
+    /* ignore */
   }
   if (record.lightCandidate) {
     var li = ctx.lightCandidates.indexOf(record.lightCandidate);
@@ -1030,6 +1135,13 @@ export function buildLevel4World(root, gfxProfile) {
     update: function (px, pz) {
       updateStreaming(px, pz, ctx);
       syncLighting(px, pz);
+    },
+    /** 任务白板刚解锁：就地重建前哨站区块，让白板立刻出现 */
+    rebuildOutpost: function () {
+      var key = chunkKey(OUTPOST_CX, OUTPOST_CZ);
+      if (!chunks.has(key)) return;
+      unloadChunk(key, ctx);
+      loadChunk(OUTPOST_CX, OUTPOST_CZ, ctx);
     },
     dispose: function () {
       var keys = [];

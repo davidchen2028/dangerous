@@ -151,6 +151,8 @@ function showError(msg) {
   errorEl.innerHTML = "<p><strong>Level 3 无法启动</strong></p><p>" + msg + "</p>";
 }
 
+import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
+
 function showLootToast(text) {
   showBackroomsLootToast(text, { durationMs: 2600 });
   lootToastUntil = performance.now() + 2600;
@@ -354,12 +356,16 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen();
+      return isInventoryOpen() || isTaskUiOpen();
     },
     onJump: function () {
       tryBackroomsJump(fps, JUMP_SPEED);
     },
     onKeyDown: function (e) {
+      if (!isInventoryOpen() && handleTaskUiKey(e)) {
+        e.preventDefault();
+        return true;
+      }
       if (e.code === "KeyB" && !e.repeat) {
         e.preventDefault();
         toggleBackpack();
@@ -386,6 +392,7 @@ function bindControls() {
 function init() {
   if (!enforceEntryOrRedirect()) return;
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l3", showLootToast);
 
   mazeData = generateLevel3Maze(getMazeSeed());
   var spawn = getLevel3SpawnWorld(mazeData);
@@ -499,7 +506,7 @@ function init() {
       _physOpts.bodyHeight = BODY_HEIGHT;
       _physOpts.ceilingY = WALL_H;
       updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-      if ((!survival || !survival.dead) && !isInventoryOpen()) {
+      if ((!survival || !survival.dead) && !isInventoryOpen() && !isTaskUiOpen()) {
         var mul =
           survival && sprinting
             ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)

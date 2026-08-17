@@ -25,6 +25,13 @@ const L119_SHOP_Z = 0;
 /** B.N.T.G 大房子：右侧街，门开在房子侧面（-Z），很难发现 */
 const BNTG_X = BUILDING_X;
 const BNTG_Z = -9;
+/** 三处通往 C-129x 死区的建筑，都在左侧街的第 1 段（z=48 附近） */
+const C1291_BLACK_X = -BUILDING_X;
+const C1291_BLACK_Z = 32;
+const C1290_STONE_X = -BUILDING_X;
+const C1290_STONE_Z = 48;
+const C1289_COLOR_X = -BUILDING_X;
+const C1289_COLOR_Z = 64;
 
 var _boxGeo = null;
 var _materials = null;
@@ -85,6 +92,18 @@ function materials() {
       emissiveIntensity: 0.22,
       roughness: 0.3,
     }),
+    // 黑色居民楼（→ C-1291）
+    blockBlack: new THREE.MeshStandardMaterial({ color: 0x15181b, roughness: 0.92 }),
+    blockBlackWindow: new THREE.MeshStandardMaterial({
+      color: 0x23282d,
+      emissive: 0x0a0d10,
+      emissiveIntensity: 0.3,
+      roughness: 0.55,
+    }),
+    // 石头房子（→ C-1290）
+    stoneWall: new THREE.MeshStandardMaterial({ color: 0xa9a49a, roughness: 0.98 }),
+    stoneBlock: new THREE.MeshStandardMaterial({ color: 0x8f8a80, roughness: 1 }),
+    stoneBlockDark: new THREE.MeshStandardMaterial({ color: 0x7a756c, roughness: 1 }),
   };
   return _materials;
 }
@@ -290,6 +309,176 @@ function addLevel48SandRoom(group, entries) {
   addBox(group, mats.darkDoor, x, 1.4, facadeZ + 0.05, doorW - 0.2, 2.8, 0.08);
 }
 
+/** 通往 C-1291 的黑色居民楼：整栋漆黑，窗户不透光，门洞更黑 */
+function addBlackApartment(group, entries) {
+  var mats = materials();
+  var x = C1291_BLACK_X;
+  var z = C1291_BLACK_Z;
+  var height = 28;
+  addBox(group, mats.blockBlack, x, height * 0.5, z, BUILDING_W, height, BUILDING_D);
+  entries.push(
+    collider(
+      x - BUILDING_W * 0.5,
+      x + BUILDING_W * 0.5,
+      z - BUILDING_D * 0.5,
+      z + BUILDING_D * 0.5
+    )
+  );
+  // 临街立面（+X 朝向马路）
+  var facadeX = x + BUILDING_W * 0.5 + 0.05;
+  var floorY;
+  var col;
+  for (floorY = 3.4; floorY < height - 1.4; floorY += 3.2) {
+    for (col = -1; col <= 1; col++) {
+      addBox(group, mats.blockBlackWindow, facadeX, floorY, z + col * 3.6, 0.08, 1.5, 2.2);
+    }
+  }
+  // 门洞
+  addBox(group, mats.darkDoor, facadeX + 0.02, 1.6, z, 0.12, 3.2, 2.6);
+  addBox(group, mats.blockBlack, facadeX + 0.85, 3.6, z, 1.7, 0.22, 3.6);
+}
+
+/** 通往 C-1290 的石头房子：粗砌石块 + 拱形门洞，呼应石茧的希腊拱门 */
+function addStoneHouse(group, entries) {
+  var mats = materials();
+  var x = C1290_STONE_X;
+  var z = C1290_STONE_Z;
+  var height = 9;
+  addBox(group, mats.stoneWall, x, height * 0.5, z, BUILDING_W, height, BUILDING_D);
+  entries.push(
+    collider(
+      x - BUILDING_W * 0.5,
+      x + BUILDING_W * 0.5,
+      z - BUILDING_D * 0.5,
+      z + BUILDING_D * 0.5
+    )
+  );
+  // 立面上错落的石块，看起来是一块块垒起来的
+  var facadeX = x + BUILDING_W * 0.5 + 0.06;
+  var row;
+  var i;
+  for (row = 0; row < 7; row++) {
+    var y = 0.6 + row * 1.25;
+    var offset = (row % 2) * 1.1;
+    for (i = 0; i < 5; i++) {
+      var bz = z - 5 + offset + i * 2.4;
+      if (Math.abs(bz - z) < 1.8 && y < 3.4) continue; // 让出门洞
+      addBox(
+        group,
+        (row + i) % 2 === 0 ? mats.stoneBlock : mats.stoneBlockDark,
+        facadeX,
+        y,
+        bz,
+        0.22,
+        1.1,
+        2.1
+      );
+    }
+  }
+  // 拱形门洞：底部方洞 + 顶部半圆由几块楔形石块拼出
+  addBox(group, mats.darkDoor, facadeX + 0.03, 1.5, z, 0.14, 3, 2.6);
+  var arc;
+  for (arc = 0; arc < 7; arc++) {
+    var a = Math.PI * (arc / 6);
+    var stone = addBox(
+      group,
+      arc % 2 === 0 ? mats.stoneBlock : mats.stoneBlockDark,
+      facadeX + 0.02,
+      3.0 + Math.sin(a) * 1.35,
+      z - Math.cos(a) * 1.5,
+      0.26,
+      0.62,
+      0.72
+    );
+    stone.rotation.x = a - Math.PI * 0.5;
+  }
+  // 屋顶压石
+  addBox(group, mats.stoneBlockDark, x, height + 0.25, z, BUILDING_W + 0.8, 0.5, BUILDING_D + 0.8);
+}
+
+var _rainbowBodyMat = null;
+var _rainbowPatchMats = null;
+
+function makeRainbowTexture() {
+  var canvasEl = document.createElement("canvas");
+  canvasEl.width = 256;
+  canvasEl.height = 256;
+  var ctx = canvasEl.getContext("2d");
+  var colors = [
+    "#e8443a",
+    "#f08c1e",
+    "#f5d327",
+    "#4fb14e",
+    "#2f7fd1",
+    "#7a49b8",
+    "#e05fa8",
+    "#22b3a6",
+  ];
+  var i;
+  var j;
+  for (j = 0; j < 8; j++) {
+    for (i = 0; i < 8; i++) {
+      ctx.fillStyle = colors[(i + j * 3) % colors.length];
+      ctx.fillRect(i * 32, j * 32, 32, 32);
+    }
+  }
+  var texture = new THREE.CanvasTexture(canvasEl);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+/** 通往 C-1289 的五彩斑斓的房子：拼色方块外墙 */
+function addRainbowHouse(group, entries) {
+  var mats = materials();
+  var x = C1289_COLOR_X;
+  var z = C1289_COLOR_Z;
+  var height = 10;
+  if (!_rainbowBodyMat) {
+    _rainbowBodyMat = new THREE.MeshStandardMaterial({
+      map: makeRainbowTexture(),
+      roughness: 0.72,
+    });
+  }
+  addBox(group, _rainbowBodyMat, x, height * 0.5, z, BUILDING_W, height, BUILDING_D);
+  entries.push(
+    collider(
+      x - BUILDING_W * 0.5,
+      x + BUILDING_W * 0.5,
+      z - BUILDING_D * 0.5,
+      z + BUILDING_D * 0.5
+    )
+  );
+  // 立面上再叠一层更饱和的色块，远远就能看出来这栋不正常
+  var facadeX = x + BUILDING_W * 0.5 + 0.06;
+  var i;
+  if (!_rainbowPatchMats) {
+    var palette = [0xe8443a, 0xf5d327, 0x4fb14e, 0x2f7fd1, 0x7a49b8, 0xe05fa8];
+    _rainbowPatchMats = [];
+    for (i = 0; i < palette.length; i++) {
+      _rainbowPatchMats.push(
+        new THREE.MeshStandardMaterial({
+          color: palette[i],
+          emissive: palette[i],
+          emissiveIntensity: 0.14,
+          roughness: 0.6,
+        })
+      );
+    }
+  }
+  var patchMats = _rainbowPatchMats;
+  var row;
+  for (row = 0; row < 5; row++) {
+    for (i = 0; i < 5; i++) {
+      var y = 1.1 + row * 1.9;
+      var pz = z - 4.8 + i * 2.4;
+      if (Math.abs(pz - z) < 1.7 && y < 3.4) continue; // 让出门洞
+      addBox(group, patchMats[(row * 3 + i) % patchMats.length], facadeX, y, pz, 0.16, 1.6, 2.1);
+    }
+  }
+  addBox(group, mats.darkDoor, facadeX + 0.03, 1.55, z, 0.14, 3.1, 2.6);
+  addBox(group, patchMats[1], facadeX + 0.9, 3.55, z, 1.8, 0.22, 3.6);
+}
+
 function addSegment(root, index) {
   var mats = materials();
   var group = new THREE.Group();
@@ -317,6 +506,8 @@ function addSegment(root, index) {
       addAlomWotorShop(group, entries);
     } else if (index === 0 && Math.abs(rowZ - L48_SAND_Z) < 0.1) {
       addLevel48SandRoom(group, entries);
+    } else if (index === 1 && Math.abs(rowZ - C1291_BLACK_Z) < 0.1) {
+      addBlackApartment(group, entries);
     } else {
       addBuilding(group, entries, -BUILDING_X, rowZ, -1, serial);
     }
@@ -619,6 +810,11 @@ export function buildLevel11World(root) {
     isLevel119Entrance: function (px, pz) {
       var facadeX = L119_SHOP_X + BUILDING_W * 0.5;
       return px <= facadeX + 1.4 && Math.abs(pz - L119_SHOP_Z) <= 1.4;
+    },
+    /** 黑色居民楼门洞 → Level C-1291 */
+    isLevelC1291Entrance: function (px, pz) {
+      var facadeX = C1291_BLACK_X + BUILDING_W * 0.5;
+      return px <= facadeX + 1.4 && Math.abs(pz - C1291_BLACK_Z) <= 1.4;
     },
   };
 }

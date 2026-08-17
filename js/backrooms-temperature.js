@@ -52,8 +52,21 @@ const LEVEL_PROFILE = {
   13: { min: 19, max: 23, base: 21, swing: 1.1 },
   /** Level 14 — 红叶树林的黄昏 */
   14: { min: 13, max: 19, base: 16, swing: 2.2 },
+  /** Level 16 — 一望无际的冰层，寒风贴着冰面吹 */
+  16: { min: -9, max: -2, base: -5.5, swing: 1.9 },
   /** Level 21 — 静谧花园与十字走廊 */
   21: { min: 17, max: 22, base: 19.5, swing: 1.6 },
+  /** Level 46 · 黎明 — 温和，不造成环境伤害 */
+  "46_dawn": { min: 20, max: 30, base: 25, swing: 3.5, swing2: 1.4 },
+  /** Level 46 · 白天 — 极端高温，关卡脚本按 2 HP/秒结算 */
+  "46_day": { min: 67, max: 73, base: 70, swing: 2.2, swing2: 1.1 },
+  /** Level 46 · 夜晚 — 极端低温，关卡脚本按 2 HP/秒结算 */
+  "46_night": { min: -33, max: -27, base: -30, swing: 2.1, swing2: 1 },
+  /** 兼容旧存档/旧调用 */
+  "46_forest": { min: 20, max: 30, base: 25, swing: 3.5 },
+  "46_desert": { min: 67, max: 73, base: 70, swing: 2.2 },
+  /** Level 149 — 椰树岛屿，温暖宜人的海风 */
+  149: { min: 24, max: 30, base: 27, swing: 2 },
   /** Level 37 — 平静的水池，温水般宜人 */
   37: { min: 24, max: 28, base: 26, swing: 0.8 },
   /** Level 48 — 日落沙滩 */
@@ -68,12 +81,26 @@ const LEVEL_PROFILE = {
   121: { min: 8, max: 14, base: 11, swing: 1.4 },
   /** 蓝色通道 */
   blue_channel: { min: 14, max: 19, base: 16.5, swing: 1.2 },
+  /** 枢纽 — 稳定、干燥的地下公路隧道 */
+  hub: { min: 19, max: 22, base: 20.5, swing: 0.5 },
   /** Level C-144 — 和爱社区，温和的城区与郊区 */
   c144: { min: 16, max: 24, base: 20, swing: 2.6 },
   /** Level C-192 — 封闭森林 */
   c192: { min: 14, max: 20, base: 17, swing: 1.6 },
   /** Level C-370 — 水池深处的沉静空间 */
   c370: { min: 20, max: 25, base: 22.5, swing: 1 },
+  /** Level C-1289 — 死亡回廊 */
+  c1289: { min: 16, max: 21, base: 18.5, swing: 1.4 },
+  c1290: { min: 15, max: 20, base: 17.5, swing: 1.5 },
+  c1291: { min: 18, max: 23, base: 20.5, swing: 1.6 },
+  c1292: { min: 14, max: 19, base: 16.5, swing: 1.5 },
+  c1293: { min: 13, max: 18, base: 15.5, swing: 1.8 },
+  c1294: { min: 12, max: 17, base: 14.5, swing: 1.6 },
+  c1295: { min: 16, max: 21, base: 18.5, swing: 1.4 },
+  c1296: { min: 15, max: 20, base: 17.5, swing: 1.3 },
+  c1297: { min: 22, max: 28, base: 25, swing: 2 },
+  c1298: { min: 14, max: 19, base: 16.5, swing: 1.5 },
+  c1299: { min: 17, max: 22, base: 19.5, swing: 1.4 },
   /** Level 0.3 — 极寒 */
   "0.3": { min: -22, max: -18, base: -20, swing: 1.1 },
 };

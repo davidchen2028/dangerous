@@ -92,6 +92,8 @@ function showError(msg) {
   errorEl.innerHTML = "<p><strong>Level 6.1 无法启动</strong></p><p>" + msg + "</p>";
 }
 
+import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
+
 function showToast(msg) {
   showBackroomsLootToast(msg, { durationMs: 2600 });
 }
@@ -399,12 +401,16 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen();
+      return isInventoryOpen() || isTaskUiOpen();
     },
     onJump: function () {
       tryBackroomsJump(fps, 8);
     },
     onKeyDown: function (e) {
+      if (!isInventoryOpen() && handleTaskUiKey(e)) {
+        e.preventDefault();
+        return true;
+      }
       if (e.code === "KeyB" && !e.repeat) {
         e.preventDefault();
         toggleBackpack();
@@ -437,6 +443,7 @@ function init() {
   }
 
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l6_1", showToast);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.Fog(FOG_COLOR, 8, 28);
@@ -494,7 +501,7 @@ function init() {
     _physOpts.ceilingY = WALL_H;
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
 
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock && !isTaskUiOpen()) {
       var mul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)

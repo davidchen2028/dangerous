@@ -84,6 +84,8 @@ const _physOpts = {
 const _mothUpdateOpts = { now: 0 };
 const _clumpUpdateOpts = {};
 
+import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
+
 function showToast(text) {
   showBackroomsLootToast(text, { durationMs: 2400 });
   lootToastUntil = performance.now() + 2400;
@@ -116,12 +118,16 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen();
+      return isInventoryOpen() || isTaskUiOpen();
     },
     onJump: function () {
       tryBackroomsJump(fps, 8);
     },
     onKeyDown: function (event) {
+      if (!isInventoryOpen() && handleTaskUiKey(event)) {
+        event.preventDefault();
+        return true;
+      }
       if (event.code === "KeyB" && !event.repeat) {
         event.preventDefault();
         toggleBackpack();
@@ -164,6 +170,7 @@ function init() {
     return;
   }
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l9", showToast);
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x9ed9f2);
@@ -235,7 +242,7 @@ function init() {
       survival.update(dt, _survCtx);
     }
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock && !isTaskUiOpen()) {
       var speedMul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)

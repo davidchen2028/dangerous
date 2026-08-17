@@ -25,6 +25,8 @@ const ITEM_ICONS = {
   archive_c11: "img/backrooms/archive-viewer.png",
   roulette: "img/backrooms/roulette-revolver.png",
   roulette_revolver: "img/backrooms/roulette-revolver.png",
+  package_l1: "img/backrooms/package.png",
+  package_l159: "img/backrooms/package.png",
 };
 
 /** @type {(null | { id: string, name: string })[]} */
@@ -136,6 +138,17 @@ export function isInventoryOpen() {
   return open || settingsOpen;
 }
 
+/** 全屏模态（轮盘赌 / 档案查看器）是否挡住快捷栏输入 */
+export function isAnyModalOverlayOpen() {
+  if (archiveOverlayEl) return true;
+  try {
+    if (document.getElementById("backroomsRoulette")) return true;
+  } catch (err) {
+    /* ignore */
+  }
+  return false;
+}
+
 export function isBackpackOpen() {
   return open;
 }
@@ -203,6 +216,11 @@ export function getSelectedHotbarIndex() {
   return selectedHotbarIndex;
 }
 
+/** @returns {{ id: string, name: string } | null} */
+export function getSelectedHotbarItem() {
+  return hotbarSlots[selectedHotbarIndex] || null;
+}
+
 export function setSelectedHotbarIndex(index) {
   if (!Number.isFinite(index)) return;
   selectedHotbarIndex =
@@ -267,6 +285,7 @@ export function addItem(item) {
     persistAll();
     renderHotbar();
     renderGrid();
+    notifyItemAdded(packed);
     return true;
   }
   var packIdx = findEmptyBackpackIndex();
@@ -274,7 +293,18 @@ export function addItem(item) {
   backpackSlots[packIdx] = packed;
   persistBackpack();
   renderGrid();
+  notifyItemAdded(packed);
   return true;
+}
+
+function notifyItemAdded(item) {
+  try {
+    if (typeof window.__backroomsOnItemAdded === "function") {
+      window.__backroomsOnItemAdded(item);
+    }
+  } catch (err) {
+    /* ignore */
+  }
 }
 
 export function addAlmondWater(count) {
@@ -527,9 +557,10 @@ function closeArchiveOverlay() {
 }
 
 function onArchiveKeydown(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation();
   if (e.code === "Escape" || e.code === "KeyQ" || e.code === "Enter") {
-    e.preventDefault();
-    e.stopPropagation();
     closeArchiveOverlay();
   }
 }
@@ -745,6 +776,8 @@ function bindHotbarKeys() {
     if (e.repeat) return;
     // 商店收购中：物品交易由商店对话接管，避免误用道具
     if (sellPickHandler) return;
+    // 轮盘赌 / 档案查看器等全屏遮罩开启时禁止快捷栏
+    if (isAnyModalOverlayOpen()) return;
     if (e.code === "KeyP") {
       e.preventDefault();
       toggleSettings();

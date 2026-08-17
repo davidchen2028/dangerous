@@ -400,8 +400,61 @@ function buildMegHiddenCorridor(root, ctx, center, hx, doorW, bh, wallT) {
     colliders: corridorColliders,
     collidersActive: false,
     ctx: ctx,
+    wallN: wallN,
+    northGapOpen: false,
   };
   return _megCorridorState;
+}
+
+/**
+ * 在走廊北墙上开出通往枢纽路线的岔路口：北墙拆成两段，中间留出通行缺口。
+ * @returns {boolean} 是否成功开口
+ */
+function carveMegCorridorNorthGap(gapMinX, gapMaxX) {
+  var st = _megCorridorState;
+  var d = _megBackDoorState;
+  if (!st || !d || st.northGapOpen) return false;
+
+  var startX = megCorridorStartX(d.center, d.hx, d.wallT);
+  var endX = startX + MEG_CORRIDOR_LEN;
+  if (gapMinX <= startX + 0.4 || gapMaxX >= endX - 0.4) return false;
+  st.northGapOpen = true;
+
+  var leftLen = gapMinX - startX;
+  var rightLen = endX - gapMaxX;
+  if (st.wallN) {
+    st.wallN.scale.x = leftLen / MEG_CORRIDOR_LEN;
+    st.wallN.position.x = startX + leftLen * 0.5;
+    var wallN2 = st.wallN.clone();
+    wallN2.scale.x = rightLen / MEG_CORRIDOR_LEN;
+    wallN2.position.x = gapMaxX + rightLen * 0.5;
+    st.group.add(wallN2);
+  }
+
+  var north = null;
+  for (var i = 0; i < st.colliders.length; i++) {
+    var c = st.colliders[i];
+    if (c.minZ > d.center.z && c.maxX - c.minX > MEG_CORRIDOR_LEN * 0.5) {
+      north = c;
+      break;
+    }
+  }
+  if (north) {
+    north.maxX = gapMinX;
+    var tail = {
+      kind: "wall",
+      minX: gapMaxX,
+      maxX: endX,
+      minZ: north.minZ,
+      maxZ: north.maxZ,
+    };
+    st.colliders.push(tail);
+    if (st.collidersActive && st.ctx) {
+      st.ctx.colliders.push(tail);
+      if (st.ctx.onWallCollider) st.ctx.onWallCollider(tail);
+    }
+  }
+  return true;
 }
 
 function activateMegCorridor() {
@@ -504,6 +557,8 @@ var _megInteriorNpc = null;
 var _megBackDoorStaffNpc = null;
 /** @type {{ x: number, z: number, talkRadius: number, group: THREE.Object3D } | null} Level 1.1 介绍员 */
 var _megLevel11Npc = null;
+/** @type {{ x: number, z: number, talkRadius: number, group: THREE.Object3D } | null} 任务包裹收件员 */
+var _megPackageReceiverNpc = null;
 function resetMegModuleState() {
   _megBaseCenter = null;
   _megBaseOccluderGroup = null;
@@ -515,10 +570,11 @@ function resetMegModuleState() {
   _megInteriorNpc = null;
   _megBackDoorStaffNpc = null;
   _megLevel11Npc = null;
+  _megPackageReceiverNpc = null;
 }
 
 /** 出生区块 M.E.G 引导员 */
-function buildMegStaffFigure(root, wx, wz, name, interactRole) {
+function buildMegStaffFigure(root, wx, wz, name, interactRole, uniformColor) {
   var group = new THREE.Group();
   group.name = name || "MegStaff";
   group.position.set(wx, 0, wz);
@@ -528,7 +584,7 @@ function buildMegStaffFigure(root, wx, wz, name, interactRole) {
   };
 
   var uniformMat = new THREE.MeshLambertMaterial({
-    color: 0x2a5080,
+    color: uniformColor == null ? 0x2a5080 : uniformColor,
     emissive: 0x0a1828,
   });
   var skinMat = new THREE.MeshLambertMaterial({
@@ -848,6 +904,22 @@ function buildMegAlphaBase(root, ctx) {
     z: level11Guide.z,
     talkRadius: 2.85,
     group: level11Guide.group,
+  };
+
+  var packageReceiver = buildMegStaffFigure(
+    root,
+    center.x - 0.65,
+    center.z - 2.05,
+    "MegPackageReceiver",
+    "package_receiver",
+    0x2f7a43
+  );
+  packageReceiver.group.visible = false;
+  _megPackageReceiverNpc = {
+    x: packageReceiver.x,
+    z: packageReceiver.z,
+    talkRadius: 2.85,
+    group: packageReceiver.group,
   };
 
   root.add(group);
@@ -1566,6 +1638,11 @@ export function buildBackroomsLevel1World(root, opts) {
     getMegInteriorNpc: function () {
       return _megInteriorNpc;
     },
+    setPackageReceiverVisible: function (visible) {
+      if (_megPackageReceiverNpc && _megPackageReceiverNpc.group) {
+        _megPackageReceiverNpc.group.visible = !!visible;
+      }
+    },
     isNearMegInteriorNpc: function (px, pz) {
       return isNearMegInteriorNpc(px, pz);
     },
@@ -1581,6 +1658,13 @@ export function buildBackroomsLevel1World(root, opts) {
       }
       if (_megLevel11Npc && _megLevel11Npc.group) {
         roots.push(_megLevel11Npc.group);
+      }
+      if (
+        _megPackageReceiverNpc &&
+        _megPackageReceiverNpc.group &&
+        _megPackageReceiverNpc.group.visible
+      ) {
+        roots.push(_megPackageReceiverNpc.group);
       }
       if (
         _megDoorState &&
@@ -1626,6 +1710,23 @@ export function buildBackroomsLevel1World(root, opts) {
     isMegBackCorridorOpen: function () {
       var d = _megBackDoorState;
       return !!(d && (d.open || d.opening));
+    },
+    /** 走廊真实几何，供枢纽岔路口就地生成使用；后门未开时为 null */
+    getMegCorridorInfo: function () {
+      var st = _megCorridorState;
+      var d = _megBackDoorState;
+      if (!st || !d) return null;
+      return {
+        startX: megCorridorStartX(d.center, d.hx, d.wallT),
+        length: MEG_CORRIDOR_LEN,
+        centerZ: d.center.z,
+        halfW: (d.doorW - 0.2) * 0.5,
+        height: d.bh,
+        group: st.group,
+      };
+    },
+    carveMegCorridorNorthGap: function (gapMinX, gapMaxX) {
+      return carveMegCorridorNorthGap(gapMinX, gapMaxX);
     },
   };
 }

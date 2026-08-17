@@ -2,13 +2,15 @@
  * 后室关卡入场令牌 + 刷新策略（任意关卡 F5 → 重置并回 L0）
  */
 import { resetBackroomsRun } from "./backrooms-survival.js";
+import { markLevelEscaped } from "./backrooms-tasks.js";
 
 export const LEVEL0_PAGE = "backrooms-level0.html";
-/** @typedef {"clip" | "l0" | "l1_bntg" | "l2" | "l3" | "l4" | "l6" | "l6_1" | "l7" | "l8" | "l9" | "l10" | "l11" | "l13" | "l14" | "l21" | "l37" | "l48" | "l57" | "l75" | "l119" | "l121" | "l283" | "blue_channel" | "c144" | "c192" | "c370"} BackroomsLevelPassId */
+/** @typedef {"clip" | "hub" | "l0" | "l1_bntg" | "l2" | "l3" | "l4" | "l6" | "l6_1" | "l7" | "l8" | "l9" | "l10" | "l11" | "l13" | "l14" | "l16" | "l21" | "l37" | "l46" | "l48" | "l57" | "l75" | "l119" | "l121" | "l149" | "l283" | "blue_channel" | "c144" | "c192" | "c370" | "c1289" | "c1290" | "c1291" | "c1292" | "c1293" | "c1294" | "c1295" | "c1296" | "c1297" | "c1298" | "c1299"} BackroomsLevelPassId */
 
 /** @type {Record<BackroomsLevelPassId, { pass: string, yaw: string | null }>} */
 export const LEVEL_PASS_KEYS = {
   clip: { pass: "backrooms_clip_pass", yaw: null },
+  hub: { pass: "backrooms_hub_pass", yaw: "backrooms_hub_yaw" },
   /** 从其他层级切回 L0：持有此令牌表示延续本局，不清档 */
   l0: { pass: "backrooms_l0_pass", yaw: "backrooms_l0_yaw" },
   l1_bntg: {
@@ -27,18 +29,32 @@ export const LEVEL_PASS_KEYS = {
   l11: { pass: "backrooms_l11_pass", yaw: "backrooms_l11_yaw" },
   l13: { pass: "backrooms_l13_pass", yaw: "backrooms_l13_yaw" },
   l14: { pass: "backrooms_l14_pass", yaw: "backrooms_l14_yaw" },
+  l16: { pass: "backrooms_l16_pass", yaw: "backrooms_l16_yaw" },
   l21: { pass: "backrooms_l21_pass", yaw: "backrooms_l21_yaw" },
   l37: { pass: "backrooms_l37_pass", yaw: "backrooms_l37_yaw" },
+  l46: { pass: "backrooms_l46_pass", yaw: "backrooms_l46_yaw" },
   l48: { pass: "backrooms_l48_pass", yaw: "backrooms_l48_yaw" },
   l57: { pass: "backrooms_l57_pass", yaw: "backrooms_l57_yaw" },
   l75: { pass: "backrooms_l75_pass", yaw: "backrooms_l75_yaw" },
   l119: { pass: "backrooms_l119_pass", yaw: "backrooms_l119_yaw" },
   l121: { pass: "backrooms_l121_pass", yaw: "backrooms_l121_yaw" },
+  l149: { pass: "backrooms_l149_pass", yaw: "backrooms_l149_yaw" },
   l283: { pass: "backrooms_l283_pass", yaw: "backrooms_l283_yaw" },
   blue_channel: { pass: "backrooms_blue_channel_pass", yaw: "backrooms_blue_channel_yaw" },
   c144: { pass: "backrooms_c144_pass", yaw: "backrooms_c144_yaw" },
   c192: { pass: "backrooms_c192_pass", yaw: "backrooms_c192_yaw" },
   c370: { pass: "backrooms_c370_pass", yaw: "backrooms_c370_yaw" },
+  c1289: { pass: "backrooms_c1289_pass", yaw: "backrooms_c1289_yaw" },
+  c1290: { pass: "backrooms_c1290_pass", yaw: "backrooms_c1290_yaw" },
+  c1291: { pass: "backrooms_c1291_pass", yaw: "backrooms_c1291_yaw" },
+  c1292: { pass: "backrooms_c1292_pass", yaw: "backrooms_c1292_yaw" },
+  c1293: { pass: "backrooms_c1293_pass", yaw: "backrooms_c1293_yaw" },
+  c1294: { pass: "backrooms_c1294_pass", yaw: "backrooms_c1294_yaw" },
+  c1295: { pass: "backrooms_c1295_pass", yaw: "backrooms_c1295_yaw" },
+  c1296: { pass: "backrooms_c1296_pass", yaw: "backrooms_c1296_yaw" },
+  c1297: { pass: "backrooms_c1297_pass", yaw: "backrooms_c1297_yaw" },
+  c1298: { pass: "backrooms_c1298_pass", yaw: "backrooms_c1298_yaw" },
+  c1299: { pass: "backrooms_c1299_pass", yaw: "backrooms_c1299_yaw" },
 };
 
 function keysFor(levelId) {
@@ -79,8 +95,12 @@ export function hasLevelPass(levelId) {
   }
 }
 
-/** 授予或续期令牌（进入关卡 / 同页复活后重发） */
-export function grantLevelPass(levelId, yaw) {
+/** 授予或续期令牌（进入关卡 / 同页复活后重发）
+ * @param {BackroomsLevelPassId} levelId
+ * @param {number} [yaw]
+ * @param {{ noEscape?: boolean }} [opts] 死亡回城 / 同页续令牌时传 noEscape，不触发逃离成就
+ */
+export function grantLevelPass(levelId, yaw, opts) {
   var keys = keysFor(levelId);
   if (!keys) return;
   try {
@@ -91,10 +111,18 @@ export function grantLevelPass(levelId, yaw) {
   } catch (err2) {
     /* ignore */
   }
+  // 默认视为存活逃离当前层；死亡回城等路径需显式 noEscape。
+  if (!opts || !opts.noEscape) {
+    try {
+      markLevelEscaped();
+    } catch (err3) {
+      /* ignore */
+    }
+  }
 }
 
 export function refreshLevelPass(levelId, yaw) {
-  grantLevelPass(levelId, yaw);
+  grantLevelPass(levelId, yaw, { noEscape: true });
 }
 
 export function revokeLevelPass(levelId) {

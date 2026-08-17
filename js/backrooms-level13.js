@@ -42,6 +42,9 @@ import {
 } from "./backrooms-fps-controller.js";
 
 const FACELESS_MODEL_URL = "models/backrooms-faceling.glb";
+/** 跨次进入复用已解析的 Faceling 模板 */
+var _cachedFacelingTemplate = null;
+var _facelingLoadWaiters = null;
 const ROOM_ASSIGNED_KEY = "backrooms_l13_room303_assigned_v1";
 const WALL_H = 3.2;
 const EYE_HEIGHT = 1.65;
@@ -89,6 +92,8 @@ function addBox(root, w, h, d, x, y, z, material) {
   root.add(mesh);
   return mesh;
 }
+
+import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
 
 function showToast(message) {
   showBackroomsLootToast(message, { durationMs: 2600 });
@@ -192,19 +197,39 @@ function spawnFaceling(root) {
   host.add(pick);
   interactRoots.push(pick);
 
-  new GLTFLoader().load(
-    FACELESS_MODEL_URL,
-    function (gltf) {
-      var model = gltf.scene;
-      if (!normalizeModel(model)) return;
-      host.remove(fallback);
-      host.add(model);
-    },
-    undefined,
-    function () {
-      // 保留无五官的程序化后备模型。
-    }
-  );
+  function applyFaceling(template) {
+    if (!template || !host.parent) return;
+    var model = template.clone(true);
+    host.remove(fallback);
+    host.add(model);
+  }
+
+  if (_cachedFacelingTemplate) {
+    applyFaceling(_cachedFacelingTemplate);
+    return;
+  }
+  if (!_facelingLoadWaiters) {
+    _facelingLoadWaiters = [];
+    new GLTFLoader().load(
+      FACELESS_MODEL_URL,
+      function (gltf) {
+        var model = gltf.scene;
+        if (!normalizeModel(model)) {
+          _facelingLoadWaiters = null;
+          return;
+        }
+        _cachedFacelingTemplate = model;
+        var waiters = _facelingLoadWaiters || [];
+        _facelingLoadWaiters = null;
+        for (var w = 0; w < waiters.length; w++) waiters[w](model);
+      },
+      undefined,
+      function () {
+        _facelingLoadWaiters = null;
+      }
+    );
+  }
+  _facelingLoadWaiters.push(applyFaceling);
 }
 
 function buildWorld(root) {
@@ -434,7 +459,7 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen() || dialogueOpen;
+      return isInventoryOpen() || dialogueOpen || isTaskUiOpen();
     },
     onJump: function () {
       tryBackroomsJump(fps, 8);
@@ -447,6 +472,10 @@ function bindControls() {
       }
       if (dialogueOpen) {
         if (event.code === "Escape" && !event.repeat) closeDialogue();
+        return true;
+      }
+      if (!isInventoryOpen() && handleTaskUiKey(event)) {
+        event.preventDefault();
         return true;
       }
       if (event.code === "KeyB" && !event.repeat) {
@@ -471,6 +500,7 @@ function init() {
     roomAssigned = false;
   }
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l13", showToast);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x5e5145);
   scene.fog = new THREE.Fog(0x5e5145, 12, 34);
@@ -528,7 +558,8 @@ function init() {
       (!survival || !survival.dead) &&
       !isInventoryOpen() &&
       !dialogueOpen &&
-      !transitionLock
+      !transitionLock &&
+      !isTaskUiOpen()
     ) {
       var mul =
         survival && sprinting

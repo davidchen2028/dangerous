@@ -3,6 +3,7 @@
  * 每条走廊各 1 只死亡飞蛾、1 只肢团（不会进入花园，也不攻击花园里的人）。
  * 每条走廊至少 10 扇门；无字之门打不开。部分门被替换为写着编号的门，
  * 打开后前往对应 Level（该层级未制作则不会出现此门；同一编号不会重复）。
+ * 每次进入另有 5% 概率出现一扇通往 Level 46 的生锈门。
  */
 import * as THREE from "three";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
@@ -80,6 +81,13 @@ const DOOR_TABLE = [
   { num: 19, level: 19, page: "backrooms-level19.html", pass: "l19", prob: 0.06, made: false },
   { num: 20, level: 20, page: "backrooms-level20.html", pass: "l20", prob: 0.06, made: false },
 ];
+const RUST_DOOR = {
+  rust: true,
+  level: 46,
+  page: "backrooms-level46.html",
+  pass: "l46",
+  prob: 0.05,
+};
 
 const ARMS = [
   { id: "pz", fx: 0, fz: 1, rx: 1, rz: 0 },
@@ -134,6 +142,16 @@ function addWall(root, material, x, z, w, d) {
   colliders.push(wallCollider(x - w * 0.5, x + w * 0.5, z - d * 0.5, z + d * 0.5));
 }
 
+import {
+  markLevelEntered,
+  handleTaskUiKey,
+  isTaskUiOpen,
+  isTaskAccepted,
+  isTaskDelivered,
+  isTaskCompleted,
+  deliverMapTask,
+} from "./backrooms-tasks.js";
+
 function showToast(message) {
   showBackroomsLootToast(message, { durationMs: 2600 });
 }
@@ -145,7 +163,16 @@ function showError(message) {
     "<p><strong>Level 21 无法启动</strong></p><p>" + message + "</p>";
 }
 
+var _doorNumberTexCache = Object.create(null);
+var _doorFrameGeo = null;
+var _doorPanelGeo = null;
+var _doorPickGeo = null;
+var _doorSignGeo = null;
+var _doorSignMatCache = Object.create(null);
+
 function makeDoorNumberTexture(text) {
+  var key = String(text);
+  if (_doorNumberTexCache[key]) return _doorNumberTexCache[key];
   var canvasEl = document.createElement("canvas");
   canvasEl.width = 256;
   canvasEl.height = 128;
@@ -159,10 +186,19 @@ function makeDoorNumberTexture(text) {
   ctx.font = "bold 74px system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(String(text), 128, 68);
+  ctx.fillText(key, 128, 68);
   var texture = new THREE.CanvasTexture(canvasEl);
   texture.colorSpace = THREE.SRGBColorSpace;
+  _doorNumberTexCache[key] = texture;
   return texture;
+}
+
+function doorSignMaterial(num) {
+  var key = String(num);
+  if (_doorSignMatCache[key]) return _doorSignMatCache[key];
+  var mat = new THREE.MeshBasicMaterial({ map: makeDoorNumberTexture(num) });
+  _doorSignMatCache[key] = mat;
+  return mat;
 }
 
 /** 掷骰决定哪些编号门出现，并随机分配到空闲门位（编号唯一） */
@@ -178,6 +214,11 @@ function assignSpecialDoors() {
     freeIdx[j] = t;
   }
   var cursor = 0;
+  // 生锈门独立进行一次 5% 判定，不参与编号门的概率表。
+  if (freeIdx.length > 0 && Math.random() < RUST_DOOR.prob) {
+    doorSlots[freeIdx[cursor]].door = RUST_DOOR;
+    cursor += 1;
+  }
   var e;
   for (e = 0; e < DOOR_TABLE.length; e++) {
     var entry = DOOR_TABLE[e];
@@ -203,6 +244,11 @@ function makeDoorMaterials() {
   return {
     blank: new THREE.MeshStandardMaterial({ color: 0x6f4a2c, roughness: 0.82 }),
     numbered: new THREE.MeshStandardMaterial({ color: 0x8a6a3e, roughness: 0.7 }),
+    rust: new THREE.MeshStandardMaterial({
+      color: 0x7a3d24,
+      roughness: 0.96,
+      metalness: 0.42,
+    }),
     knob: new THREE.MeshStandardMaterial({ color: 0xd8c48a, metalness: 0.6, roughness: 0.4 }),
   };
 }
@@ -214,23 +260,25 @@ function buildDoorMeshes(root) {
   var s;
   for (s = 0; s < doorSlots.length; s++) {
     var slot = doorSlots[s];
-    var numbered = !!slot.door;
+    var numbered = !!slot.door && !slot.door.rust;
+    var rusty = !!slot.door && !!slot.door.rust;
     var group = new THREE.Group();
     group.position.set(slot.x, 0, slot.z);
     group.rotation.y = slot.rotY;
     root.add(group);
 
     // 门框
-    var frame = new THREE.Mesh(
-      new THREE.BoxGeometry(DOOR_W + 0.28, DOOR_H + 0.24, 0.1),
-      frameMat
-    );
+    if (!_doorFrameGeo) _doorFrameGeo = new THREE.BoxGeometry(DOOR_W + 0.28, DOOR_H + 0.24, 0.1);
+    if (!_doorPanelGeo) _doorPanelGeo = new THREE.BoxGeometry(DOOR_W, DOOR_H, 0.08);
+    if (!_doorPickGeo) _doorPickGeo = new THREE.BoxGeometry(DOOR_W, DOOR_H, 0.4);
+    if (!_doorSignGeo) _doorSignGeo = new THREE.PlaneGeometry(0.86, 0.43);
+    var frame = new THREE.Mesh(_doorFrameGeo, frameMat);
     frame.position.set(0, DOOR_H * 0.5, 0.02);
     group.add(frame);
     // 门板
     var panel = new THREE.Mesh(
-      new THREE.BoxGeometry(DOOR_W, DOOR_H, 0.08),
-      numbered ? mats.numbered : mats.blank
+      _doorPanelGeo,
+      rusty ? mats.rust : numbered ? mats.numbered : mats.blank
     );
     panel.position.set(0, DOOR_H * 0.5, 0.07);
     group.add(panel);
@@ -240,16 +288,13 @@ function buildDoorMeshes(root) {
     group.add(knob);
 
     if (numbered) {
-      var sign = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.86, 0.43),
-        new THREE.MeshBasicMaterial({ map: makeDoorNumberTexture(slot.door.num) })
-      );
+      var sign = new THREE.Mesh(_doorSignGeo, doorSignMaterial(slot.door.num));
       sign.position.set(0, DOOR_H * 0.5 + 0.18, 0.12);
       group.add(sign);
     }
 
     var pick = new THREE.Mesh(
-      new THREE.BoxGeometry(DOOR_W, DOOR_H, 0.4),
+      _doorPickGeo,
       new THREE.MeshBasicMaterial({ visible: false })
     );
     pick.position.set(0, DOOR_H * 0.5, 0.22);
@@ -472,14 +517,27 @@ function resolveInteract() {
 
 function updateInteractUi() {
   var data = resolveInteract();
+  // 未对准门、且地图任务待绘制时，提示按 Q 绘制地图。
+  if (!data && !isInventoryOpen() && survival && !survival.dead && mapTaskPending()) {
+    if (interactHintEl) {
+      interactHintEl.hidden = false;
+      interactHintEl.innerHTML = "按 <kbd>Q</kbd> 绘制 Level 21 地图";
+    }
+    if (crosshairEl) {
+      crosshairEl.classList.toggle("backrooms-crosshair--hidden", false);
+      crosshairEl.classList.toggle("backrooms-crosshair--interact", true);
+    }
+    return;
+  }
   var hidden = isInventoryOpen() || !survival || survival.dead || !data;
   if (interactHintEl) {
     interactHintEl.hidden = hidden;
     if (!hidden) {
       var slot = doorSlots[data.slot];
       if (slot && slot.door) {
-        interactHintEl.innerHTML =
-          "写着 " + slot.door.num + " 的门 · 按 <kbd>Q</kbd> 打开";
+        interactHintEl.innerHTML = slot.door.rust
+          ? "一扇锈蚀严重的门 · 按 <kbd>Q</kbd> 打开"
+          : "写着 " + slot.door.num + " 的门 · 按 <kbd>Q</kbd> 打开";
       } else {
         interactHintEl.innerHTML = "一扇无字的门 · 无法打开";
       }
@@ -503,17 +561,47 @@ function exitThroughDoor(entry) {
   }, 500);
 }
 
+function mapTaskPending() {
+  return (
+    isTaskAccepted("map_l21") &&
+    !isTaskDelivered("map_l21") &&
+    !isTaskCompleted("map_l21")
+  );
+}
+
+function tryDrawMap() {
+  if (isTaskCompleted("map_l21")) {
+    showToast("地图任务已经完成了。");
+    return;
+  }
+  if (!isTaskAccepted("map_l21")) return;
+  if (isTaskDelivered("map_l21")) {
+    showToast("地图已经绘制好了，回 Level 4 交付。");
+    return;
+  }
+  var r = deliverMapTask("map_l21");
+  if (r.ok) {
+    showToast("你绘制好了 Level 21 的地图 · 回 Level 4 交付领取 30 积分");
+  } else {
+    showToast(r.reason || "无法绘制地图");
+  }
+}
+
 function tryQAction() {
   if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
   var data = resolveInteract();
-  if (!data || data.kind !== "l21_door") return;
-  var slot = doorSlots[data.slot];
-  if (!slot) return;
-  if (slot.door) {
-    exitThroughDoor(slot.door);
-  } else {
-    showToast("这扇门打不开。");
+  if (data && data.kind === "l21_door") {
+    var slot = doorSlots[data.slot];
+    if (!slot) return;
+    if (slot.door) {
+      exitThroughDoor(slot.door);
+    } else {
+      showToast("这扇门打不开。");
+    }
+    return;
   }
+  // 不在门前：若已接取「绘制 Level 21 地图」任务，则绘制地图。
+  tryDrawMap();
 }
 
 function bindControls() {
@@ -523,12 +611,16 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen();
+      return isInventoryOpen() || isTaskUiOpen();
     },
     onJump: function () {
       tryBackroomsJump(fps, 8);
     },
     onKeyDown: function (event) {
+      if (!isInventoryOpen() && handleTaskUiKey(event)) {
+        event.preventDefault();
+        return true;
+      }
       if (event.code === "KeyQ" && !event.repeat) {
         event.preventDefault();
         tryQAction();
@@ -551,6 +643,7 @@ function init() {
     return;
   }
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l21", showToast);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xbfc8b0);
   scene.fog = new THREE.Fog(0xbfc8b0, 14, 46);
@@ -604,7 +697,7 @@ function init() {
       survival.update(dt, _survCtx);
     }
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock && !isTaskUiOpen()) {
       var mul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)

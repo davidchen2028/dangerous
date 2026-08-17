@@ -1,6 +1,7 @@
 /**
  * M.E.G 基地存档点：进入基地保存位置；在基地或已存档后于 L1/L2/L3 等死亡 → 在基地复活
- * 复活：清空背包 · 血量/理智/体力回满 · 清除皇家口粮与夜视药水效果
+ * 复活：保留背包 · 血量/理智/体力回满 · 清除皇家口粮与夜视药水效果
+ * （与无检查点软回 L0 一致，避免「基地死亡惩罚更重」）
  */
 import {
   backpackSlots,
@@ -8,7 +9,6 @@ import {
   BACKPACK_CAPACITY,
   HOTBAR_CAPACITY,
   renderGridPublic,
-  resetBackpack,
 } from "./backrooms-inventory.js";
 import { consumeXiaoyeFullHealFlag } from "./backrooms-level2-xiaoye.js";
 import {
@@ -22,6 +22,8 @@ import { getSanityMax } from "./backrooms-death-penalty.js";
 import { clearNightVision } from "./backrooms-night-vision.js";
 import { saveBackroomsSurvival } from "./backrooms-survival-persist.js";
 import { refreshLevelPass, grantLevelPass } from "./backrooms-level-pass.js";
+import { tryRedirectDeathToC1289 } from "./backrooms-c1289-death.js";
+import { failTasksOnDeath } from "./backrooms-tasks.js";
 
 export const MEG_CHECKPOINT_KEY = "backrooms_meg_checkpoint_v1";
 export const MEG_DEATH_KEY = "backrooms_meg_death_v1";
@@ -202,7 +204,6 @@ export function applyMegDeathState(survival) {
     clearSoyMilkBuffs();
     clearLuck();
     clearNightVision();
-    resetBackpack();
 
     survival.hp = getHpMax();
     survival.sanity = getSanityMax();
@@ -267,6 +268,21 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
   /** @type {"l0_reset" | "meg_hub_redirect" | "meg_local" | null} */
   var deathPlan = null;
 
+  survival.onInterceptDeath = function (reason) {
+    var ctx = getCtx() || {};
+    // 任意死亡都先结算任务：包裹类失败扣分、地图类作废可重绘。
+    try {
+      failTasksOnDeath();
+    } catch (err) {
+      /* ignore */
+    }
+    // C-1289：死亡时「不真正死亡」，90% 概率被带到 C-1289（本身在 C-1289 家族内则照常死亡）。
+    if (tryRedirectDeathToC1289(survival, ctx.level, leavePage)) {
+      return true;
+    }
+    return false;
+  };
+
   survival.onPrepareDeath = function (reason) {
     var ctx = getCtx() || {};
     var inBase = ctx.level === 1 && ctx.isInMegBase && ctx.isInMegBase();
@@ -326,7 +342,7 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
       } catch (err) {
         /* ignore */
       }
-      grantLevelPass("l0");
+      grantLevelPass("l0", null, { noEscape: true });
       leavePage(function () {
         window.location.replace(level0Page);
       });
@@ -366,7 +382,7 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
     } catch (err2) {
       /* ignore */
     }
-    grantLevelPass("l0");
+    grantLevelPass("l0", null, { noEscape: true });
     leavePage(function () {
       window.location.replace(level0Page);
     });
@@ -432,7 +448,7 @@ export function consumeL283MegExitFlag() {
 export function prepareMegRespawnL1Entry() {
   try {
     sessionStorage.setItem(MEG_RESPAWN_FLAG, "1");
-    grantLevelPass("clip");
+    grantLevelPass("clip", null, { noEscape: true });
   } catch (err) {
     /* ignore */
   }
