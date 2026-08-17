@@ -101,6 +101,8 @@ const LEVEL_PROFILE = {
   c1297: { min: 22, max: 28, base: 25, swing: 2 },
   c1298: { min: 14, max: 19, base: 16.5, swing: 1.5 },
   c1299: { min: 17, max: 22, base: 19.5, swing: 1.4 },
+  /** Level C-1299.1 — 热气腾腾的浓汤食堂，暖而宜人 */
+  c1299_1: { min: 23, max: 28, base: 25.5, swing: 1.3 },
   /** Level 0.3 — 极寒 */
   "0.3": { min: -22, max: -18, base: -20, swing: 1.1 },
 };

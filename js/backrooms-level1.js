@@ -63,6 +63,8 @@ import {
 } from "./backrooms-level-enter.js";
 import { enforceLevel1Entry, grantLevelPass } from "./backrooms-level-pass.js";
 import { createHubRoute } from "./backrooms-hub-route.js";
+import { getHpMax } from "./backrooms-royal-rations.js";
+import { activateCanteenMealBuff } from "./backrooms-soy-milk.js";
 import {
   resolveCircleAgainstColliders,
   raycastWallBlockDistance,
@@ -1254,10 +1256,18 @@ function updateMegDoorHint() {
   }
   if (hubRoute && hubRoute.isActive()) {
     var hubData = getAimInteractData();
-    doorHintEl.hidden = !(hubData && hubData.kind === "hub_route_door");
-    if (!doorHintEl.hidden) {
+    if (hubData && hubData.kind === "hub_route_door") {
+      doorHintEl.hidden = false;
       doorHintEl.innerHTML =
         "写着 " + hubData.letter + " 的门 · 按 <kbd>Q</kbd> 打开";
+    } else if (hubData && hubData.kind === "hub_canteen_food") {
+      doorHintEl.hidden = false;
+      doorHintEl.innerHTML = "热汤 · 按 <kbd>Q</kbd> 取食";
+    } else if (hubData && hubData.kind === "hub_canteen_exit") {
+      doorHintEl.hidden = false;
+      doorHintEl.innerHTML = "食堂角落的门 · 按 <kbd>Q</kbd> 打开";
+    } else {
+      doorHintEl.hidden = true;
     }
     return;
   }
@@ -1655,6 +1665,30 @@ function enterHubFromSecretRoute() {
   }, 700);
 }
 
+/** MEG 食堂：按 Q 取食 → 理智上限 +30（10 分钟）并回满血量 */
+function eatMessHallFood() {
+  if (!survival || survival.dead) return;
+  activateCanteenMealBuff();
+  survival.hp = getHpMax();
+  if (survival.refreshHud) survival.refreshHud();
+  saveBackroomsSurvival(survival);
+  showLootToast("热汤下肚 · 理智上限 +30（10 分钟）· 血量已回满");
+}
+
+/** MEG 食堂角落的门 → Level C-1299.1 浓汤美味 */
+function enterCanteenFromMessHall() {
+  if (hubEntering || !survival || survival.dead) return;
+  hubEntering = true;
+  saveBackroomsSurvival(survival);
+  // 不传 yaw：让玩家进场时正对后厨长廊尽头的出口
+  grantLevelPass("c1299_1");
+  queueEnterLevelBanner("Level C-1299.1 · 浓汤美味");
+  showLootToast("你推开食堂角落的门，一股浓汤的香气扑面而来…");
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level-c1299-1.html";
+  }, 700);
+}
+
 function movePlayer(dt, speedMul) {
   moveBackroomsPlayer(
     { move: move, yaw: yaw, player: player },
@@ -2017,6 +2051,8 @@ function init() {
     mirrorColliders: wallColliders,
     showToast: showLootToast,
     onEnterHub: enterHubFromSecretRoute,
+    onEatFood: eatMessHallFood,
+    onEnterCanteen: enterCanteenFromMessHall,
     getCorridorInfo: function () {
       return level1World && level1World.getMegCorridorInfo
         ? level1World.getMegCorridorInfo()

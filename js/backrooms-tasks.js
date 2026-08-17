@@ -104,7 +104,7 @@ export const TASK_DEFS = [
   },
   {
     id: "inspect_coolers",
-    title: "前哨站饮水机巡检",
+    title: "Level 4 饮水机巡检",
     reward: 5,
     type: "inspect",
     inspectTarget: 2,
@@ -113,7 +113,8 @@ export const TASK_DEFS = [
     completeLimit: 4,
     cooldownMs: 5 * 60 * 1000,
     desc:
-      "在 Level 4 前哨站对 2 台饮水机按 E 完成巡检即可领赏。已检修的饮水机 10 分钟内不能再检。" +
+      "在 Level 4 任意办公区对 2 台饮水机按 E 完成巡检即可领赏，前哨站和外围办公室的饮水机都算。" +
+      "同一台饮水机在本轮内只能检一次，本轮领赏后标签立即清除。" +
       "无失败惩罚。完成 4 次后冷却 5 分钟。",
   },
   {
@@ -484,7 +485,10 @@ export function claimTaskReward(id) {
   var task = getTaskDef(id);
   if (!task) return { ok: false, reason: "没有这个任务" };
   if (!isTaskDelivered(id)) return { ok: false, reason: "任务还没有交付" };
-  if (isTaskCompleted(id)) return { ok: false, reason: "奖励已经领取" };
+  // 有次数上限的可重复任务不走永久完成标记；旧存档若残留 completed 也不应卡死领赏。
+  if (!(task.completeLimit > 0) && isTaskCompleted(id)) {
+    return { ok: false, reason: "奖励已经领取" };
+  }
 
   addMegPoints(task.reward);
   clearTaskDeadline(id);
@@ -509,8 +513,15 @@ export function claimTaskReward(id) {
     delivered.splice(di, 1);
     writeIds(DELIVERED_KEY, delivered);
   }
-  // 永久完成标记仅用于非重复旧逻辑兼容；有次数上限的任务不写入。
-  if (!(task.completeLimit > 0)) {
+  // 永久完成标记仅用于非重复旧逻辑兼容；有次数上限的任务不写入，并清掉旧残留。
+  if (task.completeLimit > 0) {
+    var completedRepeat = getCompletedTaskIds();
+    var ci = completedRepeat.indexOf(id);
+    if (ci >= 0) {
+      completedRepeat.splice(ci, 1);
+      writeIds(COMPLETED_KEY, completedRepeat);
+    }
+  } else {
     var completed = getCompletedTaskIds();
     if (completed.indexOf(id) < 0) {
       completed.push(id);
@@ -531,8 +542,10 @@ export function claimTaskReward(id) {
 export function getFirstDeliveredUnclaimedTask() {
   var delivered = getDeliveredTaskIds();
   for (var i = 0; i < delivered.length; i++) {
-    // 可重复任务领赏后会移出 delivered，因此这里只需看仍在交付列表里的
-    if (!isTaskCompleted(delivered[i])) return getTaskDef(delivered[i]);
+    var task = getTaskDef(delivered[i]);
+    if (!task) continue;
+    // 可重复任务不看永久完成标记。
+    if (task.completeLimit > 0 || !isTaskCompleted(delivered[i])) return task;
   }
   return null;
 }
@@ -896,12 +909,19 @@ export function acceptTask(id) {
   var task = getTaskDef(id);
   if (!task) return { ok: false, reason: "没有这个任务" };
   if (isTaskAccepted(id)) return { ok: false, reason: "这个任务已经接取了" };
-  if (isTaskCompleted(id)) return { ok: false, reason: "这个任务已经完成了" };
+  // 可重复任务忽略永久完成标记（与领赏逻辑一致）。
+  if (!(task.completeLimit > 0) && isTaskCompleted(id)) {
+    return { ok: false, reason: "这个任务已经完成了" };
+  }
   if (isTaskCooling(id)) {
     return {
       ok: false,
       reason: "该任务冷却中，还剩 " + formatRemaining(getTaskCooldownRemainingMs(id)),
     };
+  }
+  // 上一轮已交付但没领赏时先去领，否则重新接取会卡在「已经完成」状态。
+  if (isTaskDelivered(id)) {
+    return { ok: false, reason: "上一轮奖励还没领，先找 M.E.G 成员领赏" };
   }
   if (!isTaskOnBoard(task)) return { ok: false, reason: "白板上没有这个委托" };
   if (countActiveTasks() >= MAX_ACTIVE_TASKS) {
@@ -1172,6 +1192,23 @@ function markCoolerInspectedTag(coolerId) {
   writeMap(COOLER_INSPECTED_KEY, map);
 }
 
+/**
+ * 本轮领赏后清掉这些饮水机的「已检修」标签。
+ * 标签本身有 10 分钟时长，比 completeLimit 的重复节奏长，不清会让后续几轮无机可检。
+ */
+function clearCoolerInspectedTags(coolerIds) {
+  if (!coolerIds || !coolerIds.length) return;
+  var map = readMap(COOLER_INSPECTED_KEY);
+  var changed = false;
+  for (var i = 0; i < coolerIds.length; i++) {
+    if (map[coolerIds[i]] != null) {
+      delete map[coolerIds[i]];
+      changed = true;
+    }
+  }
+  if (changed) writeMap(COOLER_INSPECTED_KEY, map);
+}
+
 function readInspectProgress(id) {
   var map = readMap(INSPECT_PROGRESS_KEY);
   var list = map[id];
@@ -1206,7 +1243,10 @@ export function recordCoolerInspect(coolerId) {
   var task = getTaskDef("inspect_coolers");
   if (!task) return { ok: false, reason: "没有这个任务" };
   if (!isTaskAccepted(task.id)) return { ok: false, reason: "你还没有接取巡检任务" };
-  if (isTaskDelivered(task.id) || isTaskCompleted(task.id)) {
+  if (isTaskDelivered(task.id)) {
+    return { ok: false, reason: "巡检已经完成，找 M.E.G 成员领赏吧" };
+  }
+  if (!(task.completeLimit > 0) && isTaskCompleted(task.id)) {
     return { ok: false, reason: "巡检已经完成了" };
   }
   if (!coolerId) return { ok: false, reason: "无效的饮水机" };
@@ -1216,12 +1256,13 @@ export function recordCoolerInspect(coolerId) {
       ok: false,
       reason:
         "这台饮水机已检修" +
-        (left != null ? "（约 " + Math.ceil(left / 60000) + " 分钟后可再检）" : ""),
+        (left != null ? "（约 " + Math.ceil(left / 60000) + " 分钟后可再检）" : "") +
+        " · Level 4 其它办公区的饮水机同样算数",
     };
   }
   var list = readInspectProgress(task.id);
   if (list.indexOf(coolerId) >= 0) {
-    return { ok: false, reason: "这台你已经巡检过了，换一台" };
+    return { ok: false, reason: "这台你已经巡检过了，换 Level 4 里另一台" };
   }
   list.push(coolerId);
   writeInspectProgress(task.id, list);
@@ -1238,19 +1279,36 @@ export function recordCoolerInspect(coolerId) {
     };
   }
   // 检满：标记交付并立刻领赏（本任务无需再找 M.E.G）
+  var inspectedThisRound = list.slice();
   var delivered = getDeliveredTaskIds();
   if (delivered.indexOf(task.id) < 0) {
     delivered.push(task.id);
     writeIds(DELIVERED_KEY, delivered);
   }
   var claim = claimTaskReward(task.id);
+  if (!claim.ok) {
+    // 自动领赏失败时保留「已交付」，可回 M.E.G 成员处手动领取。
+    renderTaskPanel();
+    return {
+      ok: true,
+      done: true,
+      count: list.length,
+      target: target,
+      task: task,
+      reward: 0,
+      claimFailed: true,
+      reason: claim.reason || "自动领赏失败，请找 M.E.G 成员领取",
+      cooldownNote: "",
+    };
+  }
+  clearCoolerInspectedTags(inspectedThisRound);
   return {
     ok: true,
     done: true,
     count: list.length,
     target: target,
     task: task,
-    reward: claim.ok ? claim.reward : 0,
+    reward: claim.reward,
     cooldownNote: claim.cooldownNote || "",
   };
 }
@@ -1464,6 +1522,10 @@ export function failTasksOnDeath(onToast) {
         changed = true;
         toast("你在死亡中弄丢了「" + task.title + "」的成果，需要重新绘制。");
       }
+      continue;
+    }
+    if (task.type === "inspect") {
+      // 巡检类：无失败惩罚，死亡不撤销接取与进度。
       continue;
     }
     if (task.type === "recon") {

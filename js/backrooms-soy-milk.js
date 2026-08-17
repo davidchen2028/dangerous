@@ -18,6 +18,10 @@ export const LUCKY_SOY_MILK_COLD_ID = "lucky_soy_milk_cold";
 export const LUCKY_SOY_MILK_HOT_ID = "lucky_soy_milk_hot";
 export const LUCKY_SOY_MILK_COLD_LUCK = -100;
 export const LUCKY_SOY_MILK_HOT_LUCK = 100;
+/** MEG 食堂餐食：10 分钟内理智上限 +30（叠加在其它加成之上，取绝对值） */
+export const CANTEEN_MEAL_KEY = "backrooms_canteen_meal_until";
+export const CANTEEN_MEAL_DURATION_MS = 10 * 60 * 1000;
+export const CANTEEN_MEAL_SANITY_BONUS = 30;
 
 function readUntil(key) {
   try {
@@ -47,9 +51,23 @@ export function clearSoyMilkBuffs() {
     sessionStorage.removeItem(STRAWBERRY_SOY_MILK_KEY);
     sessionStorage.removeItem(BANANA_SOY_MILK_KEY);
     sessionStorage.removeItem(STRAWBERRY_LUCKY_SOY_MILK_KEY);
+    sessionStorage.removeItem(CANTEEN_MEAL_KEY);
   } catch (err) {
     /* ignore */
   }
+}
+
+export function getCanteenMealUntil() {
+  return readUntil(CANTEEN_MEAL_KEY);
+}
+
+export function isCanteenMealActive() {
+  return getCanteenMealUntil() > Date.now();
+}
+
+/** 再次进食只刷新 10 分钟期限，不叠加加成。 */
+export function activateCanteenMealBuff() {
+  return writeUntil(CANTEEN_MEAL_KEY, CANTEEN_MEAL_DURATION_MS);
 }
 
 export function getStrawberrySoyMilkUntil() {
@@ -80,16 +98,16 @@ export function activateStrawberryLuckySoyMilkBuff() {
   );
 }
 
-/** 叠加在基础理智上限之上 */
+/** 叠加在基础理智上限之上：先乘草莓倍率，再加食堂餐食的固定加成 */
 export function applySoyMilkSanityMax(baseMax) {
   var n = Math.max(1, Math.floor(baseMax || 0));
-  if (
-    !isStrawberrySoyMilkActive() &&
-    !isStrawberryLuckySoyMilkActive()
-  ) {
-    return n;
+  if (isStrawberrySoyMilkActive() || isStrawberryLuckySoyMilkActive()) {
+    n = Math.max(1, Math.floor(n * STRAWBERRY_SOY_MILK_SANITY_MUL));
   }
-  return Math.max(1, Math.floor(n * STRAWBERRY_SOY_MILK_SANITY_MUL));
+  if (isCanteenMealActive()) {
+    n += CANTEEN_MEAL_SANITY_BONUS;
+  }
+  return n;
 }
 
 /** 草莓味 buff 结束时将理智压回当前上限 */
@@ -113,6 +131,15 @@ export function syncSoyMilkExpiry(survival) {
       /* ignore */
     }
     expired = "strawberry_lucky";
+  }
+  var canteenUntil = getCanteenMealUntil();
+  if (canteenUntil > 0 && canteenUntil <= Date.now()) {
+    try {
+      sessionStorage.removeItem(CANTEEN_MEAL_KEY);
+    } catch (err3) {
+      /* ignore */
+    }
+    expired = expired || "canteen";
   }
   return expired;
 }

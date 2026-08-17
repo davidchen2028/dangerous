@@ -55,6 +55,7 @@ import {
   recordCoolerInspect,
   isCoolerInspected,
   getCoolerInspectedRemainingMs,
+  getInspectProgress,
 } from "./backrooms-tasks.js";
 import {
   createBackroomsFpsState,
@@ -287,20 +288,22 @@ function updateWaterHint() {
   var coolerId = aimedCoolerId();
   var inspected = isCoolerInspected(coolerId);
   var drained = isAimedCoolerDrained();
-  var canInspect =
-    isTaskAccepted("inspect_coolers") &&
-    !inspected;
+  var taskOn = isTaskAccepted("inspect_coolers");
+  var canInspect = taskOn && !inspected;
+  var progress = taskOn ? getInspectProgress("inspect_coolers") : null;
+  var progressText = progress ? "（" + progress.count + "/" + progress.target + "）" : "";
   var html;
   if (inspected) {
     var left = getCoolerInspectedRemainingMs(coolerId);
     html =
       "已检修" +
       (left != null ? " · 约 " + Math.ceil(left / 60000) + " 分钟后清除" : "");
+    if (taskOn) html += " · 巡检" + progressText + "，换 Level 4 其它饮水机继续";
     if (!drained) html += " · 按 <kbd>Q</kbd> 接水";
   } else if (canInspect && drained) {
-    html = "按 <kbd>E</kbd> 巡检（已无水）";
+    html = "按 <kbd>E</kbd> 巡检" + progressText + "（已无水）";
   } else if (canInspect) {
-    html = "按 <kbd>E</kbd> 巡检 · 按 <kbd>Q</kbd> 接水";
+    html = "按 <kbd>E</kbd> 巡检" + progressText + " · 按 <kbd>Q</kbd> 接水";
   } else {
     html = drained ? "这台饮水机已经空了" : "按 <kbd>Q</kbd> 接水";
   }
@@ -321,12 +324,13 @@ function tryCoolerInspectE() {
   }
   updateMegPointsDisplay(megPointsEl);
   if (result.done) {
-    var msg =
-      "巡检完成 · +" +
-      (result.reward || 5) +
-      " 积分";
-    if (result.cooldownNote) msg += " · " + result.cooldownNote;
-    showLootToast(msg);
+    if (result.claimFailed) {
+      showLootToast(result.reason || "巡检已完成，请找 M.E.G 成员领赏");
+    } else {
+      var msg = "巡检完成 · +" + (result.reward != null ? result.reward : 5) + " 积分";
+      if (result.cooldownNote) msg += " · " + result.cooldownNote;
+      showLootToast(msg);
+    }
   } else {
     showLootToast(
       "已检修（" + result.count + "/" + result.target + "）· 标签将保留 10 分钟"

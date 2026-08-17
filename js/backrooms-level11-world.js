@@ -32,6 +32,9 @@ const C1290_STONE_X = -BUILDING_X;
 const C1290_STONE_Z = 48;
 const C1289_COLOR_X = -BUILDING_X;
 const C1289_COLOR_Z = 64;
+/** “happy！！！”房屋：进入后触发「新的旅途」结局并前往沙盒新游戏 */
+const HAPPY_HOUSE_X = BUILDING_X;
+const HAPPY_HOUSE_Z = 71;
 
 var _boxGeo = null;
 var _materials = null;
@@ -151,6 +154,51 @@ function addBuilding(group, entries, x, z, side, serial) {
   for (floorY = 3; floorY < height - 1; floorY += 3) {
     addBox(group, mats.glass, facadeX, floorY, z, 0.08, 1.45, BUILDING_D - 2.2);
   }
+}
+
+function makeHappySignTexture() {
+  var canvasEl = document.createElement("canvas");
+  canvasEl.width = 512;
+  canvasEl.height = 160;
+  var ctx = canvasEl.getContext("2d");
+  ctx.fillStyle = "#fff4a8";
+  ctx.fillRect(0, 0, 512, 160);
+  ctx.strokeStyle = "#ff7b54";
+  ctx.lineWidth = 14;
+  ctx.strokeRect(7, 7, 498, 146);
+  ctx.fillStyle = "#e33b55";
+  ctx.font = "bold 74px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("happy！！！", 256, 84);
+  var tex = new THREE.CanvasTexture(canvasEl);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** 临街的快乐小屋；门洞保持非碰撞，由外围楼体碰撞配合入口判定切场景。 */
+function addHappyHouse(group, entries) {
+  var mats = materials();
+  var x = HAPPY_HOUSE_X;
+  var z = HAPPY_HOUSE_Z;
+  var facadeX = x - BUILDING_W * 0.5 - 0.05;
+  addBox(group, mats.buildingC, x, 4.2, z, BUILDING_W, 8.4, BUILDING_D);
+  entries.push(
+    collider(
+      x - BUILDING_W * 0.5,
+      x + BUILDING_W * 0.5,
+      z - BUILDING_D * 0.5,
+      z + BUILDING_D * 0.5
+    )
+  );
+  addBox(group, mats.darkDoor, facadeX, 1.55, z, 0.12, 3.1, 2.4);
+  var sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(5.8, 1.8),
+    new THREE.MeshBasicMaterial({ map: makeHappySignTexture() })
+  );
+  sign.position.set(facadeX - 0.08, 5.2, z);
+  sign.rotation.y = -Math.PI * 0.5;
+  group.add(sign);
 }
 
 function addLevel13Highrise(group, entries) {
@@ -515,6 +563,9 @@ function addSegment(root, index) {
       addLevel13Highrise(group, entries);
     } else if (index === 0 && rowZ === -16) {
       // B.N.T.G 大房子占用此格；房子本体挂常驻 root，这里留空避免重叠。
+    } else if (index === 1 && rowZ === 64) {
+      // “happy！！！”房屋占用右侧 z=71 的格子。
+      addHappyHouse(group, entries);
     } else {
       addBuilding(group, entries, BUILDING_X, rowZ + 7, 1, serial + 5);
     }
@@ -815,6 +866,10 @@ export function buildLevel11World(root) {
     isLevelC1291Entrance: function (px, pz) {
       var facadeX = C1291_BLACK_X + BUILDING_W * 0.5;
       return px <= facadeX + 1.4 && Math.abs(pz - C1291_BLACK_Z) <= 1.4;
+    },
+    isHappyHouseEntrance: function (px, pz) {
+      var facadeX = HAPPY_HOUSE_X - BUILDING_W * 0.5;
+      return px >= facadeX - 1.4 && Math.abs(pz - HAPPY_HOUSE_Z) <= 1.4;
     },
   };
 }

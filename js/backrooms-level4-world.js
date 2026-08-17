@@ -886,6 +886,28 @@ function addMegL4Outpost(group, batches, colliders, interactRoots, ox, oz, mats)
   group.add(npc);
   interactRoots.push(npc);
   pushBoxCollider(colliders, ox + 1.4, ox + 2.2, oz - 0.4, oz + 0.4);
+
+  // 前哨站固定两台饮水机：巡检任务需要在此对它们按 E，不能依赖随机办公室刷新。
+  addWaterCooler(
+    group,
+    batches,
+    colliders,
+    interactRoots,
+    ox - 6.8,
+    oz - 5.6,
+    mats,
+    "meg_outpost_cooler_a"
+  );
+  addWaterCooler(
+    group,
+    batches,
+    colliders,
+    interactRoots,
+    ox - 6.8,
+    oz + 5.6,
+    mats,
+    "meg_outpost_cooler_b"
+  );
 }
 
 function loadChunk(cx, cz, ctx) {

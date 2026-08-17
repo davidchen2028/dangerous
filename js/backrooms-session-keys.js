@@ -19,6 +19,7 @@ import {
   STRAWBERRY_SOY_MILK_KEY,
   BANANA_SOY_MILK_KEY,
   STRAWBERRY_LUCKY_SOY_MILK_KEY,
+  CANTEEN_MEAL_KEY,
 } from "./backrooms-soy-milk.js";
 import { LUCK_MOD_KEY } from "./backrooms-luck.js";
 import {
@@ -127,6 +128,7 @@ export const BACKROOMS_SESSION_KEYS = [
   STRAWBERRY_SOY_MILK_KEY,
   BANANA_SOY_MILK_KEY,
   STRAWBERRY_LUCKY_SOY_MILK_KEY,
+  CANTEEN_MEAL_KEY,
   LUCK_MOD_KEY,
   "backrooms_trade_vault_pity_v1",
   "backrooms_trade_vault_pending_v1",
@@ -185,6 +187,8 @@ export const BACKROOMS_SESSION_KEYS = [
   "backrooms_c1298_yaw",
   "backrooms_c1299_pass",
   "backrooms_c1299_yaw",
+  "backrooms_c1299_1_pass",
+  "backrooms_c1299_1_yaw",
   "backrooms_petrify_v1",
 ];
 

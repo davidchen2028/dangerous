@@ -388,6 +388,31 @@ function exitLevel11ToCLevel(pass, page, toast) {
   }, 600);
 }
 
+function enterHappyHouseEnding() {
+  if (transitionLock) return;
+  transitionLock = true;
+  endPetrifyOnExit();
+  if (survival) saveBackroomsSurvival(survival);
+  var overlay = document.createElement("div");
+  overlay.setAttribute("aria-live", "assertive");
+  overlay.style.cssText =
+    "position:fixed;inset:0;z-index:9999;display:grid;place-items:center;" +
+    "background:#fff8d8;color:#362710;opacity:0;transition:opacity 1.2s ease;";
+  overlay.innerHTML =
+    '<div style="text-align:center;padding:24px">' +
+    '<p style="font-size:clamp(14px,2vw,22px);letter-spacing:.32em;margin:0 0 14px">结局</p>' +
+    '<h1 style="font-size:clamp(42px,9vw,104px);margin:0">新的旅途</h1>' +
+    '<p style="font-size:clamp(16px,2vw,24px);margin:20px 0 0">门后的世界，不再是一条固定的走廊。</p>' +
+    "</div>";
+  document.body.appendChild(overlay);
+  window.requestAnimationFrame(function () {
+    overlay.style.opacity = "1";
+  });
+  window.setTimeout(function () {
+    window.location.href = "backrooms-sandbox.html";
+  }, 2600);
+}
+
 const C_LEVEL_BANNERS = {
   c1291: "Level C-1291 · 井盖迷阵",
 };
@@ -1127,6 +1152,13 @@ function init() {
           "backrooms-level-c1291.html",
           "你走进漆黑的居民楼——脚下传来金属哐当的巨响…"
         );
+      }
+      if (
+        !transitionLock &&
+        levelWorld.isHappyHouseEntrance &&
+        levelWorld.isHappyHouseEntrance(fps.player.x, fps.player.z)
+      ) {
+        enterHappyHouseEnding();
       }
     }
     updateSandRoomFaint(dt);

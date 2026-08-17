@@ -50,6 +50,9 @@ export function createHubRoute(options) {
   var collidersB = options.mirrorColliders || collidersA;
   var showToast = typeof options.showToast === "function" ? options.showToast : function () {};
   var onEnterHub = typeof options.onEnterHub === "function" ? options.onEnterHub : function () {};
+  var onEatFood = typeof options.onEatFood === "function" ? options.onEatFood : function () {};
+  var onEnterCanteen =
+    typeof options.onEnterCanteen === "function" ? options.onEnterCanteen : function () {};
   var getCorridorInfo =
     typeof options.getCorridorInfo === "function" ? options.getCorridorInfo : function () {
       return null;
@@ -81,6 +84,9 @@ export function createHubRoute(options) {
   var wallMat = new THREE.MeshLambertMaterial({ color: 0xe7e7e4, emissive: 0x222222 });
   var floorMat = new THREE.MeshLambertMaterial({ color: 0xc7c7c3, emissive: 0x151515 });
   var doorMat = new THREE.MeshLambertMaterial({ color: 0x303438, emissive: 0x08090a });
+  var tableMat = new THREE.MeshLambertMaterial({ color: 0x8a5a34, emissive: 0x140d07 });
+  var trayMat = new THREE.MeshLambertMaterial({ color: 0xc9ccce, emissive: 0x101112 });
+  var soupMat = new THREE.MeshLambertMaterial({ color: 0xd98a3a, emissive: 0x2a1608 });
   var pickMat = new THREE.MeshBasicMaterial({
     transparent: true,
     opacity: 0,
@@ -264,6 +270,96 @@ export function createHubRoute(options) {
     group.add(light);
   }
 
+  /**
+   * 食堂里的一张餐桌 + 托盘浓汤 + 取食交互框。
+   * (ax, az) 是从桌子指向过道的方向：取食框放在桌子的过道一侧，
+   * 避免被桌子的碰撞盒挡住准星射线（墙体射线是二维的）。
+   */
+  function addCanteenTable(x, z, ax, az) {
+    // 桌腿 + 桌面（作为整体碰撞盒）
+    addBox(tableMat, x, 0.45, z, 2.2, 0.9, 1.2, true);
+    addBox(tableMat, x, 0.95, z, 2.4, 0.14, 1.4, false);
+    // 两份托盘浓汤
+    var dishX = [x - 0.5, x + 0.5];
+    for (var i = 0; i < dishX.length; i++) {
+      addBox(trayMat, dishX[i], 1.06, z, 0.52, 0.06, 0.52, false);
+      addBox(soupMat, dishX[i], 1.14, z, 0.42, 0.12, 0.42, false);
+    }
+    // 取食交互框（透明），偏向过道一侧
+    var pick = new THREE.Mesh(boxGeo, pickMat);
+    pick.position.set(x + ax * 1.5, 1.15, z + az * 1.5);
+    pick.scale.set(2.2, 1.4, 2.2);
+    pick.userData.brInteract = { kind: "hub_canteen_food" };
+    group.add(pick);
+    aimRoots.push(pick);
+  }
+
+  /** 食堂角落通往 C-1299.1 的门（贴在南墙内侧，按 Q 打开） */
+  function addCanteenExitDoor(dx, dz) {
+    addBox(doorMat, dx, 1.6, dz, DOOR_HALF * 2, 3.2, 0.14, false);
+    var pick = new THREE.Mesh(boxGeo, pickMat);
+    pick.position.set(dx, 1.8, dz + 0.28);
+    pick.scale.set(DOOR_HALF * 2 + 0.3, 3.6, 0.7);
+    pick.userData.brInteract = { kind: "hub_canteen_exit" };
+    group.add(pick);
+    aimRoots.push(pick);
+  }
+
+  /** 「左右右左」尽头的 MEG 食堂：宽敞大厅，北侧走廊进入，南墙有通往 C-1299.1 的门 */
+  function addMessHall(cx, cz) {
+    var hx = 8;
+    var hz = 8;
+    addBox(floorMat, cx, 0, cz, hx * 2, 0.14, hz * 2, false);
+    addBox(wallMat, cx, WALL_H, cz, hx * 2, 0.12, hz * 2, false);
+    // 东、西墙
+    addBox(wallMat, cx - hx, WALL_H * 0.5, cz, 0.25, WALL_H, hz * 2, true);
+    addBox(wallMat, cx + hx, WALL_H * 0.5, cz, 0.25, WALL_H, hz * 2, true);
+    // 北墙留出走廊宽度的入口（对齐 x = cx 的竖直走廊）
+    var gapHalf = CORRIDOR_W * 0.5;
+    var northSeg = hx - gapHalf;
+    addBox(
+      wallMat,
+      cx - (gapHalf + northSeg * 0.5),
+      WALL_H * 0.5,
+      cz + hz,
+      northSeg,
+      WALL_H,
+      0.25,
+      true
+    );
+    addBox(
+      wallMat,
+      cx + (gapHalf + northSeg * 0.5),
+      WALL_H * 0.5,
+      cz + hz,
+      northSeg,
+      WALL_H,
+      0.25,
+      true
+    );
+    // 南墙整堵实体，门贴在墙内侧（不真正开洞，靠交互切层）
+    addBox(wallMat, cx, WALL_H * 0.5, cz - hz, hx * 2, WALL_H, 0.25, true);
+    addCanteenExitDoor(cx, cz - hz + 0.2);
+    // 三张餐桌（取食框朝向中央过道）
+    addCanteenTable(cx - 4, cz + 2.5, 1, 0);
+    addCanteenTable(cx + 4, cz + 2.5, -1, 0);
+    addCanteenTable(cx, cz - 3, 0, 1);
+    // 照明
+    var spots = [
+      [cx - 4, cz + 2],
+      [cx + 4, cz + 2],
+      [cx, cz - 2],
+    ];
+    for (var i = 0; i < spots.length; i++) {
+      var light = new THREE.PointLight(0xfdf3dc, 0.7, 16, 2);
+      light.position.set(spots[i][0], WALL_H - 0.6, spots[i][1]);
+      group.add(light);
+    }
+    var amb = new THREE.PointLight(0xf4f0e2, 0.4, 26, 2);
+    amb.position.set(cx, WALL_H - 0.3, cz);
+    group.add(amb);
+  }
+
   function build() {
     if (built) return;
     built = true;
@@ -319,11 +415,44 @@ export function createHubRoute(options) {
     addCap(p3.x, p3.z + CORRIDOR_W * 0.5, false);
     addCap(p4.x + CORRIDOR_W * 0.5, p4.z, true);
 
-    // 正确方向依次是左、右、左、右；反方向都是死路
+    // 通往枢纽的正确方向依次是左、右、左、右；这些反方向都是死路
     addWrongTurn(p1.x, p1.z, p1.x - 9, p1.z);
     addWrongTurn(p2.x, p2.z, p2.x, p2.z - 9);
-    addWrongTurn(p3.x, p3.z, p3.x - 9, p3.z);
     addWrongTurn(p4.x, p4.z, p4.x, p4.z - 9);
+
+    // 「左右右左」通往 MEG 食堂：p3 处不再左转去枢纽，而是右转（-X）进入食堂支路
+    var cp1 = { x: rx - 12, z: rz + 38 };
+    var hallCenter = { x: cp1.x, z: rz + 22 };
+    var hallNorthZ = hallCenter.z + 8;
+    addSegment(p3.x, p3.z, cp1.x, cp1.z);
+    addSegment(cp1.x, cp1.z, cp1.x, hallNorthZ);
+    // cp1 处：继续向西是死路；北侧封死；只剩左转（-Z）进食堂
+    addWrongTurn(cp1.x, cp1.z, cp1.x - 9, cp1.z);
+    addCap(cp1.x, cp1.z + CORRIDOR_W * 0.5, false);
+    // addSegment 会把侧墙两端各缩短半个走廊宽，补上竖直走廊与食堂北墙之间的接缝，
+    // 否则入口两侧各留一个缺口，玩家能从这里侧移出地图。
+    var seamHalf = CORRIDOR_W * 0.5;
+    addBox(
+      wallMat,
+      cp1.x - seamHalf,
+      WALL_H * 0.5,
+      hallNorthZ + seamHalf * 0.5,
+      0.22,
+      WALL_H,
+      seamHalf,
+      true
+    );
+    addBox(
+      wallMat,
+      cp1.x + seamHalf,
+      WALL_H * 0.5,
+      hallNorthZ + seamHalf * 0.5,
+      0.22,
+      WALL_H,
+      seamHalf,
+      true
+    );
+    addMessHall(hallCenter.x, hallCenter.z);
 
     addRoom(room1.x, room1.z, 1, true);
     addRoom(room2.x, room2.z, 2, false);
@@ -467,7 +596,16 @@ export function createHubRoute(options) {
       return inRoute ? aimRoots : [];
     },
     handleDoor: function (data) {
-      if (!inRoute || !data || data.kind !== "hub_route_door") return false;
+      if (!inRoute || !data) return false;
+      if (data.kind === "hub_canteen_food") {
+        onEatFood();
+        return true;
+      }
+      if (data.kind === "hub_canteen_exit") {
+        onEnterCanteen();
+        return true;
+      }
+      if (data.kind !== "hub_route_door") return false;
       if (data.room === 1) {
         if (data.letter === "B") {
           pendingTeleport = { x: ROUTE_X, z: ROUTE_Z + 80, yaw: Math.PI };

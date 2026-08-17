@@ -10,6 +10,7 @@ import {
 import {
   getBackroomsEntityTargetFromObject,
   getBackroomsEntityTargetRoots,
+  isBackroomsObjectVisible,
 } from "./backrooms-entity-health.js";
 
 export const FIRESALT_ITEM_ID = "fire_salt";
@@ -20,6 +21,7 @@ export const FIRESALT_BLAST_RADIUS = 5;
 
 const _ndc = new THREE.Vector2(0, 0);
 const _roots = [];
+const _checkedTargets = [];
 const _cameraPos = new THREE.Vector3();
 const _targetPos = new THREE.Vector3();
 const _entityPos = new THREE.Vector3();
@@ -148,6 +150,46 @@ export function createBackroomsFiresaltController(opts) {
     }
   }
 
+  /** 该命中物是否算作遮挡（隐藏物体、透明物体、火盐自身弹体都不算） */
+  function isBlockingOccluder(object, target) {
+    if (!object.isMesh && !object.isInstancedMesh) return false;
+    if (getBackroomsEntityTargetFromObject(object) === target) return false;
+    // three.js 的 Raycaster 不检查 visible，隐藏的子区域几何必须手动排除，
+    // 否则 L1.1 里未激活走廊与 L1 仓库的隐藏墙体会挡住锁定。
+    if (!isBackroomsObjectVisible(object)) return false;
+    var node = object;
+    while (node) {
+      if (node.userData && node.userData.brFireSaltProjectile) return false;
+      node = node.parent;
+    }
+    var material = object.material;
+    if (
+      material &&
+      !Array.isArray(material) &&
+      (material.visible === false ||
+        (material.transparent && material.opacity <= 0.05))
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  function hasLineOfSight(target, targetDistance) {
+    raycaster.far = targetDistance;
+    var worldHits = raycaster.intersectObjects(scene.children, true);
+    var clear = true;
+    var j;
+    for (j = 0; j < worldHits.length; j++) {
+      if (worldHits[j].distance >= targetDistance - 0.03) break;
+      if (isBlockingOccluder(worldHits[j].object, target)) {
+        clear = false;
+        break;
+      }
+    }
+    raycaster.far = FIRESALT_MAX_DISTANCE;
+    return clear;
+  }
+
   function findAimedTarget() {
     getBackroomsEntityTargetRoots(_roots);
     if (!_roots.length) return null;
@@ -156,47 +198,21 @@ export function createBackroomsFiresaltController(opts) {
     raycaster.near = 0;
     raycaster.far = FIRESALT_MAX_DISTANCE;
     var hits = raycaster.intersectObjects(_roots, true);
+    _checkedTargets.length = 0;
     var i;
     for (i = 0; i < hits.length; i++) {
-      var target = getBackroomsEntityTargetFromObject(hits[i].object);
-      if (target && target.alive && hits[i].distance <= FIRESALT_MAX_DISTANCE) {
-        var targetDistance = hits[i].distance;
-        raycaster.far = targetDistance;
-        var worldHits = raycaster.intersectObjects(scene.children, true);
-        var blocked = false;
-        var j;
-        for (j = 0; j < worldHits.length; j++) {
-          var worldHit = worldHits[j];
-          if (worldHit.distance >= targetDistance - 0.03) break;
-          var hitTarget = getBackroomsEntityTargetFromObject(worldHit.object);
-          if (hitTarget === target) continue;
-          if (!worldHit.object.isMesh && !worldHit.object.isInstancedMesh) continue;
-          var node = worldHit.object;
-          var isProjectile = false;
-          while (node) {
-            if (node.userData && node.userData.brFireSaltProjectile) {
-              isProjectile = true;
-              break;
-            }
-            node = node.parent;
-          }
-          if (isProjectile) continue;
-          var material = worldHit.object.material;
-          if (
-            material &&
-            !Array.isArray(material) &&
-            (material.visible === false ||
-              (material.transparent && material.opacity <= 0.05))
-          ) {
-            continue;
-          }
-          blocked = true;
-          break;
-        }
-        raycaster.far = FIRESALT_MAX_DISTANCE;
-        if (blocked) return null;
-        return target;
-      }
+      var hit = hits[i];
+      if (hit.distance > FIRESALT_MAX_DISTANCE) continue;
+      if (!isBackroomsObjectVisible(hit.object)) continue;
+      var target = getBackroomsEntityTargetFromObject(hit.object);
+      if (!target || !target.alive) continue;
+      // 同一实体有多个网格，视线只判一次，避免重复整场景求交。
+      if (_checkedTargets.indexOf(target) >= 0) continue;
+      _checkedTargets.push(target);
+      // 被挡住的实体只跳过它自己，继续判定更远的实体，
+      // 而不是直接放弃整次锁定。
+      if (!hasLineOfSight(target, hit.distance)) continue;
+      return target;
     }
     return null;
   }

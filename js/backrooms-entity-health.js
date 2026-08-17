@@ -79,16 +79,28 @@ export function getBackroomsEntityTargetFromObject(object) {
   return null;
 }
 
-/** 返回当前页面仍存活、仍挂在场景中的实体根节点 */
+/**
+ * 是否真正可见：祖先任意一层 visible=false 就看不见。
+ * L1.1 这类「同页多子区域」会把未激活的子世界整组隐藏，只看自身 visible 会误判。
+ */
+export function isBackroomsObjectVisible(object) {
+  var node = object;
+  while (node) {
+    if (node.visible === false) return false;
+    node = node.parent;
+  }
+  return true;
+}
+
+/** 返回当前页面仍存活、仍挂在场景中且真正可见的实体根节点 */
 export function getBackroomsEntityTargetRoots(out) {
   out = out || [];
   out.length = 0;
   var i;
   for (i = 0; i < _targets.length; i++) {
     var target = _targets[i];
-    if (!target.alive || !target.group || !target.group.parent || !target.group.visible) {
-      continue;
-    }
+    if (!target.alive || !target.group || !target.group.parent) continue;
+    if (!isBackroomsObjectVisible(target.group)) continue;
     out.push(target.group);
   }
   return out;
