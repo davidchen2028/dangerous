@@ -102,6 +102,13 @@ const mats = {
   }),
   door: new THREE.MeshStandardMaterial({ color: 0x656661, roughness: 0.98 }),
   doorLocked: new THREE.MeshStandardMaterial({ color: 0x444541, roughness: 1 }),
+  c1289Door: new THREE.MeshStandardMaterial({
+    color: 0x37204d,
+    emissive: 0xb12cff,
+    emissiveIntensity: 1.25,
+    roughness: 0.42,
+    metalness: 0.18,
+  }),
   lamp: new THREE.MeshStandardMaterial({
     color: 0xffc447,
     emissive: 0xff8c16,
@@ -357,6 +364,33 @@ function nativeUnlocked(index) {
   return index === 2 || index === 11;
 }
 
+/** 枢纽内独立出现的异常闪烁门，无需层级密钥即可进入 C-1289。 */
+function buildC1289FlickeringDoor(group, record, z) {
+  var doorId = "door_c1289_flicker";
+  if (vanishedDoors.indexOf(doorId) >= 0) return;
+  var x = TUNNEL_HALF_W - 0.24;
+  var door = addBox(group, mats.c1289Door, x, 2.35, z, 0.42, 4.7, 5.4);
+  door.name = "HubC1289FlickeringDoor";
+
+  // 门框与门面共用发光材质，使它在昏暗隧道深处也很醒目。
+  addBox(group, mats.c1289Door, x - 0.25, 4.86, z, 0.16, 0.28, 5.9);
+  addBox(group, mats.c1289Door, x - 0.25, 2.35, z - 2.82, 0.16, 5.3, 0.22);
+  addBox(group, mats.c1289Door, x - 0.25, 2.35, z + 2.82, 0.16, 5.3, 0.22);
+
+  var pick = new THREE.Mesh(boxGeo, mats.pick);
+  pick.scale.set(0.9, 5.2, 5.8);
+  pick.position.copy(door.position);
+  pick.userData.brInteract = {
+    kind: "hub_door",
+    doorId: doorId,
+    targetId: "c1289",
+    native: true,
+    flickering: true,
+  };
+  group.add(pick);
+  record.interactRoots.push(pick);
+}
+
 function buildDoor(group, record, index, side, z) {
   var targetId = targetForDoor(index);
   var doorId = "door_" + index;
@@ -459,6 +493,7 @@ function buildChunk(index) {
       clipPick.userData.brInteract = { kind: "hub_clip_wall" };
       group.add(clipPick);
       record.interactRoots.push(clipPick);
+      buildC1289FlickeringDoor(group, record, z0 + 34);
     }
   }
 
@@ -523,6 +558,8 @@ function updateInteractUi() {
       interactHintEl.innerHTML =
         data && data.kind === "hub_clip_wall"
           ? "混凝土板接缝异常 · 按 <kbd>Q</kbd> 切出"
+          : data && data.flickering
+            ? "不断闪烁的异常门 · 按 <kbd>Q</kbd> 进入"
           : "刻有环形符号的厚重大门 · 按 <kbd>Q</kbd> 检查";
     }
   }
@@ -674,6 +711,13 @@ function init() {
     updateInteractUi();
     updateBackroomsTemperature(dt, now);
     updateBackroomsHeatDamage(survival, now);
+    // 紫光不规则明灭，偶尔近乎完全熄灭。
+    var flicker =
+      1.05 +
+      Math.sin(now * 0.009) * 0.55 +
+      Math.sin(now * 0.027 + 1.4) * 0.28;
+    if (Math.random() < 0.025) flicker *= 0.08;
+    mats.c1289Door.emissiveIntensity = Math.max(0.04, flicker);
     renderer.render(scene, camera);
   }
   frame();

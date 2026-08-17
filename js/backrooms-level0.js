@@ -82,6 +82,8 @@ const WALL_HEIGHT = 2.4; // 墙体的高度（2.4 米）
 const WALL_THICKNESS = 2.0; // 墙体厚度（与网格等宽，杜绝漏缝）
 const MAP_ROWS = 12; // 迷宫地图行数
 const MAP_COLS = 12; // 迷宫地图列数
+const MAZE_TILES_PER_AXIS = 3; // 将原迷宫按 3×3 拼成巨大迷宫
+const CENTER_TILE = 1; // 特殊区域与出生点所在的中央迷宫
 
 // =============================================================================
 // 材质与氛围
@@ -90,8 +92,8 @@ const WALL_COLOR = 0xc2b280; // 无 Canvas 时的兜底色
 const WALL_ROUGHNESS = 0.8;
 /** 壁纸图案在世界里大约多少米重复一次 */
 const WALLPAPER_METERS_PER_TILE = 1.0;
-/** 特殊墙块 [row, col] — 深黄色 */
-const SPECIAL_WALL_CELL = { row: 9, col: 11 };
+/** 随机切出墙；初始化矩阵后从九个迷宫的普通墙体中选出 */
+let SPECIAL_WALL_CELL = null;
 const SPECIAL_WALL_COLOR = 0x7a5a12;
 const FLOOR_COLOR = 0x8a8563; // 潮湿灰绿地毯
 const FLOOR_ROUGHNESS = 0.95;
@@ -121,6 +123,77 @@ const BACKROOMS_MATRIX = [
   [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1], // row 10
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], // row 11
 ];
+
+/**
+ * 相邻模板之间各拆掉一对边界墙，形成贯通九宫格的通道。
+ * 横向通道取 row 3，纵向通道取 col 3；两侧对应的内层格均为可走区域。
+ */
+function isMazeSeamOpening(tileRow, tileCol, row, col) {
+  if (row === 3) {
+    if (col === 0 && tileCol > 0) return true;
+    if (col === MAP_COLS - 1 && tileCol < MAZE_TILES_PER_AXIS - 1) return true;
+  }
+  if (col === 3) {
+    if (row === 0 && tileRow > 0) return true;
+    if (row === MAP_ROWS - 1 && tileRow < MAZE_TILES_PER_AXIS - 1) return true;
+  }
+  return false;
+}
+
+function hasWalkableNeighbor(row, col) {
+  var dirs = [
+    [-1, 0],
+    [1, 0],
+    [0, -1],
+    [0, 1],
+  ];
+  for (var i = 0; i < dirs.length; i++) {
+    var nr = row + dirs[i][0];
+    var nc = col + dirs[i][1];
+    if (
+      nr >= 0 &&
+      nr < MAP_ROWS &&
+      nc >= 0 &&
+      nc < MAP_COLS &&
+      BACKROOMS_MATRIX[nr][nc] === 0
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 每次载入 L0 都随机选择一面玩家能够靠近的普通墙作为切出墙。 */
+function pickRandomClipWallCell() {
+  var candidates = [];
+  for (var tileRow = 0; tileRow < MAZE_TILES_PER_AXIS; tileRow++) {
+    for (var tileCol = 0; tileCol < MAZE_TILES_PER_AXIS; tileCol++) {
+      for (var row = 0; row < MAP_ROWS; row++) {
+        for (var col = 0; col < MAP_COLS; col++) {
+          if (BACKROOMS_MATRIX[row][col] !== 1) continue;
+          if (isMazeSeamOpening(tileRow, tileCol, row, col)) continue;
+          if (!hasWalkableNeighbor(row, col)) continue;
+          if (
+            tileRow === CENTER_TILE &&
+            tileCol === CENTER_TILE &&
+            (isRedChannelCell(row, col) || isGrayDoorCell(row, col))
+          ) {
+            continue;
+          }
+          candidates.push({
+            tileRow: tileRow,
+            tileCol: tileCol,
+            row: row,
+            col: col,
+          });
+        }
+      }
+    }
+  }
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+SPECIAL_WALL_CELL = pickRandomClipWallCell();
 
 // =============================================================================
 // 运行时
@@ -162,6 +235,8 @@ const MAP_WIDTH = MAP_COLS * GRID_SIZE;
 const MAP_DEPTH = MAP_ROWS * GRID_SIZE;
 const HALF_W = MAP_WIDTH * 0.5;
 const HALF_D = MAP_DEPTH * 0.5;
+const WORLD_WIDTH = MAP_WIDTH * MAZE_TILES_PER_AXIS;
+const WORLD_DEPTH = MAP_DEPTH * MAZE_TILES_PER_AXIS;
 
 /** @type {THREE.WebGLRenderer | null} */
 let renderer = null;
@@ -238,6 +313,14 @@ function cellCenterX(col) {
 
 function cellCenterZ(row) {
   return row * GRID_SIZE - HALF_D;
+}
+
+function tiledCellCenterX(tileCol, col) {
+  return cellCenterX(col) + (tileCol - CENTER_TILE) * MAP_WIDTH;
+}
+
+function tiledCellCenterZ(tileRow, row) {
+  return cellCenterZ(row) + (tileRow - CENTER_TILE) * MAP_DEPTH;
 }
 
 function validateMatrix() {
@@ -347,8 +430,14 @@ function createWallMaterial() {
   return mat;
 }
 
-function isSpecialWallCell(row, col) {
-  return row === SPECIAL_WALL_CELL.row && col === SPECIAL_WALL_CELL.col;
+function isSpecialWallCell(tileRow, tileCol, row, col) {
+  return (
+    SPECIAL_WALL_CELL &&
+    tileRow === SPECIAL_WALL_CELL.tileRow &&
+    tileCol === SPECIAL_WALL_CELL.tileCol &&
+    row === SPECIAL_WALL_CELL.row &&
+    col === SPECIAL_WALL_CELL.col
+  );
 }
 
 /** 切出 Level 1 的特殊墙 — 深底 + 高亮旋涡贴花 */
@@ -418,73 +507,82 @@ function buildBackroomsLevel(root) {
   level0WallPickMeshes.length = 0;
   specialClipWallMesh = null;
 
-  for (var row = 0; row < MAP_ROWS; row++) {
-    for (var col = 0; col < MAP_COLS; col++) {
-      if (BACKROOMS_MATRIX[row][col] !== 1) continue;
+  for (var tileRow = 0; tileRow < MAZE_TILES_PER_AXIS; tileRow++) {
+    for (var tileCol = 0; tileCol < MAZE_TILES_PER_AXIS; tileCol++) {
+      for (var row = 0; row < MAP_ROWS; row++) {
+        for (var col = 0; col < MAP_COLS; col++) {
+          if (BACKROOMS_MATRIX[row][col] !== 1) continue;
+          if (isMazeSeamOpening(tileRow, tileCol, row, col)) continue;
 
-      if (isRedChannelCell(row, col)) {
-        buildRedChannelWall(
-          wallsGroup,
-          cellCenterX(col),
-          cellCenterZ(row),
-          GRID_SIZE,
-          WALL_HEIGHT,
-          wallColliders
-        );
-        continue;
+          var isCenterTile = tileRow === CENTER_TILE && tileCol === CENTER_TILE;
+          var wx = tiledCellCenterX(tileCol, col);
+          var wz = tiledCellCenterZ(tileRow, row);
+
+          // 红室、0.2 灰门等特殊内容只放在中央模板，避免生成九份子层级入口。
+          if (isCenterTile && isRedChannelCell(row, col)) {
+            buildRedChannelWall(
+              wallsGroup,
+              wx,
+              wz,
+              GRID_SIZE,
+              WALL_HEIGHT,
+              wallColliders
+            );
+            continue;
+          }
+
+          if (isCenterTile && isGrayDoorCell(row, col)) {
+            buildGrayDoorWall(
+              wallsGroup,
+              wx,
+              wz,
+              GRID_SIZE,
+              WALL_HEIGHT,
+              wallColliders
+            );
+            continue;
+          }
+
+          var special = isSpecialWallCell(tileRow, tileCol, row, col);
+          var mesh = new THREE.Mesh(wallGeo, special ? specialWallMat : wallMat);
+          mesh.name =
+            "Wall_" + tileRow + "_" + tileCol + "_" + row + "_" + col;
+          mesh.visible = true;
+          // L0 无 DirectionalLight，阴影恒关（见 gfx-profile.shadows 注释）
+          mesh.castShadow = false;
+          mesh.receiveShadow = false;
+
+          // 严格网格对齐：墙根落在 Y=0，绝不悬空
+          mesh.position.x = wx;
+          mesh.position.z = wz;
+          mesh.position.y = WALL_HEIGHT * 0.5;
+
+          wallsGroup.add(mesh);
+          level0WallPickMeshes.push(mesh);
+
+          if (special) {
+            specialClipWallMesh = mesh;
+            mesh.userData.brInteract = { kind: "clip_wall" };
+          }
+
+          var half = GRID_SIZE * 0.5;
+          wallColliders.push({
+            minX: mesh.position.x - half,
+            maxX: mesh.position.x + half,
+            minZ: mesh.position.z - half,
+            maxZ: mesh.position.z + half,
+            special: special,
+            ghost: false,
+          });
+        }
       }
-
-      if (isGrayDoorCell(row, col)) {
-        buildGrayDoorWall(
-          wallsGroup,
-          cellCenterX(col),
-          cellCenterZ(row),
-          GRID_SIZE,
-          WALL_HEIGHT,
-          wallColliders
-        );
-        continue;
-      }
-
-      var mesh = new THREE.Mesh(
-        wallGeo,
-        isSpecialWallCell(row, col) ? specialWallMat : wallMat
-      );
-      mesh.name = "Wall_" + row + "_" + col;
-      mesh.visible = true;
-      // L0 无 DirectionalLight，阴影恒关（见 gfx-profile.shadows 注释）
-      mesh.castShadow = false;
-      mesh.receiveShadow = false;
-
-      // 严格网格对齐：墙根落在 Y=0，绝不悬空
-      mesh.position.x = cellCenterX(col);
-      mesh.position.z = cellCenterZ(row);
-      mesh.position.y = WALL_HEIGHT * 0.5;
-
-      wallsGroup.add(mesh);
-      level0WallPickMeshes.push(mesh);
-
-      if (isSpecialWallCell(row, col)) {
-        specialClipWallMesh = mesh;
-        mesh.userData.brInteract = { kind: "clip_wall" };
-      }
-
-      var half = GRID_SIZE * 0.5;
-      wallColliders.push({
-        minX: mesh.position.x - half,
-        maxX: mesh.position.x + half,
-        minZ: mesh.position.z - half,
-        maxZ: mesh.position.z + half,
-        special: isSpecialWallCell(row, col),
-        ghost: false,
-      });
     }
   }
 
   root.add(wallsGroup);
 
   // 地板 — 一张大平面，覆盖整个迷宫 footprint
-  var floorGeo = new THREE.PlaneGeometry(MAP_WIDTH, MAP_DEPTH);
+  var floorGeo = new THREE.PlaneGeometry(WORLD_WIDTH, WORLD_DEPTH);
   var floor = new THREE.Mesh(floorGeo, createFloorMaterial());
   floor.name = "BackroomsFloor";
   floor.rotation.x = -Math.PI * 0.5;
@@ -500,7 +598,7 @@ function buildBackroomsLevel(root) {
   );
 
   // 天花板 — 覆盖墙体顶部 Y = WALL_HEIGHT
-  var ceilingGeo = new THREE.PlaneGeometry(MAP_WIDTH, MAP_DEPTH);
+  var ceilingGeo = new THREE.PlaneGeometry(WORLD_WIDTH, WORLD_DEPTH);
   var ceiling = new THREE.Mesh(ceilingGeo, createCeilingMaterial());
   ceiling.name = "BackroomsCeiling";
   ceiling.rotation.x = Math.PI * 0.5;
@@ -519,6 +617,23 @@ function buildBackroomsLevel(root) {
     spawnRow: 1,
     spawnCol: 1,
     posterCell: L0_POSTER_WALL_CELL,
+    clipCell: null,
+  });
+
+  // 随机切出墙可能位于任意模板，使用带模板偏移的坐标函数挂旋涡。
+  mountLevel0WallDecor(wallsGroup, {
+    matrix: BACKROOMS_MATRIX,
+    gridSize: GRID_SIZE,
+    wallHeight: WALL_HEIGHT,
+    cellCenterX: function (col) {
+      return tiledCellCenterX(SPECIAL_WALL_CELL.tileCol, col);
+    },
+    cellCenterZ: function (row) {
+      return tiledCellCenterZ(SPECIAL_WALL_CELL.tileRow, row);
+    },
+    spawnRow: 1,
+    spawnCol: 1,
+    posterCell: null,
     clipCell: SPECIAL_WALL_CELL,
   });
 
@@ -608,15 +723,19 @@ function addFluorescentLights(root) {
   var fixturesGroup = new THREE.Group();
   fixturesGroup.name = "FluorescentFixtures";
 
-  for (var row = 0; row < MAP_ROWS; row++) {
-    for (var col = 0; col < MAP_COLS; col++) {
-      if (BACKROOMS_MATRIX[row][col] !== 0) continue;
-      if ((row + col) % 2 !== 0) continue;
+  for (var tileRow = 0; tileRow < MAZE_TILES_PER_AXIS; tileRow++) {
+    for (var tileCol = 0; tileCol < MAZE_TILES_PER_AXIS; tileCol++) {
+      for (var row = 0; row < MAP_ROWS; row++) {
+        for (var col = 0; col < MAP_COLS; col++) {
+          if (BACKROOMS_MATRIX[row][col] !== 0) continue;
+          if ((row + col) % 2 !== 0) continue;
 
-      var x = cellCenterX(col);
-      var z = cellCenterZ(row);
-      var rotY = row % 2 === 0 ? 0 : Math.PI * 0.5;
-      fixturesGroup.add(createFluorescentFixture(x, z, rotY));
+          var x = tiledCellCenterX(tileCol, col);
+          var z = tiledCellCenterZ(tileRow, row);
+          var rotY = row % 2 === 0 ? 0 : Math.PI * 0.5;
+          fixturesGroup.add(createFluorescentFixture(x, z, rotY));
+        }
+      }
     }
   }
 

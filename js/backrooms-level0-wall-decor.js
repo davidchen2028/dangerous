@@ -162,7 +162,9 @@ export function mountLevel0WallDecor(wallsGroup, opts) {
   var wallH = opts.wallHeight != null ? opts.wallHeight : 2.4;
   var spawnRow = opts.spawnRow != null ? opts.spawnRow : 1;
   var spawnCol = opts.spawnCol != null ? opts.spawnCol : 1;
-  var posterCell = opts.posterCell || L0_POSTER_WALL_CELL;
+  // 显式传 null 可关闭海报，供随机切出墙单独挂载旋涡时使用。
+  var posterCell =
+    opts.posterCell === undefined ? L0_POSTER_WALL_CELL : opts.posterCell;
   var clipCell = opts.clipCell;
 
   if (matrix && posterCell) {
