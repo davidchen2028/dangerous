@@ -6,18 +6,21 @@ import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
 import {
   loadBackroomsSurvival,
+  saveBackroomsSurvival,
   registerBackroomsSurvivalPersist,
 } from "./backrooms-survival-persist.js";
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
-import { toggleBackpack, isInventoryOpen, setInventoryOpenHandler } from "./backrooms-inventory.js";
+import { toggleBackpack, isInventoryOpen, setInventoryOpenHandler, countItem } from "./backrooms-inventory.js";
 import { updateMegPointsDisplay } from "./backrooms-meg-points.js";
 import {
   initBackroomsTemperature,
   updateBackroomsTemperature,
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
-import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
-import { enforceLevelEntry } from "./backrooms-level-pass.js";
+import { showEnterLevelBannerIfQueued, queueEnterLevelBanner } from "./backrooms-level-enter.js";
+import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import { updatePastoralStareClip } from "./backrooms-c1298-stare.js";
+import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -65,6 +68,7 @@ const canvas = document.getElementById("backroomsCanvas");
 const inputEl = document.getElementById("backroomsInput");
 const hintEl = document.getElementById("backroomsHint");
 const crosshairEl = document.getElementById("backroomsCrosshair");
+const interactHintEl = document.getElementById("backroomsInteractHint");
 const errorEl = document.getElementById("backroomsError");
 const megPointsEl = document.getElementById("backroomsMegPoints");
 const tempRootEl = document.getElementById("backroomsTemp");
@@ -75,6 +79,10 @@ const introTextEl = document.getElementById("backroomsL14IntroText");
 const introImageEl = document.getElementById("backroomsL14IntroImage");
 
 const colliders = [];
+const interactRoots = [];
+const AIM_MAX = 3.8;
+let currentAimPick = null;
+let transitionLock = false;
 const _survCtx = { sprinting: false, sanityDrainPerSec: 0 };
 const _physOpts = { gravity: DEFAULT_GRAVITY, ceilingY: null };
 const fps = createBackroomsFpsState({
@@ -395,6 +403,84 @@ function buildWorld(root) {
   glow.position.set(0, 2.2, 0);
   root.add(glow);
   root.add(new THREE.AmbientLight(0x7a4a92, 0.35));
+
+  // 层级密钥对应的回枢纽门（出生点附近）
+  var doorX = 5.2;
+  var doorZ = -4.4;
+  var doorMat = new THREE.MeshStandardMaterial({
+    color: 0x2a1a32,
+    emissive: 0x4a2068,
+    emissiveIntensity: 0.35,
+    roughness: 0.7,
+  });
+  var frame = new THREE.Mesh(new THREE.BoxGeometry(2.2, 3.2, 0.35), doorMat);
+  frame.position.set(doorX, 1.6, doorZ);
+  root.add(frame);
+  var ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.55, 0.08, 10, 24),
+    new THREE.MeshStandardMaterial({
+      color: 0xd8b060,
+      emissive: 0xa07020,
+      emissiveIntensity: 0.55,
+      metalness: 0.4,
+      roughness: 0.35,
+    })
+  );
+  ring.position.set(doorX, 1.7, doorZ + 0.22);
+  root.add(ring);
+  var pick = new THREE.Mesh(
+    new THREE.BoxGeometry(2.4, 3.4, 1.2),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  pick.position.set(doorX, 1.6, doorZ);
+  pick.userData.brInteract = { kind: "l14_hub_door" };
+  root.add(pick);
+  interactRoots.push(pick);
+  colliders.push(wallCollider(doorX - 1.1, doorX + 1.1, doorZ - 0.25, doorZ + 0.25));
+}
+
+function refreshAim() {
+  currentAimPick = null;
+  if (!camera || isInventoryOpen() || transitionLock || !interactRoots.length) return;
+  currentAimPick = pickCrosshairInteract(camera, interactRoots, AIM_MAX);
+}
+
+function updateInteractUi() {
+  if (!interactHintEl) return;
+  var data =
+    currentAimPick && currentAimPick.distance <= AIM_MAX ? currentAimPick.data : null;
+  if (!data || data.kind !== "l14_hub_door" || isInventoryOpen() || transitionLock) {
+    interactHintEl.hidden = true;
+    return;
+  }
+  interactHintEl.hidden = false;
+  interactHintEl.innerHTML =
+    countItem("level_key_l14") >= 1
+      ? "环形符号之门 · 按 <kbd>Q</kbd> 返回枢纽"
+      : "环形符号之门 · 需要层级密钥（Level 14）";
+}
+
+function leaveToHub() {
+  if (transitionLock) return;
+  if (countItem("level_key_l14") < 1) {
+    showToast("大门锁死。你需要对应的层级密钥。");
+    return;
+  }
+  transitionLock = true;
+  showToast("密钥嵌入环形符号——门后是枢纽的回廊。", 2800);
+  saveBackroomsSurvival(survival);
+  grantLevelPass("hub", fps.yaw);
+  queueEnterLevelBanner("枢纽");
+  window.setTimeout(function () {
+    window.location.href = "backrooms-hub.html";
+  }, 650);
+}
+
+function tryInteract() {
+  if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
+  var data =
+    currentAimPick && currentAimPick.distance <= AIM_MAX ? currentAimPick.data : null;
+  if (data && data.kind === "l14_hub_door") leaveToHub();
 }
 
 function setIntroText(text) {
@@ -459,7 +545,7 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen() || isTaskUiOpen();
+      return isInventoryOpen() || isTaskUiOpen() || transitionLock;
     },
     onJump: function () {
       tryBackroomsJump(fps, 8);
@@ -472,6 +558,12 @@ function bindControls() {
       if (event.code === "KeyB" && !event.repeat) {
         event.preventDefault();
         toggleBackpack();
+        return true;
+      }
+      if (event.code === "KeyQ" && !event.repeat) {
+        event.preventDefault();
+        refreshAim();
+        tryInteract();
         return true;
       }
       return false;
@@ -545,9 +637,19 @@ function init() {
     if (survival && !survival.dead) {
       _survCtx.sprinting = sprinting;
       survival.update(dt, _survCtx);
+      updatePastoralStareClip(dt, {
+        moving: moving,
+        survival: survival,
+        yaw: fps.yaw,
+      });
     }
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !isTaskUiOpen()) {
+    if (
+      (!survival || !survival.dead) &&
+      !isInventoryOpen() &&
+      !isTaskUiOpen() &&
+      !transitionLock
+    ) {
       var mul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
@@ -557,8 +659,16 @@ function init() {
       });
     }
     applyBackroomsCamera(fps, camera, EYE_HEIGHT);
+    refreshAim();
+    updateInteractUi();
     if (crosshairEl) {
+      var aimDoor =
+        currentAimPick &&
+        currentAimPick.distance <= AIM_MAX &&
+        currentAimPick.data &&
+        currentAimPick.data.kind === "l14_hub_door";
       crosshairEl.classList.toggle("backrooms-crosshair--hidden", isInventoryOpen());
+      crosshairEl.classList.toggle("backrooms-crosshair--interact", !!aimDoor && !isInventoryOpen());
     }
     updateBackroomsTemperature(dt, now);
     updateBackroomsHeatDamage(survival, now);

@@ -4,10 +4,12 @@
 import { addItem, countItem, removeFirstItem } from "./backrooms-inventory.js";
 import { addMegPoints, getMegPoints } from "./backrooms-meg-points.js";
 import { showBackroomsLootToast } from "./backrooms-fps-controller.js";
+import { grantItemListOrStore, removeFirstFromBaseStorage } from "./backrooms-base-storage.js";
 
 const ACCEPTED_KEY = "backrooms_tasks_accepted_v1";
 const COMPLETED_KEY = "backrooms_tasks_completed_v1";
 const DELIVERED_KEY = "backrooms_tasks_delivered_v1";
+const EVER_DONE_KEY = "backrooms_tasks_ever_done_v1";
 const ACHIEVEMENTS_KEY = "backrooms_achievements_v1";
 const BOARD_KEY = "backrooms_l4_taskboard_v1";
 const VISITED_KEY = "backrooms_ach_visited_v1";
@@ -147,6 +149,166 @@ export const TASK_DEFS = [
       "极高风险委托。进入 Level C-1290 夕前石茧，趁石化尚未过半，对 3 块石碑各按 E 拓印碑文，" +
       "拓满后立刻撤离并回 Level 4 领赏。石化满（化为雕像）或中途死亡判定失败并扣 40 积分。" +
       "完成 1 次后冷却 35 分钟。",
+  },
+  {
+    id: "docs_c1292",
+    title: "C-1292 实验档案回收",
+    reward: 120,
+    type: "recon",
+    rare: true,
+    offerChance: 0.35,
+    refresh: "interval",
+    refreshIntervalMs: 5 * 60 * 1000,
+    reconLevelId: "c1292",
+    reconTarget: 3,
+    deathPenalty: 30,
+    completeLimit: 1,
+    cooldownMs: 40 * 60 * 1000,
+    desc:
+      "可选高风险委托。进入 Level C-1292「项目：衰退瘾」，在档案室、观测室、主控机房各按 Q 阅读一份 UEC 实验文档。" +
+      "阅读会加重衰退瘾侵蚀（倒霉翻倍、幸运减半）。集齐三份后立刻撤离，回 Level 4 领赏。" +
+      "中途死亡判定失败并扣 30 积分。完成 1 次后冷却 40 分钟。",
+  },
+  {
+    id: "sample_c144_collapse",
+    title: "塌楼灾情取样",
+    reward: 55,
+    type: "recon",
+    rare: true,
+    offerChance: 0.4,
+    refresh: "interval",
+    refreshIntervalMs: 5 * 60 * 1000,
+    deviceId: "sample_can_c144",
+    deviceName: "M.E.G 采样罐",
+    reconLevelId: "c144",
+    reconTarget: 2,
+    deathPenalty: 25,
+    timeLimitMs: 25 * 60 * 1000,
+    completeLimit: 2,
+    cooldownMs: 30 * 60 * 1000,
+    desc:
+      "中高风险委托。携带采样罐进入 Level C-144 和爱社区，在社区度过一夜后塌楼开始，" +
+      "对 2 处正在倒塌或已塌的建筑残墟按 E 取样，回 Level 4 领赏。" +
+      "限时 25 分钟；死亡或采样罐损毁判定失败并扣 25 积分。完成 2 次后冷却 30 分钟。",
+  },
+  {
+    id: "recon_c144_mutant",
+    title: "变异肢团活动周期记录",
+    reward: 80,
+    type: "recon",
+    rare: true,
+    offerChance: 0.3,
+    refresh: "interval",
+    refreshIntervalMs: 5 * 60 * 1000,
+    deviceId: "meg_recorder",
+    deviceName: "M.E.G 特制记录设备",
+    reconLevelId: "c144",
+    reconTarget: 2,
+    deathPenalty: 35,
+    timeLimitMs: 20 * 60 * 1000,
+    completeLimit: 2,
+    cooldownMs: 35 * 60 * 1000,
+    desc:
+      "高风险侦查。携带记录仪进入 Level C-144，待一夜过后变异肢团出没，" +
+      "分别在其「活动」与「休息」阶段靠近它们各按 E 记录一次（共 2 次），回 Level 4 领赏。" +
+      "限时 20 分钟；死亡或记录仪损毁判定失败并扣 35 积分。完成 2 次后冷却 35 分钟。",
+  },
+  {
+    id: "loop_c192",
+    title: "封闭森林回路确认",
+    reward: 40,
+    type: "recon",
+    offerChance: 0.4,
+    refresh: "enter",
+    reconLevelId: "c192",
+    reconTarget: 1,
+    deathPenalty: 15,
+    completeLimit: 3,
+    cooldownMs: 15 * 60 * 1000,
+    desc:
+      "进入 Level C-192 封闭森林后不要立刻切树离开，在林内停留满 90 秒再按 E 完成回路确认，" +
+      "随后可切树去 Level 48 或自行撤离，回 Level 4 领赏。" +
+      "中途死亡判定失败并扣 15 积分。完成 3 次后冷却 15 分钟。",
+  },
+  {
+    id: "sample_c1299_fog",
+    title: "汤雾样本采集",
+    reward: 220,
+    type: "recon",
+    offerChance: 0.75,
+    refresh: "enter",
+    deviceId: "sample_can_c1299",
+    deviceName: "密封采样罐",
+    reconLevelId: "c1299",
+    reconTarget: 1,
+    deferDeliver: true,
+    deathPenalty: 60,
+    completeLimit: 1,
+    cooldownMs: 30 * 60 * 1000,
+    rewardItems: [{ id: "lucky_soy_milk", name: "幸运豆奶", count: 1 }],
+    desc:
+      "普通难度。携带密封采样罐进入 Level C-1299，在漂浮中靠近浓密白雾按 Q 采样一份汤雾，" +
+      "采样罐不能被高温损毁，带着样本抵达黑石浮石撤离。熬煮进度满即死亡，无额外计时。" +
+      "奖励 220 积分 + 幸运豆奶 ×1。失败（死亡 / 采样罐损毁）扣 60 积分。上限 1 次，冷却 30 分钟。",
+  },
+  {
+    id: "beacon_c1299",
+    title: "标记空间坐标",
+    reward: 420,
+    type: "recon",
+    rare: true,
+    offerChance: 0.75,
+    refresh: "enter",
+    deviceId: "beacon_c1299",
+    deviceName: "微型定位信标",
+    deviceCount: 3,
+    reconLevelId: "c1299",
+    reconTarget: 3,
+    deferDeliver: true,
+    deathPenalty: 120,
+    completeLimit: 1,
+    cooldownMs: 30 * 60 * 1000,
+    rewardItems: [
+      { id: "almond_water", name: "杏仁水", count: 2 },
+      { id: "lucky_soy_milk", name: "幸运豆奶", count: 2 },
+      { id: "strawberry_soy_milk", name: "草莓豆奶", count: 1 },
+    ],
+    desc:
+      "高风险。任务发放 3 枚微型定位信标。在 C-1299 漂浮中向三处不同方位各投放一枚（靠近投放点按 Q），" +
+      "三枚全部部署且不能被汤雾摧毁，活着抵达黑石撤离。漂浮难控，停留越久熬煮越快。" +
+      "奖励 420 积分 + 杏仁水×2 + 幸运豆奶×2 + 草莓豆奶×1。失败扣 120 积分。上限 1 次，冷却 30 分钟。",
+  },
+  {
+    id: "pages_c1299",
+    title: "高危调查：解读飘流残页",
+    reward: 550,
+    type: "recon",
+    rare: true,
+    offerChance: 1,
+    refresh: "enter",
+    alwaysOfferWhenUnlocked: true,
+    requiresEverCompleted: ["sample_c1299_fog", "beacon_c1299"],
+    requireEverCount: 2,
+    reconLevelId: "c1299",
+    reconTarget: 4,
+    deferDeliver: true,
+    fragileItemIds: ["scrap_page_c1299"],
+    deathPenalty: 160,
+    completeLimit: 1,
+    cooldownMs: 60 * 60 * 1000,
+    rewardItems: [
+      { id: "level_key_l14", name: "层级密钥 · Level 14", count: 1 },
+      { id: "almond_water", name: "杏仁水", count: 5 },
+      { id: "lucky_soy_milk", name: "幸运豆奶", count: 2 },
+      { id: "strawberry_soy_milk", name: "草莓豆奶", count: 2 },
+      { id: "banana_soy_milk", name: "香蕉豆奶", count: 2 },
+      { id: "fire_salt", name: "小块可爆炸火盐", count: 3 },
+    ],
+    desc:
+      "极限任务（需先完成「汤雾样本采集」与「标记空间坐标」后才会挂出）。" +
+      "在 C-1299 汤雾中搜寻拾取 4 份漂浮残页，残页不能被烧蚀，携带全部残页成功撤离。" +
+      "中途阅读残页会加快熬煮进度——请带回 Level 4 再查阅。" +
+      "奖励 550 保险库积分 + 层级密钥(L14) + 大量补给。失败扣 160 积分。上限 1 次，冷却 60 分钟。",
   },
 ];
 
@@ -463,6 +625,33 @@ export function isTaskDelivered(id) {
   return getDeliveredTaskIds().indexOf(id) >= 0;
 }
 
+export function getEverDoneTaskIds() {
+  return readIds(EVER_DONE_KEY);
+}
+
+export function hasEverCompletedTask(id) {
+  return getEverDoneTaskIds().indexOf(id) >= 0;
+}
+
+function markTaskEverDone(id) {
+  var ids = getEverDoneTaskIds();
+  if (ids.indexOf(id) >= 0) return;
+  ids.push(id);
+  writeIds(EVER_DONE_KEY, ids);
+}
+
+function taskPrereqsMet(task) {
+  if (!task || !task.requiresEverCompleted || !task.requiresEverCompleted.length) {
+    return true;
+  }
+  var need = task.requireEverCount > 0 ? task.requireEverCount : task.requiresEverCompleted.length;
+  var got = 0;
+  for (var i = 0; i < task.requiresEverCompleted.length; i++) {
+    if (hasEverCompletedTask(task.requiresEverCompleted[i])) got++;
+  }
+  return got >= need;
+}
+
 /** 在目的地交出包裹，进入“回 L4 领赏”状态。 */
 export function deliverPackageTask(id) {
   var task = getTaskDef(id);
@@ -499,6 +688,20 @@ export function claimTaskReward(id) {
       if (!removeFirstItem(task.deviceId)) break;
     }
   }
+  if (task.fragileItemIds) {
+    for (var fi = 0; fi < task.fragileItemIds.length; fi++) {
+      var fid = task.fragileItemIds[fi];
+      while (countItem(fid) > 0) {
+        if (!removeFirstItem(fid)) break;
+      }
+    }
+  }
+
+  var rewardGrant = { stored: 0, failed: 0 };
+  if (task.rewardItems && task.rewardItems.length) {
+    rewardGrant = grantItemListOrStore(task.rewardItems, defaultToast);
+  }
+  markTaskEverDone(id);
 
   // 可重复任务：领赏后从接取/交付列表移除，计入完成次数；达上限则进入冷却。
   var accepted = getAcceptedTaskIds();
@@ -536,6 +739,7 @@ export function claimTaskReward(id) {
     task: task,
     reward: task.reward,
     cooldownNote: cooldownNote,
+    stored: rewardGrant.stored,
   };
 }
 
@@ -924,6 +1128,9 @@ export function acceptTask(id) {
     return { ok: false, reason: "上一轮奖励还没领，先找 M.E.G 成员领赏" };
   }
   if (!isTaskOnBoard(task)) return { ok: false, reason: "白板上没有这个委托" };
+  if (!taskPrereqsMet(task)) {
+    return { ok: false, reason: "尚未满足前置条件，无法接取" };
+  }
   if (countActiveTasks() >= MAX_ACTIVE_TASKS) {
     return { ok: false, reason: "手头任务已满（最多同时 " + MAX_ACTIVE_TASKS + " 个）" };
   }
@@ -934,8 +1141,39 @@ export function acceptTask(id) {
     }
   }
   if (task.deviceId) {
-    if (!addItem({ id: task.deviceId, name: task.deviceName })) {
-      return { ok: false, reason: "背包和快捷栏已满，放不下" + task.deviceName };
+    var deviceCount = task.deviceCount > 0 ? task.deviceCount : 1;
+    var deviceList = [];
+    for (var di = 0; di < deviceCount; di++) {
+      deviceList.push({ id: task.deviceId, name: task.deviceName, count: 1 });
+    }
+    var deviceGrant = grantItemListOrStore(deviceList, null);
+    if (deviceGrant.failed > 0) {
+      // 尽量回滚已成功发放的（含寄存）
+      var needRollback = deviceCount - deviceGrant.failed;
+      for (var ri = 0; ri < needRollback; ri++) {
+        if (countItem(task.deviceId) > 0) removeFirstItem(task.deviceId);
+        else removeFirstFromBaseStorage(task.deviceId);
+      }
+      if (task.packageId) removeFirstItem(task.packageId);
+      return {
+        ok: false,
+        reason: "背包与寄存柜都满了，放不下全部" + task.deviceName,
+      };
+    }
+    if (deviceGrant.stored > 0) {
+      defaultToast(
+        "背包满了，工作人员帮你把 " +
+          deviceGrant.stored +
+          " 件" +
+          task.deviceName +
+          "寄存了（请到 L1 / L4 / L11 基地取出后再进层）"
+      );
+    }
+  }
+  if (task.grantItems && task.grantItems.length) {
+    var g = grantItemListOrStore(task.grantItems, defaultToast);
+    if (g.failed > 0) {
+      return { ok: false, reason: "背包与寄存柜都满了，无法接取" };
     }
   }
   var ids = getAcceptedTaskIds();
@@ -1041,6 +1279,8 @@ function shouldKeepOffer(task) {
 function rollOfferOnce(task) {
   if (shouldKeepOffer(task)) return true;
   if (isTaskCooling(task.id)) return false;
+  if (!taskPrereqsMet(task)) return false;
+  if (task.alwaysOfferWhenUnlocked && taskPrereqsMet(task)) return true;
   return Math.random() < taskOfferChance(task);
 }
 
@@ -1372,8 +1612,46 @@ export function getReconRecordedKeys(id) {
 }
 
 /**
+ * 将 deferDeliver 侦查任务标为已交付（撤离点调用）。
+ * @param {string} id
+ * @param {{ requireDevice?: boolean, requireFragileCount?: number }} [opts]
+ */
+export function deliverDeferredReconTask(id, opts) {
+  opts = opts || {};
+  var task = getTaskDef(id);
+  if (!task || task.type !== "recon") return { ok: false, reason: "没有这个任务" };
+  if (!isTaskAccepted(id)) return { ok: false, reason: "未接取" };
+  if (isTaskCompleted(id)) return { ok: false, reason: "已完成" };
+  if (isTaskDelivered(id)) return { ok: true, already: true };
+  var prog = getReconProgress(id);
+  if (prog.count < prog.target) {
+    return { ok: false, reason: "目标尚未完成（" + prog.count + "/" + prog.target + "）" };
+  }
+  if (opts.requireDevice && task.deviceId && countItem(task.deviceId) < 1) {
+    return { ok: false, reason: "缺少" + (task.deviceName || "任务道具") };
+  }
+  if (opts.requireFragileCount > 0 && task.fragileItemIds && task.fragileItemIds.length) {
+    var total = 0;
+    for (var i = 0; i < task.fragileItemIds.length; i++) {
+      total += countItem(task.fragileItemIds[i]);
+    }
+    if (total < opts.requireFragileCount) {
+      return { ok: false, reason: "携带的残页不足" };
+    }
+  }
+  var delivered = getDeliveredTaskIds();
+  if (delivered.indexOf(id) < 0) {
+    delivered.push(id);
+    writeIds(DELIVERED_KEY, delivered);
+  }
+  clearTaskDeadline(id);
+  renderTaskPanel();
+  return { ok: true, task: task };
+}
+
+/**
  * 在侦查层级记录一个目标（如一个井盖）。同一目标重复记录不计数。
- * 记满目标数即视为「已交付」，回 Level 4 领赏。
+ * 记满目标数即视为「已交付」，回 Level 4 领赏（除非 deferDeliver）。
  * @param {string} id 任务 id
  * @param {string} targetKey 目标唯一标识
  */
@@ -1399,7 +1677,10 @@ export function recordReconSighting(id, targetKey) {
     renderTaskPanel();
     return { ok: true, task: task, count: list.length, target: target, done: false };
   }
-  // 采集完成：进入「回 L4 领赏」状态，同时停止限时倒计时。
+  if (task.deferDeliver) {
+    renderTaskPanel();
+    return { ok: true, task: task, count: list.length, target: target, done: true, deferred: true };
+  }
   var delivered = getDeliveredTaskIds();
   if (delivered.indexOf(id) < 0) {
     delivered.push(id);
@@ -1420,6 +1701,14 @@ function failTask(task, reasonText, onToast) {
   if (task.deviceId) {
     while (countItem(task.deviceId) > 0) {
       if (!removeFirstItem(task.deviceId)) break;
+    }
+  }
+  if (task.fragileItemIds) {
+    for (var fi = 0; fi < task.fragileItemIds.length; fi++) {
+      var fid = task.fragileItemIds[fi];
+      while (countItem(fid) > 0) {
+        if (!removeFirstItem(fid)) break;
+      }
     }
   }
   var accepted = getAcceptedTaskIds();
@@ -1460,10 +1749,24 @@ export function damageCarriedTaskItems(chance, onToast) {
   for (var i = 0; i < accepted.length; i++) {
     var task = getTaskDef(accepted[i]);
     if (!task || isTaskCompleted(task.id)) continue;
-    var itemId = task.packageId || task.deviceId;
-    if (!itemId || countItem(itemId) < 1) continue;
+    var itemIds = [];
+    if (task.packageId) itemIds.push(task.packageId);
+    if (task.deviceId) itemIds.push(task.deviceId);
+    if (task.fragileItemIds) {
+      for (var f = 0; f < task.fragileItemIds.length; f++) {
+        itemIds.push(task.fragileItemIds[f]);
+      }
+    }
+    var holding = false;
+    for (var j = 0; j < itemIds.length; j++) {
+      if (countItem(itemIds[j]) >= 1) {
+        holding = true;
+        break;
+      }
+    }
+    if (!holding) continue;
     if (Math.random() >= probability) continue;
-    failTask(task, "任务道具被风暴撕毁", onToast);
+    failTask(task, "任务道具被环境损毁", onToast);
     failed.push(task.id);
   }
   return failed;

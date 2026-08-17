@@ -9,8 +9,9 @@
  * - 手持轮盘对准墙壁强制切出 → C-1293
  * - 打破走廊窗户 → C-1294
  * - 走廊尽头向上楼梯 → C-1295
- * - 打开写着 0.1296% 的房门后切出 → C-1296
  * - 背包有火盐：禁止所有切出，等待 10 秒 → C-1297
+ * - 走廊切出时极低概率 → C-1297（鼓包渗脓的卡墙切入）
+ * - 打开写着 0.1296% 的房门后切出 → C-1296
  * - 切出无字样房间墙 → C-1298
  * - 吃/喝物品 → C-1299
  */
@@ -27,6 +28,7 @@ import {
   isInventoryOpen,
   setInventoryOpenHandler,
   countItem,
+  addItem,
   getSelectedHotbarItem,
 } from "./backrooms-inventory.js";
 import { updateMegPointsDisplay } from "./backrooms-meg-points.js";
@@ -328,11 +330,16 @@ function tryNormalClip() {
   if (kind === "room_marked") {
     goToCLevel(1290, "你切出了有字样的房间墙壁…");
   } else if (kind === "room_unmarked") {
-    goToCLevel(1298, "你切出了没有字样的房间墙壁…");
+    goToCLevel(1298, "空间紊乱加剧！你触发了危险切出，即将被抛入死区序列！");
   } else if (kind === "corridor_wall") {
-    goToCLevel(1292, "你在走廊里切出了墙壁…");
+    // 极低概率：卡进鼓包渗粘液的墙壁 → C-1297
+    if (Math.random() < 0.03) {
+      goToCLevel(1297, "空间紊乱加剧！你触发了危险切出，即将被抛入死区序列！");
+    } else {
+      goToCLevel(1292, "你在走廊里切出了墙壁…");
+    }
   } else if (kind === "window") {
-    goToCLevel(1294, "玻璃碎裂，寒风涌进来…");
+    goToCLevel(1294, "警告：玻璃碎裂，你被抛入漫天锡厘贡的流萤死地！");
   } else if (kind === "door_1296") {
     if (!door1296Open) {
       door1296Open = true;
@@ -346,7 +353,7 @@ function tryNormalClip() {
 
 function onConsumeItem() {
   if (transitionLock) return;
-  goToCLevel(1299, "吞咽之后，周遭开始溶解…");
+  goToCLevel(1299, "空间紊乱加剧！你触发了危险切出，即将被抛入死区序列！");
 }
 
 function refreshAim() {
@@ -446,6 +453,12 @@ function init() {
   survival = new BackroomsSurvival();
   survival.mountHud(document.querySelector(".backrooms-hud") || document.body);
   loadBackroomsSurvival(survival);
+  // 进入 C-1289 时背包放入一瓶草莓豆奶（仅当还没有时补发，避免重复刷）
+  if (countItem("strawberry_soy_milk") < 1) {
+    if (addItem({ id: "strawberry_soy_milk", name: "草莓豆奶" })) {
+      showToast("背包里多了一瓶草莓豆奶");
+    }
+  }
   registerBackroomsSurvivalPersist(survival);
   installMegCheckpointDeathHooks(survival, function () {
     return { level: "c1289" };
@@ -511,14 +524,14 @@ function init() {
             "火盐抑制切出 · " + Math.max(0, Math.ceil((FIRE_SALT_WAIT_MS - fireSaltTimer) / 1000)) + " 秒后…";
         }
         if (fireSaltTimer >= FIRE_SALT_WAIT_MS) {
-          goToCLevel(1297, "火盐灼烧了切出路径，空间被撕开…");
+          goToCLevel(1297, "空间紊乱加剧！你触发了危险切出，即将被抛入死区序列！");
         }
       } else {
         fireSaltTimer = 0;
       }
 
       if (isOnStairs(fps.player.x, fps.player.z)) {
-        goToCLevel(1295, "你踏上了向上的楼梯…");
+        goToCLevel(1295, "空间紊乱加剧！你触发了危险切出，即将被抛入死区序列！");
       }
     }
 

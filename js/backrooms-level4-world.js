@@ -887,6 +887,30 @@ function addMegL4Outpost(group, batches, colliders, interactRoots, ox, oz, mats)
   interactRoots.push(npc);
   pushBoxCollider(colliders, ox + 1.4, ox + 2.2, oz - 0.4, oz + 0.4);
 
+  // 寄存柜管理员（背包满时奖励会寄存到此，死亡不清空）
+  var storageNpc = new THREE.Group();
+  storageNpc.name = "L4StorageClerk";
+  storageNpc.position.set(ox + 3.4, 0, oz - 2.6);
+  storageNpc.userData.brInteract = { kind: "l4_storage_clerk" };
+  var sLegs = new THREE.Mesh(sharedBoxGeometry(), darkMat);
+  sLegs.position.y = 0.48;
+  sLegs.scale.set(0.42, 0.95, 0.34);
+  storageNpc.add(sLegs);
+  var sTorso = new THREE.Mesh(sharedBoxGeometry(), blueMat);
+  sTorso.position.y = 1.18;
+  sTorso.scale.set(0.68, 0.75, 0.38);
+  storageNpc.add(sTorso);
+  var sHead = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8), skinMat);
+  sHead.position.y = 1.82;
+  storageNpc.add(sHead);
+  var sPick = new THREE.Mesh(sharedBoxGeometry(), mats.invisiblePick);
+  sPick.position.y = 1.05;
+  sPick.scale.set(0.9, 2.2, 0.9);
+  storageNpc.add(sPick);
+  group.add(storageNpc);
+  interactRoots.push(storageNpc);
+  pushBoxCollider(colliders, ox + 3.0, ox + 3.8, oz - 3.0, oz - 2.2);
+
   // 前哨站固定两台饮水机：巡检任务需要在此对它们按 E，不能依赖随机办公室刷新。
   addWaterCooler(
     group,

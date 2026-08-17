@@ -66,17 +66,29 @@ export function fadeOutLevel0Music(durationMs) {
   var startedAt = performance.now();
   var startedVolume = el.volume;
   return new Promise(function (resolve) {
-    function step(now) {
-      var progress = Math.min(1, (now - startedAt) / duration);
-      el.volume = startedVolume * (1 - progress);
-      if (progress < 1) {
-        fadeFrame = requestAnimationFrame(step);
-        return;
-      }
+    var settled = false;
+    function finish() {
+      if (settled) return;
+      settled = true;
       fadeFrame = 0;
       stopLevel0Music();
       resolve();
     }
+    function step(now) {
+      try {
+        var progress = Math.min(1, (now - startedAt) / duration);
+        el.volume = startedVolume * (1 - progress);
+        if (progress < 1) {
+          fadeFrame = requestAnimationFrame(step);
+          return;
+        }
+      } catch (err) {
+        // 音频元素异常时直接收尾，绝不让调用方永远等待。
+      }
+      finish();
+    }
+    // rAF 在后台标签页会被完全暂停，这里用计时器兜底收尾。
+    setTimeout(finish, duration + 250);
     fadeFrame = requestAnimationFrame(step);
   });
 }

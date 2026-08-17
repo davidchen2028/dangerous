@@ -198,6 +198,7 @@ function initSurvivalHud() {
 }
 
 import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
+import { updateSteamHungerClip } from "./backrooms-c1299-steam.js";
 
 function showLootToast(text) {
   showBackroomsLootToast(text);
@@ -507,6 +508,7 @@ function startLoop() {
     if (survival && !survival.dead) {
       _survCtx.sprinting = sprinting;
       survival.update(dt, _survCtx);
+      updateSteamHungerClip(dt, { survival: survival, yaw: fps.yaw });
     }
 
     _physOpts.gravity = DEFAULT_GRAVITY;

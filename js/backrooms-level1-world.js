@@ -559,6 +559,8 @@ var _megBackDoorStaffNpc = null;
 var _megLevel11Npc = null;
 /** @type {{ x: number, z: number, talkRadius: number, group: THREE.Object3D } | null} 任务包裹收件员 */
 var _megPackageReceiverNpc = null;
+/** @type {{ x: number, z: number, talkRadius: number, group: THREE.Object3D } | null} 寄存柜管理员 */
+var _megStorageClerkNpc = null;
 function resetMegModuleState() {
   _megBaseCenter = null;
   _megBaseOccluderGroup = null;
@@ -571,6 +573,7 @@ function resetMegModuleState() {
   _megBackDoorStaffNpc = null;
   _megLevel11Npc = null;
   _megPackageReceiverNpc = null;
+  _megStorageClerkNpc = null;
 }
 
 /** 出生区块 M.E.G 引导员 */
@@ -920,6 +923,21 @@ function buildMegAlphaBase(root, ctx) {
     z: packageReceiver.z,
     talkRadius: 2.85,
     group: packageReceiver.group,
+  };
+
+  var storageClerk = buildMegStaffFigure(
+    root,
+    center.x + 1.85,
+    center.z - 1.55,
+    "MegStorageClerk",
+    "storage",
+    0x5a4a2a
+  );
+  _megStorageClerkNpc = {
+    x: storageClerk.x,
+    z: storageClerk.z,
+    talkRadius: 2.8,
+    group: storageClerk.group,
   };
 
   root.add(group);
@@ -1665,6 +1683,9 @@ export function buildBackroomsLevel1World(root, opts) {
         _megPackageReceiverNpc.group.visible
       ) {
         roots.push(_megPackageReceiverNpc.group);
+      }
+      if (_megStorageClerkNpc && _megStorageClerkNpc.group) {
+        roots.push(_megStorageClerkNpc.group);
       }
       if (
         _megDoorState &&

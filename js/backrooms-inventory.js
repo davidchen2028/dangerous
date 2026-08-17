@@ -27,6 +27,12 @@ const ITEM_ICONS = {
   roulette_revolver: "img/backrooms/roulette-revolver.png",
   package_l1: "img/backrooms/package.png",
   package_l159: "img/backrooms/package.png",
+  sample_can_c144: "img/backrooms/package.png",
+  sample_can_c1299: "img/backrooms/package.png",
+  beacon_c1299: "img/backrooms/archive-viewer.png",
+  scrap_page_c1299: "img/backrooms/archive-viewer.png",
+  level_key_l14: "img/backrooms/archive-viewer.png",
+  meg_recorder: "img/backrooms/archive-viewer.png",
 };
 
 /** @type {(null | { id: string, name: string })[]} */
@@ -527,7 +533,32 @@ function dispatchUseItemId(itemId) {
     if (typeof window.__backroomsUseRoulette === "function") {
       window.__backroomsUseRoulette();
     }
+  } else if (itemId === "bandage") {
+    if (typeof window.__backroomsUseBandage === "function") {
+      window.__backroomsUseBandage();
+    }
+  } else if (itemId === "scrap_page_c1299") {
+    if (typeof window.__backroomsUseScrapPage === "function") {
+      window.__backroomsUseScrapPage();
+    } else {
+      useScrapPageSafe();
+    }
   }
+}
+
+const SCRAP_PAGE_SAFE_TEXT = [
+  "【飘流残页 · 已带回安全区查阅】",
+  "",
+  "……十连死区共享同一套切出拓扑……",
+  "……C-1289 是阀门，吞咽与切出只是不同旋钮……",
+  "……黑石不是出口，是另一口锅的锅沿……",
+  "……不要相信香味，那是消融的邀请函……",
+  "",
+  "（残页仍留在背包；建议勿在汤雾中展开。）",
+].join("\n");
+
+function useScrapPageSafe() {
+  showArchiveOverlay(SCRAP_PAGE_SAFE_TEXT);
 }
 
 const C11_ARCHIVE_TEXT = [
@@ -565,12 +596,11 @@ function onArchiveKeydown(e) {
   }
 }
 
-function useArchiveC11() {
+function showArchiveOverlay(text) {
   if (archiveOverlayEl) return;
-  if (!removeFirstItem("archive_c11")) return;
   if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
   var overlay = document.createElement("div");
-  overlay.id = "backroomsArchiveC11";
+  overlay.id = "backroomsArchiveOverlay";
   overlay.setAttribute("role", "dialog");
   overlay.style.cssText =
     "position:fixed;inset:0;z-index:120;display:grid;place-items:center;" +
@@ -580,7 +610,7 @@ function useArchiveC11() {
     "max-width:min(680px,86vw);max-height:80vh;overflow:auto;padding:26px 30px;" +
     "background:#12161d;border:1px solid #3a4658;border-radius:12px;color:#e7eef6;" +
     "font:14px/1.7 system-ui,sans-serif;white-space:pre-wrap;box-shadow:0 18px 60px #000;";
-  panel.textContent = C11_ARCHIVE_TEXT;
+  panel.textContent = text;
   var tip = document.createElement("p");
   tip.style.cssText = "margin:18px 0 0;text-align:center;color:#8fa2b8;font:13px system-ui;";
   tip.innerHTML = "按 <kbd>Q</kbd> / <kbd>Esc</kbd> 关闭";
@@ -592,6 +622,12 @@ function useArchiveC11() {
   document.body.appendChild(overlay);
   archiveOverlayEl = overlay;
   document.addEventListener("keydown", onArchiveKeydown, true);
+}
+
+function useArchiveC11() {
+  if (archiveOverlayEl) return;
+  if (!removeFirstItem("archive_c11")) return;
+  showArchiveOverlay(C11_ARCHIVE_TEXT);
 }
 
 /** 按 R：使用当前加粗选中的快捷栏物品 */

@@ -48,6 +48,18 @@ import {
 } from "./backrooms-fps-controller.js";
 import { buildClumpFigure } from "./backrooms-clump.js";
 import { createClumpsAt } from "./backrooms-clump-ai.js";
+import {
+  markLevelEntered,
+  handleTaskUiKey,
+  isTaskUiOpen,
+  isTaskAccepted,
+  isTaskDelivered,
+  isTaskCompleted,
+  recordReconSighting,
+  getReconProgress,
+  getReconRecordedKeys,
+  failTasksOnDeath,
+} from "./backrooms-tasks.js";
 
 const CITY_HALF = 200;
 const WORLD_HALF = 360;
@@ -55,6 +67,10 @@ const SPAWN_X = 0;
 const SPAWN_Z = 245;
 const EYE_HEIGHT = 1.65;
 const AIM_MAX = 4.6;
+const SAMPLE_TASK_ID = "sample_c144_collapse";
+const MUTANT_TASK_ID = "recon_c144_mutant";
+const SAMPLE_REACH = 8;
+const MUTANT_RECORD_REACH = 7;
 const NIGHT_DONE_KEY = "backrooms_c144_night_done_v1";
 const BUILDING_COLLAPSE_INTERVAL_MS = 20000;
 const MUTANT_ACTIVE_MS = 120000;
@@ -201,8 +217,12 @@ function buildCity(root) {
       var collider = wallCollider(x - w * 0.5, x + w * 0.5, z - d * 0.5, z + d * 0.5);
       colliders.push(collider);
       cityBuildings.push({
+        id: "b" + cityBuildings.length,
         group: building,
         collider: collider,
+        x: x,
+        z: z,
+        radius: Math.max(w, d) * 0.55,
         height: h,
         collapsing: false,
         collapsed: false,
@@ -651,25 +671,181 @@ function resolveInteract() {
     : null;
 }
 
+function isSampleTaskActive() {
+  return (
+    isTaskAccepted(SAMPLE_TASK_ID) &&
+    !isTaskCompleted(SAMPLE_TASK_ID) &&
+    !isTaskDelivered(SAMPLE_TASK_ID)
+  );
+}
+
+function isMutantTaskActive() {
+  return (
+    isTaskAccepted(MUTANT_TASK_ID) &&
+    !isTaskCompleted(MUTANT_TASK_ID) &&
+    !isTaskDelivered(MUTANT_TASK_ID)
+  );
+}
+
+function findNearbySampleBuilding() {
+  var best = null;
+  var bestD2 = SAMPLE_REACH * SAMPLE_REACH;
+  for (var i = 0; i < cityBuildings.length; i++) {
+    var b = cityBuildings[i];
+    if (!b.collapsed && !(b.collapsing && b.progress >= 0.15)) continue;
+    var dx = b.x - fps.player.x;
+    var dz = b.z - fps.player.z;
+    var reach = SAMPLE_REACH + b.radius * 0.35;
+    var d2 = dx * dx + dz * dz;
+    if (d2 <= reach * reach && d2 < bestD2) {
+      bestD2 = d2;
+      best = b;
+    }
+  }
+  return best;
+}
+
+function isNearHostileMutant() {
+  if (!hostileClumps || !hostileClumps.clumps) return false;
+  var r2 = MUTANT_RECORD_REACH * MUTANT_RECORD_REACH;
+  for (var i = 0; i < hostileClumps.clumps.length; i++) {
+    var c = hostileClumps.clumps[i];
+    if (c.dead) continue;
+    var dx = c.x - fps.player.x;
+    var dz = c.z - fps.player.z;
+    if (dx * dx + dz * dz <= r2) return true;
+  }
+  return false;
+}
+
+function getTaskAimHint() {
+  if (isSampleTaskActive()) {
+    if (!hasSpentNight()) {
+      return "塌楼取样 · 先在社区度过一夜，塌楼才会开始";
+    }
+    var building = findNearbySampleBuilding();
+    if (building) {
+      var prog = getReconProgress(SAMPLE_TASK_ID);
+      return (
+        "塌楼残墟 · 按 <kbd>E</kbd> 取样（" +
+        prog.count +
+        "/" +
+        prog.target +
+        "）"
+      );
+    }
+  }
+  if (isMutantTaskActive()) {
+    if (!hasSpentNight()) {
+      return "周期记录 · 先度过一夜，变异肢团才会出没";
+    }
+    if (isNearHostileMutant()) {
+      var keys = getReconRecordedKeys(MUTANT_TASK_ID);
+      var phase = mutantsResting ? "休息" : "活动";
+      var done = keys.indexOf(mutantsResting ? "rest" : "active") >= 0;
+      if (done) {
+        return "本阶段已记录，等待另一阶段（" + phase + "）";
+      }
+      var mprog = getReconProgress(MUTANT_TASK_ID);
+      return (
+        "变异肢团 · " +
+        phase +
+        "中 · 按 <kbd>E</kbd> 记录（" +
+        mprog.count +
+        "/" +
+        mprog.target +
+        "）"
+      );
+    }
+  }
+  return "";
+}
+
+function trySampleCollapseE() {
+  if (!isSampleTaskActive()) return false;
+  if (!hasSpentNight()) {
+    showToast("夜里塌楼才会开始，先在社区度过一晚。");
+    return true;
+  }
+  var building = findNearbySampleBuilding();
+  if (!building) {
+    showToast("靠近正在倒塌或已塌的建筑残墟再取样。");
+    return true;
+  }
+  var result = recordReconSighting(SAMPLE_TASK_ID, building.id);
+  if (!result.ok) {
+    showToast(result.reason || "无法取样");
+    return true;
+  }
+  if (result.done) {
+    showToast("灾情取样完成（" + result.count + "/" + result.target + "）· 回 Level 4 领赏", 3600);
+  } else {
+    showToast("已取样一处残墟（" + result.count + "/" + result.target + "）");
+  }
+  return true;
+}
+
+function tryMutantRecordE() {
+  if (!isMutantTaskActive()) return false;
+  if (!hasSpentNight()) {
+    showToast("度过一夜后，变异肢团才会按周期出没。");
+    return true;
+  }
+  if (!isNearHostileMutant()) {
+    showToast("靠近变异肢团再按 E 记录当前活动阶段。");
+    return true;
+  }
+  var key = mutantsResting ? "rest" : "active";
+  var result = recordReconSighting(MUTANT_TASK_ID, key);
+  if (!result.ok) {
+    showToast(result.reason || "无法记录");
+    return true;
+  }
+  var phaseName = mutantsResting ? "休息" : "活动";
+  if (result.done) {
+    showToast(
+      "活动周期记录完成（已记 " + phaseName + "）· 回 Level 4 领赏",
+      3600
+    );
+  } else {
+    showToast(
+      "已记录「" + phaseName + "」阶段（" + result.count + "/" + result.target + "）"
+    );
+  }
+  return true;
+}
+
+function tryTaskE() {
+  if (dialogueOpen || cutsceneActive || transitionLock || isInventoryOpen() || isTaskUiOpen()) {
+    return;
+  }
+  if (!survival || survival.dead) return;
+  if (trySampleCollapseE()) return;
+  if (tryMutantRecordE()) return;
+}
+
 function updateInteractUi() {
   var data = resolveInteract();
+  var taskHint = getTaskAimHint();
   var hidden =
     dialogueOpen ||
     cutsceneActive ||
     isInventoryOpen() ||
+    isTaskUiOpen() ||
     !survival ||
     survival.dead ||
-    !data;
+    (!data && !taskHint);
   if (interactHintEl) {
     interactHintEl.hidden = hidden;
     if (!hidden) {
-      interactHintEl.innerHTML = "按 <kbd>Q</kbd> 与肢团交流";
+      if (taskHint) interactHintEl.innerHTML = taskHint;
+      else interactHintEl.innerHTML = "按 <kbd>Q</kbd> 与肢团交流";
     }
   }
   if (crosshairEl) {
     crosshairEl.classList.toggle(
       "backrooms-crosshair--hidden",
-      dialogueOpen || cutsceneActive || isInventoryOpen() || !survival || survival.dead
+      dialogueOpen || cutsceneActive || isInventoryOpen() || isTaskUiOpen() || !survival || survival.dead
     );
     crosshairEl.classList.toggle("backrooms-crosshair--interact", !hidden);
   }
@@ -803,6 +979,7 @@ function respawnAtCommunitySpawn(reason) {
 
 function installLocalRespawn() {
   survival.onPrepareDeath = function (reason) {
+    failTasksOnDeath(showToast);
     if (!survival.deathEl) return;
     var msg = survival.deathEl.querySelector("[data-death-msg]");
     if (msg) {
@@ -822,12 +999,16 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen() || dialogueOpen || cutsceneActive;
+      return isInventoryOpen() || dialogueOpen || cutsceneActive || isTaskUiOpen();
     },
     onJump: function () {
-      if (!cutsceneActive && !dialogueOpen) tryBackroomsJump(fps, 8);
+      if (!cutsceneActive && !dialogueOpen && !isTaskUiOpen()) tryBackroomsJump(fps, 8);
     },
     onKeyDown: function (event) {
+      if (!dialogueOpen && !cutsceneActive && !isInventoryOpen() && handleTaskUiKey(event)) {
+        event.preventDefault();
+        return true;
+      }
       if (!event.repeat && handleDialogueChoice(event.code)) {
         event.preventDefault();
         return true;
@@ -835,6 +1016,11 @@ function bindControls() {
       if (event.code === "KeyQ" && !event.repeat) {
         event.preventDefault();
         tryQAction();
+        return true;
+      }
+      if (event.code === "KeyE" && !event.repeat) {
+        event.preventDefault();
+        tryTaskE();
         return true;
       }
       if (event.code === "KeyB" && !event.repeat && !dialogueOpen && !cutsceneActive) {
@@ -865,6 +1051,7 @@ function init() {
     return;
   }
   showEnterLevelBannerIfQueued();
+  markLevelEntered("c144", showToast);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x9aa7ae);
   scene.fog = new THREE.Fog(0x9aa7ae, 150, 610);
@@ -904,7 +1091,7 @@ function init() {
   });
   updateMegPointsDisplay(megPointsEl);
   hintEl.innerHTML =
-    "Level C-144 · 和爱社区 · <kbd>Q</kbd> 交流 · <kbd>WASD</kbd> 移动 · <kbd>B</kbd> 背包";
+    "Level C-144 · 和爱社区 · <kbd>Q</kbd> 交流 · <kbd>E</kbd> 取样/记录 · <kbd>Y</kbd> 任务 · <kbd>B</kbd> 背包";
   bindControls();
 
   var clock = new THREE.Clock();
@@ -925,7 +1112,8 @@ function init() {
       !dialogueOpen &&
       !transitionLock &&
       (!survival || !survival.dead) &&
-      !isInventoryOpen()
+      !isInventoryOpen() &&
+      !isTaskUiOpen()
     ) {
       var mul =
         survival && sprinting

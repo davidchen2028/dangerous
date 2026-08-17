@@ -23,6 +23,16 @@ import {
 } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
+import { updatePastoralStareClip } from "./backrooms-c1298-stare.js";
+import {
+  markLevelEntered,
+  handleTaskUiKey,
+  isTaskUiOpen,
+  isTaskAccepted,
+  isTaskDelivered,
+  isTaskCompleted,
+  recordReconSighting,
+} from "./backrooms-tasks.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -50,6 +60,8 @@ const WALL_H = 8;
 const EYE_HEIGHT = 1.65;
 const AIM_MAX = 4.5;
 const TREE_MODEL_URL = "./models/tree-by-zsky.glb";
+const LOOP_TASK_ID = "loop_c192";
+const LOOP_DWELL_SEC = 90;
 const TREE_POSITIONS = [
   [-3.4, -3.3],
   [0, -2.1],
@@ -85,6 +97,9 @@ let camera = null;
 let survival = null;
 let currentAimPick = null;
 let transitionLock = false;
+/** 本层停留秒数（回路确认任务用） */
+let dwellSec = 0;
+let loopReadyToasted = false;
 
 function wallCollider(minX, maxX, minZ, maxZ) {
   return { kind: "wall", minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ };
@@ -225,23 +240,74 @@ function resolveInteract() {
     : null;
 }
 
+function isLoopTaskActive() {
+  return (
+    isTaskAccepted(LOOP_TASK_ID) &&
+    !isTaskCompleted(LOOP_TASK_ID) &&
+    !isTaskDelivered(LOOP_TASK_ID)
+  );
+}
+
 function updateInteractUi() {
   var data = resolveInteract();
   var treeReady = data && data.kind === "c192_tree";
+  var loopActive = isLoopTaskActive();
+  var loopReady = loopActive && dwellSec >= LOOP_DWELL_SEC;
   var hidden =
-    transitionLock || isInventoryOpen() || !survival || survival.dead || !treeReady;
+    transitionLock ||
+    isInventoryOpen() ||
+    isTaskUiOpen() ||
+    !survival ||
+    survival.dead ||
+    (!treeReady && !loopActive);
   if (interactHintEl) {
     interactHintEl.hidden = hidden;
-    if (!hidden) interactHintEl.innerHTML = "树干 · 按 <kbd>Q</kbd> 切入";
+    if (!hidden) {
+      if (loopActive && !loopReady) {
+        interactHintEl.innerHTML =
+          "回路确认 · 林内停留 " +
+          Math.ceil(LOOP_DWELL_SEC - dwellSec) +
+          " 秒后再按 <kbd>E</kbd>（勿急着切树）";
+      } else if (loopReady) {
+        interactHintEl.innerHTML = "回路已满足 · 按 <kbd>E</kbd> 完成确认";
+      } else {
+        interactHintEl.innerHTML = "树干 · 按 <kbd>Q</kbd> 切入";
+      }
+    }
   }
   if (crosshairEl) {
-    crosshairEl.classList.toggle("backrooms-crosshair--hidden", isInventoryOpen());
-    crosshairEl.classList.toggle("backrooms-crosshair--interact", !hidden);
+    crosshairEl.classList.toggle(
+      "backrooms-crosshair--hidden",
+      isInventoryOpen() || isTaskUiOpen()
+    );
+    crosshairEl.classList.toggle(
+      "backrooms-crosshair--interact",
+      !hidden && (treeReady || loopReady)
+    );
   }
 }
 
+function tryLoopConfirmE() {
+  if (transitionLock || isInventoryOpen() || isTaskUiOpen()) return;
+  if (!survival || survival.dead || !isLoopTaskActive()) return;
+  if (dwellSec < LOOP_DWELL_SEC) {
+    showToast(
+      "再在林内停留 " + Math.ceil(LOOP_DWELL_SEC - dwellSec) + " 秒后再确认回路。"
+    );
+    return;
+  }
+  var result = recordReconSighting(LOOP_TASK_ID, "loop");
+  if (!result.ok) {
+    showToast(result.reason || "无法确认");
+    return;
+  }
+  showToast("封闭森林回路确认完成 · 回 Level 4 领赏", 3400);
+}
+
 function tryQAction() {
-  if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
+  if (transitionLock || isInventoryOpen() || isTaskUiOpen() || !survival || survival.dead) {
+    return;
+  }
   var data = resolveInteract();
   if (data && data.kind === "c192_tree") exitToLevel48();
 }
@@ -253,15 +319,24 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen() || transitionLock;
+      return isInventoryOpen() || transitionLock || isTaskUiOpen();
     },
     onJump: function () {
-      if (!transitionLock) tryBackroomsJump(fps, 8);
+      if (!transitionLock && !isTaskUiOpen()) tryBackroomsJump(fps, 8);
     },
     onKeyDown: function (event) {
+      if (!isInventoryOpen() && handleTaskUiKey(event)) {
+        event.preventDefault();
+        return true;
+      }
       if (event.code === "KeyQ" && !event.repeat) {
         event.preventDefault();
         tryQAction();
+        return true;
+      }
+      if (event.code === "KeyE" && !event.repeat) {
+        event.preventDefault();
+        tryLoopConfirmE();
         return true;
       }
       if (event.code === "KeyB" && !event.repeat) {
@@ -281,6 +356,7 @@ function init() {
     return;
   }
   showEnterLevelBannerIfQueued();
+  markLevelEntered("c192", showToast);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x18251a);
   scene.fog = new THREE.Fog(0x18251a, 5, 15);
@@ -316,7 +392,7 @@ function init() {
   });
   updateMegPointsDisplay(megPointsEl);
   hintEl.innerHTML =
-    "Level C-192 · 10×10 森林 · 对准树按 <kbd>Q</kbd> 切入 · <kbd>B</kbd> 背包";
+    "Level C-192 · 封闭森林 · <kbd>Q</kbd> 切树 · <kbd>E</kbd> 回路确认 · <kbd>Y</kbd> 任务 · <kbd>B</kbd> 背包";
   bindControls();
 
   var clock = new THREE.Clock();
@@ -327,11 +403,26 @@ function init() {
     var moving = isBackroomsPlayerMoving(fps);
     var sprinting = isBackroomsSprintHeld(fps) && moving;
     if (survival && !survival.dead) {
+      dwellSec += dt;
+      if (isLoopTaskActive() && !loopReadyToasted && dwellSec >= LOOP_DWELL_SEC) {
+        loopReadyToasted = true;
+        showToast("停留已满 90 秒 · 按 E 完成回路确认", 3200);
+      }
       _survCtx.sprinting = sprinting;
       survival.update(dt, _survCtx);
+      updatePastoralStareClip(dt, {
+        moving: moving,
+        survival: survival,
+        yaw: fps.yaw,
+      });
     }
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock) {
+    if (
+      (!survival || !survival.dead) &&
+      !isInventoryOpen() &&
+      !isTaskUiOpen() &&
+      !transitionLock
+    ) {
       var mul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)

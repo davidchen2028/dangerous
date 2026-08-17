@@ -10,6 +10,11 @@ import {
 } from "./backrooms-survival-persist.js";
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
 import { toggleBackpack, isInventoryOpen, setInventoryOpenHandler } from "./backrooms-inventory.js";
+import {
+  openBaseStorage,
+  isBaseStorageOpen,
+  wrapInventoryOpenHandler,
+} from "./backrooms-base-storage.js";
 import { updateMegPointsDisplay } from "./backrooms-meg-points.js";
 import {
   initBackroomsTemperature,
@@ -267,9 +272,16 @@ function isAimTaskBoard() {
   return currentAimPick.distance <= AIM_INTERACT_MAX;
 }
 
+function isAimStorageClerk() {
+  if (!currentAimPick || !currentAimPick.data) return false;
+  if (currentAimPick.data.kind !== "l4_storage_clerk") return false;
+  return currentAimPick.distance <= AIM_INTERACT_MAX;
+}
+
 function hudBlocked() {
   return (
     isInventoryOpen() ||
+    isBaseStorageOpen() ||
     dialogueOpen ||
     isTaskUiOpen() ||
     !survival ||
@@ -365,6 +377,11 @@ function updateInteractHint() {
     interactHintEl.innerHTML = "按 <kbd>Q</kbd> 与 M.E.G 成员交谈";
     return;
   }
+  if (isAimStorageClerk()) {
+    interactHintEl.hidden = false;
+    interactHintEl.innerHTML = "寄存柜管理员 · 按 <kbd>Q</kbd> 存取物品";
+    return;
+  }
   if (isAimTaskBoard()) {
     interactHintEl.hidden = false;
     interactHintEl.innerHTML = "按 <kbd>Q</kbd> 查看任务板";
@@ -453,9 +470,16 @@ function tryTaskBoardQ() {
 }
 
 function leaveLevel4(href) {
-  fadeOutLevel4Music(MUSIC_FADE_OUT_MS).then(function () {
+  var navigated = false;
+  function go() {
+    if (navigated) return;
+    navigated = true;
     window.location.href = href;
-  });
+  }
+  // 音乐淡出由 requestAnimationFrame 驱动，页面被后台节流或音频异常时可能永不结束。
+  // transitionLock 此时已锁住移动，所以必须有兜底计时器保证一定离开本层。
+  window.setTimeout(go, MUSIC_FADE_OUT_MS + 400);
+  fadeOutLevel4Music(MUSIC_FADE_OUT_MS).then(go, go);
 }
 
 function exitToL1BntgBase() {
@@ -471,18 +495,16 @@ function exitToL1BntgBase() {
 
 function handleBntgChoice(choice) {
   if (!dialogueOpen) return;
-  if (choice !== "a") {
-    closeBntgDialogue();
-    return;
-  }
-  if (dialogueKind === "meg_reward") {
+  var kind = dialogueKind;
+  // 先关闭对话再执行后续逻辑：任何一步抛错都不会把玩家永久锁在
+  // dialogueOpen 状态里（那会同时吞掉所有按键并冻结移动）。
+  closeBntgDialogue();
+  if (choice !== "a") return;
+
+  if (kind === "meg_reward") {
     var task = getFirstDeliveredUnclaimedTask();
-    if (!task) {
-      closeBntgDialogue();
-      return;
-    }
+    if (!task) return;
     var result = claimTaskReward(task.id);
-    closeBntgDialogue();
     if (!result.ok) {
       showLootToast(result.reason || "无法领取奖励");
       return;
@@ -491,8 +513,11 @@ function handleBntgChoice(choice) {
     var msg = "任务完成：" + task.title + " · +" + result.reward + " 积分";
     if (result.cooldownNote) msg += " · " + result.cooldownNote;
     showLootToast(msg);
-  } else if (dialogueKind === "meg") acceptMegTaskBoard();
-  else exitToL1BntgBase();
+  } else if (kind === "meg") {
+    acceptMegTaskBoard();
+  } else {
+    exitToL1BntgBase();
+  }
 }
 
 function tryWaterCoolerQ() {
@@ -552,14 +577,14 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen() || dialogueOpen || isTaskUiOpen();
+      return isInventoryOpen() || isBaseStorageOpen() || dialogueOpen || isTaskUiOpen();
     },
     onJump: function () {
       tryBackroomsJump(fps, JUMP_SPEED);
     },
     onKeyDown: function (e) {
       // 任务板 / 成就面板优先吃掉按键（也负责 Y 开关面板）
-      if (!dialogueOpen && !isInventoryOpen() && handleTaskUiKey(e)) {
+      if (!dialogueOpen && !isInventoryOpen() && !isBaseStorageOpen() && handleTaskUiKey(e)) {
         e.preventDefault();
         return true;
       }
@@ -592,6 +617,7 @@ function bindControls() {
         else if (isAimVendingL61()) tryVendingQ();
         else if (isAimBntgLiaison()) openBntgDialogue();
         else if (isAimMegMember()) openMegDialogue();
+        else if (isAimStorageClerk()) openBaseStorage({ toast: true });
         else if (isAimTaskBoard()) tryTaskBoardQ();
         else tryWaterCoolerQ();
         return true;
@@ -649,11 +675,13 @@ function init() {
   survival.mountHud(document.querySelector(".backrooms-hud") || document.body);
   loadBackroomsSurvival(survival);
   registerBackroomsSurvivalPersist(survival);
-  setInventoryOpenHandler(function (open) {
-    if (open && document.pointerLockElement && document.exitPointerLock) {
-      document.exitPointerLock();
-    }
-  });
+  setInventoryOpenHandler(
+    wrapInventoryOpenHandler(function (open) {
+      if (open && document.pointerLockElement && document.exitPointerLock) {
+        document.exitPointerLock();
+      }
+    })
+  );
   registerBackroomsInventoryUseHandlers(survival, {
     onAlmondWaterUsed: function () {
       showLootToast("杏仁水 · +15 血量 · +25 理智");
@@ -699,6 +727,7 @@ function init() {
     if (
       (!survival || !survival.dead) &&
       !isInventoryOpen() &&
+      !isBaseStorageOpen() &&
       !transitionLock &&
       !dialogueOpen &&
       !isTaskUiOpen()
@@ -718,7 +747,12 @@ function init() {
     applyBackroomsCamera(fps, camera, EYE_HEIGHT);
     if (crosshairEl) {
       var hideXh =
-        isInventoryOpen() || dialogueOpen || isTaskUiOpen() || !survival || survival.dead;
+        isInventoryOpen() ||
+        isBaseStorageOpen() ||
+        dialogueOpen ||
+        isTaskUiOpen() ||
+        !survival ||
+        survival.dead;
       crosshairEl.classList.toggle("backrooms-crosshair--hidden", hideXh);
       crosshairEl.classList.toggle(
         "backrooms-crosshair--interact",

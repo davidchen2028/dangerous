@@ -23,6 +23,11 @@ import {
   removeFirstItem,
   countItem,
 } from "./backrooms-inventory.js";
+import {
+  openBaseStorage,
+  isBaseStorageOpen,
+  wrapInventoryOpenHandler,
+} from "./backrooms-base-storage.js";
 import { getSellPrice } from "./backrooms-shop-prices.js";
 import {
   tryBeginMerchantTrade,
@@ -346,11 +351,13 @@ function initSurvivalHud() {
     },
     { onMegRespawn: respawnAtMegBase, refreshLevelPass: "clip", getLevelPassYaw: function () { return yaw; } }
   );
-  setInventoryOpenHandler(function (open) {
-    if (open && document.pointerLockElement && document.exitPointerLock) {
-      document.exitPointerLock();
-    }
-  });
+  setInventoryOpenHandler(
+    wrapInventoryOpenHandler(function (open) {
+      if (open && document.pointerLockElement && document.exitPointerLock) {
+        document.exitPointerLock();
+      }
+    })
+  );
   registerBackroomsInventoryUseHandlers(survival, {
     onAlmondWaterUsed: function () {
       showLootToast("杏仁水 · +15 血量 · +25 理智");
@@ -518,6 +525,10 @@ function isNearMegLevel11Staff() {
 
 function isNearMegPackageReceiver() {
   return isAimKind("meg_npc", "package_receiver");
+}
+
+function isNearMegStorageClerk() {
+  return isAimKind("meg_npc", "storage");
 }
 
 function syncPackageReceiverNpc() {
@@ -1110,7 +1121,7 @@ function isAimingLevel1_1WallForCut() {
 }
 
 function tryMegQAction() {
-  if (megDialogueOpen || isInventoryOpen() || isHomeEndingActive()) return;
+  if (megDialogueOpen || isInventoryOpen() || isBaseStorageOpen() || isHomeEndingActive()) return;
   if (!survival || survival.dead) return;
   if (hubRoute && hubRoute.isActive()) {
     if (hubRoute.handleDoor(getAimInteractData())) return;
@@ -1191,6 +1202,10 @@ function tryMegQAction() {
   }
   if (isNearMegPackageReceiver()) {
     openPackageReceiverDialogue();
+    return;
+  }
+  if (isNearMegStorageClerk()) {
+    openBaseStorage({ toast: true });
     return;
   }
   if (isNearMegGuide()) {
@@ -1415,7 +1430,8 @@ function updateMegDoorHint() {
     isNearMegInteriorStaff() ||
     isNearMegBackDoorStaff() ||
     isNearMegLevel11Staff() ||
-    isNearMegPackageReceiver()
+    isNearMegPackageReceiver() ||
+    isNearMegStorageClerk()
   ) {
     doorHintEl.hidden = true;
     return;
@@ -1457,11 +1473,19 @@ function updateMegInteriorTalkHint() {
     interiorTalkHintEl.hidden = true;
     return;
   }
+  if (isNearMegStorageClerk()) {
+    interiorTalkHintEl.hidden = false;
+    interiorTalkHintEl.innerHTML = "寄存柜管理员 · 按 <kbd>Q</kbd> 存取物品";
+    return;
+  }
   interiorTalkHintEl.hidden = !(
     isNearMegInteriorStaff() ||
     isNearMegBackDoorStaff() ||
     isNearMegPackageReceiver()
   );
+  if (!interiorTalkHintEl.hidden) {
+    interiorTalkHintEl.innerHTML = "按 <kbd>Q</kbd> 与 M.E.G 工作人员对话";
+  }
 }
 
 function updateLevel11TalkHint() {
@@ -1956,7 +1980,7 @@ function bindControls() {
         e.preventDefault();
         return;
       }
-      if (isInventoryOpen()) return;
+      if (isInventoryOpen() || isBaseStorageOpen()) return;
       if (e.pointerType === "mouse" && e.button === 0 && !pointerLocked) {
         requestLock(e.currentTarget);
       }
@@ -2205,6 +2229,7 @@ function startLoop() {
     if (
       (!survival || !survival.dead) &&
       !isInventoryOpen() &&
+      !isBaseStorageOpen() &&
       !megDialogueOpen &&
       !isTaskUiOpen() &&
       !isHomeEndingActive()

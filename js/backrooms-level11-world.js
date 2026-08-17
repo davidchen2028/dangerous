@@ -784,6 +784,51 @@ function addBntgHouse(root, staticColliders, interactRoots) {
 
   addBntgNpc(root, interactRoots, x, z + 2);
   addBntgBuyerNpc(root, interactRoots, x + 3.4, z + 2);
+  addBntgStorageNpc(root, interactRoots, x - 3.2, z + 1.6);
+}
+
+/** B.N.T.G 寄存柜管理员 */
+function addBntgStorageNpc(root, interactRoots, x, z) {
+  var group = new THREE.Group();
+  group.name = "Level11BntgStorage";
+  group.position.set(x, 0, z);
+  group.rotation.y = Math.PI;
+  root.add(group);
+
+  var uniformMat = new THREE.MeshLambertMaterial({ color: 0x4a5a3a, emissive: 0x0c1408 });
+  var skinMat = new THREE.MeshLambertMaterial({ color: 0xc89a6a, emissive: 0x100804 });
+  var legMat = new THREE.MeshLambertMaterial({ color: 0x2c2216, emissive: 0x080602 });
+
+  var legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.85, 0.24), legMat);
+  legL.position.set(-0.14, 0.425, 0);
+  group.add(legL);
+  var legR = legL.clone();
+  legR.position.x = 0.14;
+  group.add(legR);
+
+  var torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.72, 0.32), uniformMat);
+  torso.position.y = 1.21;
+  group.add(torso);
+
+  var head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), skinMat);
+  head.position.y = 1.72;
+  group.add(head);
+
+  var armL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.58, 0.16), uniformMat);
+  armL.position.set(-0.36, 1.18, 0);
+  group.add(armL);
+  var armR = armL.clone();
+  armR.position.x = 0.36;
+  group.add(armR);
+
+  var pick = new THREE.Mesh(
+    new THREE.BoxGeometry(0.9, 2.1, 0.9),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  pick.position.y = 1.05;
+  pick.userData.brInteract = { kind: "l11_bntg_storage" };
+  group.add(pick);
+  interactRoots.push(pick);
 }
 
 export function buildLevel11World(root) {

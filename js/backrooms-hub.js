@@ -1,6 +1,7 @@
 /**
  * 枢纽（The Hub）— 安全、稳定、无实体的无限地下公路隧道。
  * 大门没有可见编号；第 2 扇原生解锁门通往 L1，第 11 扇通往 L11。
+ * 门使用后不会消失，可反复出入。
  */
 import * as THREE from "three";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
@@ -53,7 +54,6 @@ const STREAM_AHEAD = 4;
 const TUNNEL_HALF_W = 9;
 const TUNNEL_H = 7;
 const DOORS_PER_CHUNK = 4;
-const VANISHED_KEY = "backrooms_hub_vanished_doors_v1";
 
 const fps = createBackroomsFpsState({
   player: { x: 0, z: 0, radius: 0.34, speed: 4 },
@@ -82,7 +82,6 @@ let currentAim = null;
 let activeColliders = [];
 let activeInteractRoots = [];
 let chunks = new Map();
-let vanishedDoors = readVanishedDoors();
 let discovered = getVisitedLevelIds();
 const symbolMaterials = new Map();
 const destinationMarkMaterials = new Map();
@@ -179,24 +178,6 @@ function showError(text) {
   if (!errorEl) return;
   errorEl.hidden = false;
   errorEl.innerHTML = "<p><strong>枢纽无法启动</strong></p><p>" + String(text) + "</p>";
-}
-
-function readVanishedDoors() {
-  try {
-    var parsed = JSON.parse(sessionStorage.getItem(VANISHED_KEY) || "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    return [];
-  }
-}
-
-function markDoorVanished(id) {
-  if (vanishedDoors.indexOf(id) < 0) vanishedDoors.push(id);
-  try {
-    sessionStorage.setItem(VANISHED_KEY, JSON.stringify(vanishedDoors));
-  } catch (err) {
-    /* ignore */
-  }
 }
 
 function makeSymbolTexture(seed) {
@@ -367,7 +348,6 @@ function nativeUnlocked(index) {
 /** 枢纽内独立出现的异常闪烁门，无需层级密钥即可进入 C-1289。 */
 function buildC1289FlickeringDoor(group, record, z) {
   var doorId = "door_c1289_flicker";
-  if (vanishedDoors.indexOf(doorId) >= 0) return;
   var x = TUNNEL_HALF_W - 0.24;
   var door = addBox(group, mats.c1289Door, x, 2.35, z, 0.42, 4.7, 5.4);
   door.name = "HubC1289FlickeringDoor";
@@ -394,7 +374,6 @@ function buildC1289FlickeringDoor(group, record, z) {
 function buildDoor(group, record, index, side, z) {
   var targetId = targetForDoor(index);
   var doorId = "door_" + index;
-  if (vanishedDoors.indexOf(doorId) >= 0) return;
   // 前 11 扇始终存在；后续只有发现对应层级时才生成。
   if (index > 11 && !targetId) return;
   var x = side === "left" ? -TUNNEL_HALF_W + 0.24 : TUNNEL_HALF_W - 0.24;
@@ -569,11 +548,10 @@ function updateInteractUi() {
   }
 }
 
-function leaveHub(target, doorId) {
+function leaveHub(target) {
   if (transitionLock || !target) return;
   transitionLock = true;
-  if (doorId) markDoorVanished(doorId);
-  showToast("厚重的大门开启。穿过之后，门在身后直接消失。", 3600);
+  showToast("厚重的大门开启。", 2800);
   if (survival) saveBackroomsSurvival(survival);
   grantLevelPass(target.pass, fps.yaw);
   queueEnterLevelBanner(target.banner);
@@ -587,7 +565,7 @@ function tryInteract() {
   var data = currentAim.data || null;
   if (!data) return;
   if (data.kind === "hub_clip_wall") {
-    leaveHub(LEVEL_TARGETS.l4, null);
+    leaveHub(LEVEL_TARGETS.l4);
     return;
   }
   if (data.kind !== "hub_door") return;
@@ -600,7 +578,7 @@ function tryInteract() {
     showToast("大门完全锁死。你缺少与这个环形符号对应的层级密钥。");
     return;
   }
-  leaveHub(target, data.doorId);
+  leaveHub(target);
 }
 
 function bindControls() {

@@ -27,6 +27,11 @@ import {
   BACKPACK_CAPACITY,
 } from "./backrooms-inventory.js";
 import {
+  openBaseStorage,
+  isBaseStorageOpen,
+  wrapInventoryOpenHandler,
+} from "./backrooms-base-storage.js";
+import {
   updateMegPointsDisplay,
   getMegPoints,
   addMegPoints,
@@ -80,6 +85,7 @@ import {
 } from "./backrooms-fps-controller.js";
 import { buildLevel11World } from "./backrooms-level11-world.js";
 import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
+import { updatePastoralStareClip } from "./backrooms-c1298-stare.js";
 
 const levelRaw = document.body.dataset.level || "9";
 const level = Number(levelRaw);
@@ -506,18 +512,25 @@ function resolveInteract() {
 
 function updateInteractUi() {
   var data = resolveInteract();
-  var hidden = isInventoryOpen() || dialogueOpen || !survival || survival.dead || !data;
+  var hidden =
+    isInventoryOpen() || isBaseStorageOpen() || dialogueOpen || !survival || survival.dead || !data;
   if (interactHintEl) {
     interactHintEl.hidden = hidden;
     if (!hidden) {
-      interactHintEl.innerHTML =
-        data.kind === "l11_bntg_buyer"
-          ? "B.N.T.G 收购员 · 按 <kbd>Q</kbd> 出售物资"
-          : "B.N.T.G 员工 · 按 <kbd>Q</kbd> 交易";
+      if (data.kind === "l11_bntg_buyer") {
+        interactHintEl.innerHTML = "B.N.T.G 收购员 · 按 <kbd>Q</kbd> 出售物资";
+      } else if (data.kind === "l11_bntg_storage") {
+        interactHintEl.innerHTML = "B.N.T.G 寄存柜 · 按 <kbd>Q</kbd> 存取物品";
+      } else {
+        interactHintEl.innerHTML = "B.N.T.G 员工 · 按 <kbd>Q</kbd> 交易";
+      }
     }
   }
   if (crosshairEl) {
-    crosshairEl.classList.toggle("backrooms-crosshair--hidden", isInventoryOpen() || dialogueOpen);
+    crosshairEl.classList.toggle(
+      "backrooms-crosshair--hidden",
+      isInventoryOpen() || isBaseStorageOpen() || dialogueOpen
+    );
     crosshairEl.classList.toggle("backrooms-crosshair--interact", !hidden && !!data);
   }
 }
@@ -894,10 +907,11 @@ function openBntgBuyer() {
 
 function tryQAction() {
   if (dialogueOpen) return;
-  if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
+  if (transitionLock || isInventoryOpen() || isBaseStorageOpen() || !survival || survival.dead) return;
   var data = resolveInteract();
   if (data && data.kind === "l11_bntg_vendor") openBntgVendor();
   else if (data && data.kind === "l11_bntg_buyer") openBntgBuyer();
+  else if (data && data.kind === "l11_bntg_storage") openBaseStorage({ toast: true });
 }
 
 function isChoiceKey(e, letter) {
@@ -913,10 +927,12 @@ function bindControls() {
     inputEl: inputEl,
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
-    shouldBlockPointerLock: function () { return isInventoryOpen() || dialogueOpen || isTaskUiOpen(); },
+    shouldBlockPointerLock: function () {
+      return isInventoryOpen() || isBaseStorageOpen() || dialogueOpen || isTaskUiOpen();
+    },
     onJump: function () { tryBackroomsJump(fps, 8); },
     onKeyDown: function (e) {
-      if (!dialogueOpen && !isInventoryOpen() && handleTaskUiKey(e)) {
+      if (!dialogueOpen && !isInventoryOpen() && !isBaseStorageOpen() && handleTaskUiKey(e)) {
         e.preventDefault();
         return true;
       }
@@ -1057,9 +1073,11 @@ function init() {
   survival.mountHud(document.querySelector(".backrooms-hud") || document.body);
   loadBackroomsSurvival(survival);
   registerBackroomsSurvivalPersist(survival);
-  setInventoryOpenHandler(function (open) {
-    if (open && document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
-  });
+  setInventoryOpenHandler(
+    wrapInventoryOpenHandler(function (open) {
+      if (open && document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+    })
+  );
   registerBackroomsInventoryUseHandlers(survival, {
     onAlmondWaterUsed: function () { showToast("杏仁水 · +15 血量 · +25 理智"); },
   });
@@ -1088,11 +1106,25 @@ function init() {
     if (survival && !survival.dead) {
       _survCtx.sprinting = sprinting;
       survival.update(dt, _survCtx);
+      if (level === 10) {
+        updatePastoralStareClip(dt, {
+          moving: moving,
+          survival: survival,
+          yaw: fps.yaw,
+        });
+      }
     }
     _physOpts.gravity = DEFAULT_GRAVITY;
     _physOpts.ceilingY = wallH;
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock && !dialogueOpen && !isTaskUiOpen()) {
+    if (
+      (!survival || !survival.dead) &&
+      !isInventoryOpen() &&
+      !isBaseStorageOpen() &&
+      !transitionLock &&
+      !dialogueOpen &&
+      !isTaskUiOpen()
+    ) {
       var mul = survival && sprinting
         ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
         : 1;

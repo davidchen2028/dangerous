@@ -95,12 +95,16 @@ const LEVEL_PROFILE = {
   c1291: { min: 18, max: 23, base: 20.5, swing: 1.6 },
   c1292: { min: 14, max: 19, base: 16.5, swing: 1.5 },
   c1293: { min: 13, max: 18, base: 15.5, swing: 1.8 },
-  c1294: { min: 12, max: 17, base: 14.5, swing: 1.6 },
-  c1295: { min: 16, max: 21, base: 18.5, swing: 1.4 },
+  c1294: { min: -6, max: 4, base: -1, swing: 2.4 },
+  /** Level C-1295 — 凝固死区，恒温 25℃（升降温均无法抵消凝固效应） */
+  c1295: { min: 24.6, max: 25.4, base: 25, swing: 0.3 },
   c1296: { min: 15, max: 20, base: 17.5, swing: 1.3 },
-  c1297: { min: 22, max: 28, base: 25, swing: 2 },
-  c1298: { min: 14, max: 19, base: 16.5, swing: 1.5 },
-  c1299: { min: 17, max: 22, base: 19.5, swing: 1.4 },
+  /** Level C-1297 — 无界之痿，潮湿腐败的公寓恒温偏暖 */
+  c1297: { min: 21, max: 27, base: 24, swing: 1.6 },
+  /** Level C-1298 — 人景，柔和黄昏田园 */
+  c1298: { min: 17, max: 23, base: 20, swing: 1.6 },
+  /** Level C-1299 — 浓汤煮沸，灼热汤雾恒温极高 */
+  c1299: { min: 68, max: 86, base: 78, swing: 4.5 },
   /** Level C-1299.1 — 热气腾腾的浓汤食堂，暖而宜人 */
   c1299_1: { min: 23, max: 28, base: 25.5, swing: 1.3 },
   /** Level 0.3 — 极寒 */
