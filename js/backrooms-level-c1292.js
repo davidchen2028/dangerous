@@ -482,10 +482,7 @@ function tryReadAimedDoc() {
   if (isDocOverlayOpen() || !currentAimDoc || !survival || survival.dead || transitionLock) return;
   var data = currentAimDoc.data;
   if (!data) return;
-  if (data.kind === "uec_exit") {
-    if (exitUnlocked) leaveToL11();
-    return;
-  }
+  if (data.kind === "uec_exit") return; // 撤离仍用 Q
   if (data.kind !== "uec_doc") return;
   var doc = getDocById(data.docId);
   if (!doc) return;
@@ -564,7 +561,7 @@ function updateDocInteractUi() {
     doc.room +
     " · " +
     (already ? "已读过的" : "封存的") +
-    "实验文档 · 按 <kbd>Q</kbd> 阅读" +
+    "实验文档 · 按 <kbd>E</kbd> 阅读" +
     taskBit;
   interactHintEl.hidden = false;
 }
@@ -1084,9 +1081,21 @@ function bindControls() {
         toggleBackpack();
         return true;
       }
-      if ((event.code === "KeyQ" || event.code === "KeyE") && !event.repeat) {
+      if (event.code === "KeyE" && !event.repeat) {
         event.preventDefault();
         tryReadAimedDoc();
+        return true;
+      }
+      if (event.code === "KeyQ" && !event.repeat) {
+        event.preventDefault();
+        if (
+          currentAimDoc &&
+          currentAimDoc.data &&
+          currentAimDoc.data.kind === "uec_exit" &&
+          exitUnlocked
+        ) {
+          leaveToL11();
+        }
         return true;
       }
       return false;

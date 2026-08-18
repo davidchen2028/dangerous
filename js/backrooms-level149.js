@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
 import {
   loadBackroomsSurvival,
+  saveBackroomsSurvival,
   registerBackroomsSurvivalPersist,
 } from "./backrooms-survival-persist.js";
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
@@ -17,8 +18,11 @@ import {
   updateBackroomsTemperature,
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
-import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
-import { enforceLevelEntry } from "./backrooms-level-pass.js";
+import {
+  showEnterLevelBannerIfQueued,
+  queueEnterLevelBanner,
+} from "./backrooms-level-enter.js";
+import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
 import {
   resolveBackroomsGfxProfile,
@@ -65,6 +69,7 @@ let renderer = null;
 let scene = null;
 let camera = null;
 let survival = null;
+let transitionLock = false;
 
 function wallCollider(minX, maxX, minZ, maxZ) {
   return { kind: "wall", minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ };
@@ -79,6 +84,22 @@ function showError(text) {
   errorEl.hidden = false;
   errorEl.innerHTML =
     "<p><strong>Level 149 无法启动</strong></p><p>" + String(text) + "</p>";
+}
+
+function leaveToLevel37() {
+  if (transitionLock) return;
+  transitionLock = true;
+  fps.move.forward = false;
+  fps.move.back = false;
+  fps.move.left = false;
+  fps.move.right = false;
+  showToast("你撞上了海岸边缘的空气墙——空间把你抛向另一座水池。");
+  if (survival) saveBackroomsSurvival(survival);
+  grantLevelPass("l37", fps.yaw);
+  queueEnterLevelBanner("Level 37");
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level37.html";
+  }, 650);
 }
 
 function seeded(n) {
@@ -180,7 +201,7 @@ function buildWorld(root) {
     root.add(rock);
   }
 
-  // 环岛空气墙：把玩家挡在沙滩上（无出口）。
+  // 环岛空气墙：触碰后切入 Level 37。
   var seg = 28;
   for (i = 0; i < seg; i++) {
     var a0 = (i / seg) * Math.PI * 2;
@@ -203,7 +224,7 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen() || isTaskUiOpen();
+      return isInventoryOpen() || isTaskUiOpen() || transitionLock;
     },
     onJump: function () {
       tryBackroomsJump(fps, 6.4);
@@ -283,11 +304,20 @@ function init() {
       survival.update(dt, _survCtx);
     }
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !isTaskUiOpen()) {
+    if (
+      (!survival || !survival.dead) &&
+      !isInventoryOpen() &&
+      !isTaskUiOpen() &&
+      !transitionLock
+    ) {
       var mul = survival && sprinting
         ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
         : 1;
       moveBackroomsPlayer(fps, dt, mul, function (nx, nz) {
+        if (Math.sqrt(nx * nx + nz * nz) >= ISLAND_RADIUS) {
+          leaveToLevel37();
+          return false;
+        }
         return resolveBackroomsMoveCollisions(nx, nz, fps.player.radius, colliders, 10);
       });
     }

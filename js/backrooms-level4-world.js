@@ -770,7 +770,7 @@ function megTaskBoardTexture() {
   ctx.fillText("· 给 Level 1 基地运一个包裹", 62, 130);
   ctx.fillStyle = "#8a949d";
   ctx.font = "22px Arial, PingFang SC, Microsoft YaHei, sans-serif";
-  ctx.fillText("按 Q 查看详情", 62, 218);
+  ctx.fillText("按 E 查看详情", 62, 218);
   _megTaskBoardTex = new THREE.CanvasTexture(canvas);
   _megTaskBoardTex.colorSpace = THREE.SRGBColorSpace;
   return _megTaskBoardTex;

@@ -665,15 +665,15 @@ function updateInteractUi() {
   } else if (aimKind === "sample") {
     var sp = getReconProgress(SAMPLE_TASK);
     interactHintEl.innerHTML =
-      "浓密汤雾 · 按 <kbd>Q</kbd> 采样（" + sp.count + "/" + sp.target + "）";
+      "浓密汤雾 · 按 <kbd>E</kbd> 采样（" + sp.count + "/" + sp.target + "）";
   } else if (aimKind === "beacon") {
     var bp = getReconProgress(BEACON_TASK);
     interactHintEl.innerHTML =
-      "定位锚点 · 按 <kbd>Q</kbd> 投放信标（" + bp.count + "/" + bp.target + "）";
+      "定位锚点 · 按 <kbd>E</kbd> 投放信标（" + bp.count + "/" + bp.target + "）";
   } else if (aimKind === "page") {
     var pp = getReconProgress(PAGES_TASK);
     interactHintEl.innerHTML =
-      "飘流残页 · 按 <kbd>Q</kbd> 拾取（" + pp.count + "/" + pp.target + "）";
+      "飘流残页 · 按 <kbd>E</kbd> 拾取（" + pp.count + "/" + pp.target + "）";
   }
 }
 
@@ -771,17 +771,8 @@ function leaveToC12991() {
   }, 700);
 }
 
-function tryInteract() {
+function tryTaskInteract() {
   if (transitionLock || !survival || survival.dead) return;
-  if (aimKind === "platform") {
-    leaveToC12991();
-    return;
-  }
-  if (aimKind === "note") {
-    readNote = true;
-    showToast(MEG_RECORD, 8000);
-    return;
-  }
   if (aimKind === "sample") {
     trySampleFog();
     return;
@@ -792,6 +783,18 @@ function tryInteract() {
   }
   if (aimKind === "page") {
     tryPickupPage();
+  }
+}
+
+function tryWorldInteract() {
+  if (transitionLock || !survival || survival.dead) return;
+  if (aimKind === "platform") {
+    leaveToC12991();
+    return;
+  }
+  if (aimKind === "note") {
+    readNote = true;
+    showToast(MEG_RECORD, 8000);
   }
 }
 
@@ -841,9 +844,14 @@ function bindControls() {
         toggleBackpack();
         return true;
       }
+      if (event.code === "KeyE" && !event.repeat) {
+        event.preventDefault();
+        tryTaskInteract();
+        return true;
+      }
       if (event.code === "KeyQ" && !event.repeat) {
         event.preventDefault();
-        tryInteract();
+        tryWorldInteract();
         return true;
       }
       return false;

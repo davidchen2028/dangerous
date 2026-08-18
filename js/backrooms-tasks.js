@@ -165,7 +165,7 @@ export const TASK_DEFS = [
     completeLimit: 1,
     cooldownMs: 40 * 60 * 1000,
     desc:
-      "可选高风险委托。进入 Level C-1292「项目：衰退瘾」，在档案室、观测室、主控机房各按 Q 阅读一份 UEC 实验文档。" +
+      "可选高风险委托。进入 Level C-1292「项目：衰退瘾」，在档案室、观测室、主控机房各按 E 阅读一份 UEC 实验文档。" +
       "阅读会加重衰退瘾侵蚀（倒霉翻倍、幸运减半）。集齐三份后立刻撤离，回 Level 4 领赏。" +
       "中途死亡判定失败并扣 30 积分。完成 1 次后冷却 40 分钟。",
   },
@@ -247,7 +247,7 @@ export const TASK_DEFS = [
     cooldownMs: 30 * 60 * 1000,
     rewardItems: [{ id: "lucky_soy_milk", name: "幸运豆奶", count: 1 }],
     desc:
-      "普通难度。携带密封采样罐进入 Level C-1299，在漂浮中靠近浓密白雾按 Q 采样一份汤雾，" +
+      "普通难度。携带密封采样罐进入 Level C-1299，在漂浮中靠近浓密白雾按 E 采样一份汤雾，" +
       "采样罐不能被高温损毁，带着样本抵达黑石浮石撤离。熬煮进度满即死亡，无额外计时。" +
       "奖励 220 积分 + 幸运豆奶 ×1。失败（死亡 / 采样罐损毁）扣 60 积分。上限 1 次，冷却 30 分钟。",
   },
@@ -274,7 +274,7 @@ export const TASK_DEFS = [
       { id: "strawberry_soy_milk", name: "草莓豆奶", count: 1 },
     ],
     desc:
-      "高风险。任务发放 3 枚微型定位信标。在 C-1299 漂浮中向三处不同方位各投放一枚（靠近投放点按 Q），" +
+      "高风险。任务发放 3 枚微型定位信标。在 C-1299 漂浮中向三处不同方位各投放一枚（靠近投放点按 E），" +
       "三枚全部部署且不能被汤雾摧毁，活着抵达黑石撤离。漂浮难控，停留越久熬煮越快。" +
       "奖励 420 积分 + 杏仁水×2 + 幸运豆奶×2 + 草莓豆奶×1。失败扣 120 积分。上限 1 次，冷却 30 分钟。",
   },
@@ -2123,7 +2123,7 @@ function ensureBoardDom() {
     '<p class="br-board__note" hidden></p>' +
     '<p class="br-board__foot">单击任务 · <kbd>A</kbd> 接取 · <kbd>R</kbd> 花 ' +
     BOARD_REROLL_COST +
-    " 积分刷新 · <kbd>Q</kbd> / <kbd>Esc</kbd> 离开 · 列表可滚轮下滑</p>" +
+    " 积分刷新 · <kbd>E</kbd> / <kbd>Esc</kbd> 离开 · 列表可滚轮下滑</p>" +
     "</div>";
   document.body.appendChild(boardEl);
 
@@ -2360,7 +2360,7 @@ export function handleTaskUiKey(e) {
       else if (boardToast) boardToast("任务板已刷新 · -" + reroll.cost + " 积分");
       return true;
     }
-    if (e.code === "Escape" || e.code === "KeyQ") {
+    if (e.code === "Escape" || e.code === "KeyE") {
       closeTaskBoard();
       return true;
     }

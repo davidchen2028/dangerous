@@ -384,7 +384,7 @@ function updateInteractHint() {
   }
   if (isAimTaskBoard()) {
     interactHintEl.hidden = false;
-    interactHintEl.innerHTML = "按 <kbd>Q</kbd> 查看任务板";
+    interactHintEl.innerHTML = "按 <kbd>E</kbd> 查看任务板";
     return;
   }
   interactHintEl.hidden = true;
@@ -456,10 +456,10 @@ function acceptMegTaskBoard() {
   unlockTaskBoard();
   // colliders / interactRoots 是同一数组引用，区块重建后无需重新取。
   if (level4World && level4World.rebuildOutpost) level4World.rebuildOutpost();
-  showLootToast("M.E.G 成员在墙上挂出了任务白板 · 按 Q 查看");
+  showLootToast("M.E.G 成员在墙上挂出了任务白板 · 按 E 查看");
 }
 
-function tryTaskBoardQ() {
+function tryTaskBoardE() {
   if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
   if (!isAimTaskBoard()) return;
   openTaskBoard({
@@ -608,7 +608,8 @@ function bindControls() {
       }
       if (e.code === "KeyE" && !e.repeat) {
         e.preventDefault();
-        tryCoolerInspectE();
+        if (isAimTaskBoard()) tryTaskBoardE();
+        else tryCoolerInspectE();
         return true;
       }
       if (e.code === "KeyQ" && !e.repeat) {
@@ -618,7 +619,6 @@ function bindControls() {
         else if (isAimBntgLiaison()) openBntgDialogue();
         else if (isAimMegMember()) openMegDialogue();
         else if (isAimStorageClerk()) openBaseStorage({ toast: true });
-        else if (isAimTaskBoard()) tryTaskBoardQ();
         else tryWaterCoolerQ();
         return true;
       }

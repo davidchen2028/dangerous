@@ -28,7 +28,7 @@ const ITEM_ICONS = {
   package_l1: "img/backrooms/package.png",
   package_l159: "img/backrooms/package.png",
   sample_can_c144: "img/backrooms/package.png",
-  sample_can_c1299: "img/backrooms/package.png",
+  sample_can_c1299: "img/backrooms/sample-can-c1299.png",
   beacon_c1299: "img/backrooms/archive-viewer.png",
   scrap_page_c1299: "img/backrooms/archive-viewer.png",
   level_key_l14: "img/backrooms/archive-viewer.png",
