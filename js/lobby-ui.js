@@ -1,5 +1,5 @@
 /**
- * 大厅界面 — 房间 / 仓库 / 教程 / 地图 / 市场，× 返回大厅
+ * 大厅界面 — 房间 / 仓库 / 教程 / 地图 / 市场 / 小游戏，× 返回大厅
  */
 (function () {
   const btnRoom = document.getElementById("btnRoom");
@@ -8,21 +8,25 @@
   const btnMap = document.getElementById("btnMap");
   const btnAction = document.getElementById("btnAction");
   const btnMarket = document.getElementById("btnMarket");
+  const btnMinigame = document.getElementById("btnMinigame");
   const roomPanel = document.getElementById("roomPanel");
   const stashPanel = document.getElementById("stashPanel");
   const tutorialPanel = document.getElementById("tutorialPanel");
   const mapPanel = document.getElementById("mapPanel");
   const marketPage = document.getElementById("marketPage");
+  const minigamePanel = document.getElementById("minigamePanel");
   const btnRoomClose = document.getElementById("btnRoomClose");
   const btnStashClose = document.getElementById("btnStashClose");
   const btnTutorialClose = document.getElementById("btnTutorialClose");
   const btnMapClose = document.getElementById("btnMapClose");
   const btnMarketBack = document.getElementById("btnMarketBack");
+  const btnMinigameClose = document.getElementById("btnMinigameClose");
   const mapCardTest = document.getElementById("mapCardTest");
   const roomBackdrop = document.getElementById("roomBackdrop");
   const stashBackdrop = document.getElementById("stashBackdrop");
   const tutorialBackdrop = document.getElementById("tutorialBackdrop");
   const mapBackdrop = document.getElementById("mapBackdrop");
+  const minigameBackdrop = document.getElementById("minigameBackdrop");
 
   var selectedMapId = "test";
   var hubModeBadge = document.getElementById("hubModeBadge");
@@ -50,6 +54,7 @@
     tutorialPanel.hidden = true;
     if (mapPanel) mapPanel.hidden = true;
     if (marketPage) marketPage.hidden = true;
+    if (minigamePanel) minigamePanel.hidden = true;
   }
 
   function syncMapSelectionUi() {
@@ -149,7 +154,8 @@
       "stash-open",
       "tutorial-open",
       "map-open",
-      "market-open"
+      "market-open",
+      "minigame-open"
     );
     document.body.classList.add("hub-home");
     hideAllPanels();
@@ -185,7 +191,8 @@
       "stash-open",
       "tutorial-open",
       "map-open",
-      "market-open"
+      "market-open",
+      "minigame-open"
     );
     document.body.classList.add("room-open");
     roomPanel.hidden = false;
@@ -199,7 +206,8 @@
       "room-open",
       "tutorial-open",
       "map-open",
-      "market-open"
+      "market-open",
+      "minigame-open"
     );
     document.body.classList.add("stash-open");
     stashPanel.hidden = false;
@@ -215,7 +223,8 @@
       "room-open",
       "stash-open",
       "map-open",
-      "market-open"
+      "market-open",
+      "minigame-open"
     );
     document.body.classList.add("tutorial-open");
     tutorialPanel.hidden = false;
@@ -233,7 +242,8 @@
       "room-open",
       "stash-open",
       "tutorial-open",
-      "market-open"
+      "market-open",
+      "minigame-open"
     );
     document.body.classList.add("map-open");
     if (mapPanel) mapPanel.hidden = false;
@@ -248,7 +258,8 @@
       "room-open",
       "stash-open",
       "tutorial-open",
-      "map-open"
+      "map-open",
+      "minigame-open"
     );
     document.body.classList.add("market-open");
     if (marketPage) marketPage.hidden = false;
@@ -281,7 +292,25 @@
   if (btnStash) btnStash.addEventListener("click", openStash);
   if (btnTutorial) btnTutorial.addEventListener("click", openTutorial);
   if (btnMap) btnMap.addEventListener("click", openMap);
+  function openMinigame() {
+    hideAllPanels();
+    document.body.classList.remove(
+      "hub-home",
+      "room-open",
+      "stash-open",
+      "tutorial-open",
+      "map-open",
+      "market-open"
+    );
+    document.body.classList.add("minigame-open");
+    if (minigamePanel) minigamePanel.hidden = false;
+    if (window.PasswordMinigame && window.PasswordMinigame.reset) {
+      window.PasswordMinigame.reset();
+    }
+  }
+
   if (btnMarket) btnMarket.addEventListener("click", openMarket);
+  if (btnMinigame) btnMinigame.addEventListener("click", openMinigame);
   if (mapCardTest) {
     mapCardTest.addEventListener("click", function () {
       selectMap("test");
@@ -291,6 +320,7 @@
   bindClose(btnStashClose, stashBackdrop);
   bindClose(btnTutorialClose, tutorialBackdrop);
   bindClose(btnMapClose, mapBackdrop);
+  bindClose(btnMinigameClose, null);
   if (btnMarketBack) {
     btnMarketBack.addEventListener("click", goHome);
   }
@@ -305,7 +335,8 @@
       !stashPanel.hidden ||
       !tutorialPanel.hidden ||
       (mapPanel && !mapPanel.hidden) ||
-      (marketPage && !marketPage.hidden)
+      (marketPage && !marketPage.hidden) ||
+      (minigamePanel && !minigamePanel.hidden)
     ) {
       goHome();
     }
@@ -321,7 +352,8 @@
       "stash-open",
       "tutorial-open",
       "map-open",
-      "market-open"
+      "market-open",
+      "minigame-open"
     );
   }
 
@@ -333,6 +365,7 @@
     openTutorial: openTutorial,
     openMap: openMap,
     openMarket: openMarket,
+    openMinigame: openMinigame,
     requireLogin: requireLogin,
     shakeRoomBtn: shakeRoomBtn,
     syncHubMode: syncHubMode,

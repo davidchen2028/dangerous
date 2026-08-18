@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>极危行动 — 行动基地</title>
-  <link rel="stylesheet" href="css/lobby.css?v=23">
+  <link rel="stylesheet" href="css/lobby.css?v=25">
   <link rel="stylesheet" href="css/market-page.css?v=9">
   <link rel="stylesheet" href="css/action-scene.css?v=39">
 </head>
@@ -21,6 +21,7 @@
     <button type="button" class="btn-hub btn-hub--room" id="btnRoom">账号</button>
     <a class="btn-hub btn-hub--backrooms" id="btnBackrooms" href="backrooms-index.html">后室</a>
     <button type="button" class="btn-hub btn-hub--stash" id="btnStash">仓库</button>
+    <button type="button" class="btn-hub btn-hub--minigame" id="btnMinigame">小游戏</button>
     <button type="button" class="btn-hub btn-hub--market" id="btnMarket">市场</button>
     <button type="button" class="btn-hub btn-hub--tutorial" id="btnTutorial">教程</button>
     <button type="button" class="btn-hub btn-hub--map" id="btnMap">地图</button>
@@ -141,6 +142,25 @@
               <li>空中下落按标准重力计算，体感<strong>偏沉</strong>，避免轻飘感，便于控枪与落点判断。</li>
             </ul>
           </section>
+        </div>
+      </div>
+    </div>
+
+    <div class="hub-panel" id="minigamePanel" hidden>
+      <div class="hub-panel__backdrop" id="minigameBackdrop"></div>
+      <button type="button" class="btn-close-ring" id="btnMinigameClose" aria-label="返回大厅">×</button>
+      <div class="hub-panel__box hub-panel__box--minigame">
+        <header class="hub-panel__head">
+          <h2 class="hub-panel__title">设置密码</h2>
+          <span class="hub-panel__meta">满足当前条件后才会出现下一条；前面变红则挡住更后面的条件</span>
+        </header>
+        <div class="pw-game">
+          <label class="pw-game__field">
+            <span class="pw-game__label">请设置密码</span>
+            <input type="text" id="pwGameInput" class="pw-game__input" maxlength="64" autocomplete="off" spellcheck="false" placeholder="在此输入…">
+          </label>
+          <ol class="pw-game__rules" id="pwGameRules"></ol>
+          <p class="pw-game__win" id="pwGameWin" hidden>全部条件已满足。这就是你的密码。</p>
         </div>
       </div>
     </div>
@@ -419,7 +439,8 @@
   </script>
   <script src="js/socket.io.min.js?v=4"></script>
   <script src="js/tutorial-progress.js?v=2"></script>
-  <script src="js/lobby-ui.js?v=18"></script>
+  <script src="js/lobby-ui.js?v=20"></script>
+  <script src="js/password-minigame.js?v=6"></script>
   <script src="js/item-catalog.js?v=38"></script>
   <script src="js/grid-inventory.js?v=5"></script>
   <script src="js/grid-stash-ui.js?v=26"></script>
