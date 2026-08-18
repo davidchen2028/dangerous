@@ -1,10 +1,10 @@
 /**
  * 大厅小游戏 2 — Level Devil 风格平台：天空 + 灰地板。
- * 1 空关 → 2 三刺挤一起 → 3 前中后三刺 → 4 中间裂开 → 5 裂开 + 木箱。
+ * 1 空关 → 2 三刺挤一起 → 3 前中后三刺 → 4 中间裂开 → 5 裂开 + 木箱 → 6 门搬家 + 绿箱。
  * 死亡只重开当前关。
  */
 (function () {
-  var STAGE_COUNT = 5;
+  var STAGE_COUNT = 6;
   var viewEl = document.getElementById("platformGameView");
   var canvas = document.getElementById("platformGameCanvas");
   var dotsEl = document.getElementById("platformGameDots");
@@ -23,8 +23,11 @@
   var spike = { armed: false, maxH: 18 };
   var spikeStates = [];
   var crack = { armed: false, open: false };
-  var crate = { active: false, cancelled: false, x: 0, y: 0, w: 28, h: 26, vx: 0, vy: 0 };
+  var crate = { active: false, cancelled: false, dir: -1, x: 0, y: 0, w: 28, h: 26, vx: 0, vy: 0 };
+  var green = { active: false, started: false, landed: false, x: 0, y: 0, w: 28, h: 26, vy: 0 };
+  var portalSide = "right";
   var waitAtGap = 0;
+  var woodArmed = false;
   var fade = 0;
   var fadeDir = 0;
   var pendingStage = 0;
@@ -47,12 +50,12 @@
   function portalBox(L) {
     var w = Math.max(28, Math.round(L.pathH * 0.22));
     var h = Math.round(L.pathH * 0.72);
-    return {
-      x: L.pathX + L.pathW - w - Math.round(L.pathW * 0.035),
-      y: L.pathY - h,
-      w: w,
-      h: h,
-    };
+    var inset = Math.round(L.pathW * 0.035);
+    var x =
+      portalSide === "left"
+        ? L.pathX + inset
+        : L.pathX + L.pathW - w - inset;
+    return { x: x, y: L.pathY - h, w: w, h: h };
   }
 
   function gapBox(L) {
@@ -85,26 +88,53 @@
     spikeStates = spikeGroups().map(function () {
       return { shown: false, h: 0 };
     });
-    crack.armed = stage === 4 || stage === 5;
+    crack.armed = stage === 4 || stage === 5 || stage === 6;
     crack.open = false;
+    portalSide = "right";
     crate.w = player.h;
     crate.h = player.h;
     crate.active = false;
     crate.cancelled = false;
+    crate.dir = -1;
     crate.vx = 0;
     crate.vy = 0;
     crate.x = portalBox(L).x - crate.w - 4;
     crate.y = L.pathY - crate.h;
+    green.active = false;
+    green.started = false;
+    green.landed = false;
+    green.w = player.h;
+    green.h = player.h;
+    green.vy = 0;
     waitAtGap = 0;
+    woodArmed = false;
   }
 
-  function spawnCrate(L) {
+  function spawnCrate(L, dir) {
     var door = portalBox(L);
     crate.active = true;
-    crate.vx = -W * 0.55;
+    crate.dir = dir < 0 ? -1 : 1;
     crate.vy = 0;
-    crate.x = door.x - crate.w * 0.1;
     crate.y = L.pathY - crate.h;
+    if (crate.dir < 0) {
+      crate.vx = -W * 0.55;
+      crate.x = door.x - crate.w * 0.1;
+    } else {
+      crate.vx = W * 0.55;
+      crate.x = door.x + door.w * 0.1;
+    }
+  }
+
+  function spawnGreen(L) {
+    var g = gapBox(L);
+    green.active = true;
+    green.started = true;
+    green.landed = false;
+    green.w = player.h;
+    green.h = player.h;
+    green.x = g.x + g.w * 0.5 - green.w * 0.5;
+    green.y = 6;
+    green.vy = H * 0.85;
   }
 
   function setStage(next) {
@@ -209,8 +239,29 @@
     jumpQueued = false;
   }
 
+  function atGapFront(L, side) {
+    var g = gapBox(L);
+    if (!player.onGround || player.y + player.h > L.pathY + 2) return false;
+    if (side === "left") {
+      var leftDist = g.x - (player.x + player.w);
+      return leftDist >= -10 && leftDist <= player.w * 3.8;
+    }
+    var rightDist = player.x - (g.x + g.w);
+    return rightDist >= -10 && rightDist <= player.w * 3.8;
+  }
+
   function enterPortal() {
     if (entering || dead || fadeDir) return;
+    if (stage === 6 && portalSide === "right") {
+      portalSide = "left";
+      crate.active = false;
+      crate.cancelled = false;
+      crate.vx = 0;
+      waitAtGap = 0;
+      woodArmed = false;
+      shake = 12;
+      return;
+    }
     if (stage < STAGE_COUNT) {
       fade = 0;
       fadeDir = 1;
@@ -232,18 +283,52 @@
     }, 520);
   }
 
-  function updateWaitAndCrate(dt, L) {
-    if (stage !== 5 || !crack.open) return;
-    var g = gapBox(L);
-    if (!crate.cancelled && !crate.active) spawnCrate(L);
+  function updateGreen(dt, L, justJumped) {
+    if (!green.active) return;
+    if (justJumped && !green.landed) {
+      green.x = player.x + player.w * 0.5 - green.w * 0.5;
+      if (green.vy < H * 2.1) green.vy = H * 2.1;
+    }
+    green.vy += Math.round(H * 3.8) * dt;
+    green.y += green.vy * dt;
+    if (
+      overlaps(player, { x: green.x, y: green.y, w: green.w, h: green.h })
+    ) {
+      die();
+      return;
+    }
+    if (green.y + green.h >= L.pathY) {
+      green.landed = true;
+      green.active = false;
+      waitAtGap = 0;
+    }
+  }
 
-    var distToGap = g.x - (player.x + player.w);
-    var atFront =
-      player.onGround &&
-      player.y + player.h <= L.pathY + 2 &&
-      distToGap >= -10 &&
-      distToGap <= player.w * 3.8;
-    if (!crate.cancelled && atFront) {
+  function updateWaitAndCrate(dt, L, justJumped) {
+    if ((stage !== 5 && stage !== 6) || !crack.open) return;
+    var g = gapBox(L);
+    var fromLeft = stage === 6 && portalSide === "left";
+    var atFront = atGapFront(L, fromLeft ? "right" : "left");
+
+    if (fromLeft) {
+      if (atFront && !green.started) spawnGreen(L);
+      updateGreen(dt, L, justJumped);
+      if (dead) return;
+      if (justJumped && green.landed) woodArmed = true;
+      if (
+        woodArmed &&
+        player.x + player.w * 0.45 <= g.x &&
+        !crate.cancelled &&
+        !crate.active
+      ) {
+        spawnCrate(L, 1);
+      }
+    } else if (!crate.cancelled && !crate.active) {
+      spawnCrate(L, -1);
+    }
+
+    var waitReady = !fromLeft || green.landed;
+    if (!crate.cancelled && atFront && waitReady) {
       waitAtGap += dt;
       if (waitAtGap >= 1) {
         crate.cancelled = true;
@@ -254,22 +339,23 @@
     }
     if (crate.cancelled || !crate.active) return;
 
-    crate.vx -= W * 2.6 * dt;
-    if (crate.vx < -W * 1.15) crate.vx = -W * 1.15;
+    crate.vx += crate.dir * W * 2.6 * dt;
+    if (crate.dir < 0 && crate.vx < -W * 1.15) crate.vx = -W * 1.15;
+    if (crate.dir > 0 && crate.vx > W * 1.15) crate.vx = W * 1.15;
     crate.x += crate.vx * dt;
-    var stopX = g.x + g.w;
-    if (crate.x < stopX) {
-      crate.x = stopX;
+    if (crate.dir < 0 && crate.x < g.x + g.w) {
+      crate.x = g.x + g.w;
+      crate.vx = 0;
+    }
+    if (crate.dir > 0 && crate.x + crate.w > g.x) {
+      crate.x = g.x - crate.w;
       crate.vx = 0;
     }
     crate.y = L.pathY - crate.h;
     crate.vy = 0;
 
-    if (
-      crate.active &&
-      overlaps(player, { x: crate.x, y: crate.y, w: crate.w, h: crate.h })
-    ) {
-      player.x = crate.x - player.w;
+    if (overlaps(player, { x: crate.x, y: crate.y, w: crate.w, h: crate.h })) {
+      player.x = crate.dir < 0 ? crate.x - player.w : crate.x + crate.w;
       player.onGround = false;
       if (player.vy < H * 0.12) player.vy = H * 0.12;
     }
@@ -316,10 +402,12 @@
     }
     resolvePitWalls(L);
 
+    var justJumped = false;
     if ((jumpQueued || keys.jump) && player.onGround) {
       player.vy = -Math.round(H * 0.68);
       player.onGround = false;
       jumpQueued = false;
+      justJumped = true;
     }
 
     player.vy += Math.round(H * 3.8) * dt;
@@ -373,7 +461,7 @@
       }
     }
 
-    updateWaitAndCrate(dt, L);
+    updateWaitAndCrate(dt, L, justJumped);
     if (dead) return;
     if (overlaps(player, portalBox(L)) && !overGap(player.x, player.w, L)) enterPortal();
   }
@@ -420,19 +508,42 @@
     }
   }
 
+  function drawWoodBox(x, y, w, h, fill, slat, edge) {
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = slat;
+    ctx.fillRect(x + 3, y + 3, w - 6, 3);
+    ctx.fillRect(x + 3, y + h * 0.5 - 1, w - 6, 3);
+    ctx.fillRect(x + 3, y + h - 6, w - 6, 3);
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  }
+
   function drawCrate() {
     if (!crate.active) return;
-    var x = Math.round(crate.x);
-    var y = Math.round(crate.y);
-    ctx.fillStyle = "#8a5a2b";
-    ctx.fillRect(x, y, crate.w, crate.h);
-    ctx.fillStyle = "#6d441e";
-    ctx.fillRect(x + 3, y + 3, crate.w - 6, 3);
-    ctx.fillRect(x + 3, y + crate.h * 0.5 - 1, crate.w - 6, 3);
-    ctx.fillRect(x + 3, y + crate.h - 6, crate.w - 6, 3);
-    ctx.strokeStyle = "#4a2e12";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x + 0.5, y + 0.5, crate.w - 1, crate.h - 1);
+    drawWoodBox(
+      Math.round(crate.x),
+      Math.round(crate.y),
+      crate.w,
+      crate.h,
+      "#8a5a2b",
+      "#6d441e",
+      "#4a2e12"
+    );
+  }
+
+  function drawGreen() {
+    if (!green.active) return;
+    drawWoodBox(
+      Math.round(green.x),
+      Math.round(green.y),
+      green.w,
+      green.h,
+      "#3d9a4a",
+      "#2d7336",
+      "#1d4f24"
+    );
   }
 
   function drawFloor(L) {
@@ -488,6 +599,7 @@
 
     drawSpike(L);
     drawCrate();
+    drawGreen();
 
     ctx.fillStyle = "#111214";
     ctx.fillRect(Math.round(player.x), Math.round(player.y), player.w, player.h);
