@@ -89,6 +89,8 @@ const LEVEL_PROFILE = {
   c192: { min: 14, max: 20, base: 17, swing: 1.6 },
   /** Level C-370 — 水池深处的沉静空间 */
   c370: { min: 20, max: 25, base: 22.5, swing: 1 },
+  /** Level 363 — 白光尽头的空厅 */
+  363: { min: 12, max: 17, base: 14.5, swing: 1.2 },
   /** Level C-1289 — 死亡回廊 */
   c1289: { min: 16, max: 21, base: 18.5, swing: 1.4 },
   c1290: { min: 15, max: 20, base: 17.5, swing: 1.5 },

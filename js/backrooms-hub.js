@@ -163,6 +163,7 @@ const LEVEL_TARGETS = {
   l121: { pass: "l121", page: "backrooms-level121.html", banner: "Level 121" },
   l149: { pass: "l149", page: "backrooms-level149.html", banner: "Level 149" },
   l283: { pass: "l283", page: "backrooms-level283.html", banner: "Level 283" },
+  l363: { pass: "l363", page: "backrooms-level363.html", banner: "Level 363" },
   c1289: { pass: "c1289", page: "backrooms-level-c1289.html", banner: "Level C-1289" },
   c1290: { pass: "c1290", page: "backrooms-level-c1290.html", banner: "Level C-1290" },
   c1291: { pass: "c1291", page: "backrooms-level-c1291.html", banner: "Level C-1291" },

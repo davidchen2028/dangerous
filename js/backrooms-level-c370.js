@@ -1,11 +1,13 @@
 /**
- * Backrooms Level C-370 — 水池深处的沉静空间（stub）
+ * Backrooms Level C-370 — 水池深处的沉静空间
+ * 北侧白光楼梯 → Level 363（速通终段续接，而非「回家了」）
  */
 import * as THREE from "three";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
 import {
   loadBackroomsSurvival,
   registerBackroomsSurvivalPersist,
+  saveBackroomsSurvival,
 } from "./backrooms-survival-persist.js";
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
 import { toggleBackpack, isInventoryOpen, setInventoryOpenHandler } from "./backrooms-inventory.js";
@@ -15,8 +17,8 @@ import {
   updateBackroomsTemperature,
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
-import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
-import { enforceLevelEntry } from "./backrooms-level-pass.js";
+import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
+import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -41,7 +43,7 @@ import {
 const EYE_HEIGHT = 1.65;
 const HALL_HALF = 26;
 const WALL_H = 7;
-const HOME_STAIRS = { x: 0, z: -18, reach: 4.6 };
+const EXIT_STAIRS = { x: 0, z: -18, reach: 4.6 };
 const colliders = [];
 const fps = createBackroomsFpsState({
   player: { x: 0, z: 18, radius: 0.34, speed: 3.6 },
@@ -53,7 +55,6 @@ const canvas = document.getElementById("backroomsCanvas");
 const inputEl = document.getElementById("backroomsInput");
 const hintEl = document.getElementById("backroomsHint");
 const interactHintEl = document.getElementById("backroomsInteractHint");
-const homeEndingEl = document.getElementById("backroomsHomeEnding");
 const errorEl = document.getElementById("backroomsError");
 const megPointsEl = document.getElementById("backroomsMegPoints");
 const tempRootEl = document.getElementById("backroomsTemp");
@@ -65,7 +66,7 @@ let scene = null;
 let camera = null;
 let survival = null;
 let causticLight = null;
-let homeEndingActive = false;
+let transitionLock = false;
 
 function wallCollider(minX, maxX, minZ, maxZ) {
   return { kind: "wall", minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ };
@@ -82,25 +83,22 @@ function showError(text) {
     "<p><strong>Level C-370 无法启动</strong></p><p>" + String(text) + "</p>";
 }
 
-function isNearHomeStairs() {
-  var dx = fps.player.x - HOME_STAIRS.x;
-  var dz = fps.player.z - HOME_STAIRS.z;
-  return dx * dx + dz * dz <= HOME_STAIRS.reach * HOME_STAIRS.reach;
+function isNearExitStairs() {
+  var dx = fps.player.x - EXIT_STAIRS.x;
+  var dz = fps.player.z - EXIT_STAIRS.z;
+  return dx * dx + dz * dz <= EXIT_STAIRS.reach * EXIT_STAIRS.reach;
 }
 
-function triggerHomeEnding() {
-  if (homeEndingActive) return;
-  homeEndingActive = true;
-  fps.move.forward = false;
-  fps.move.back = false;
-  fps.move.left = false;
-  fps.move.right = false;
-  if (homeEndingEl) homeEndingEl.hidden = false;
-  document.body.classList.add("backrooms-home-ending-open");
-  if (interactHintEl) interactHintEl.hidden = true;
-  if (document.pointerLockElement && document.exitPointerLock) {
-    document.exitPointerLock();
-  }
+function exitToLevel363() {
+  if (transitionLock) return;
+  transitionLock = true;
+  showToast("白光吞没了你——这不是回家的路。");
+  saveBackroomsSurvival(survival);
+  grantLevelPass("l363", fps.yaw);
+  queueEnterLevelNumber(363);
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level363.html";
+  }, 700);
 }
 
 function addBox(root, w, h, d, x, y, z, mat, collide) {
@@ -141,7 +139,6 @@ function buildWorld(root) {
   addBox(root, 0.5, WALL_H, HALL_HALF * 2, -HALL_HALF, WALL_H * 0.5, 0, wall, true);
   addBox(root, 0.5, WALL_H, HALL_HALF * 2, HALL_HALF, WALL_H * 0.5, 0, wall, true);
 
-  // 白色立柱阵列
   var gx;
   var gz;
   for (gx = -2; gx <= 2; gx++) {
@@ -156,10 +153,10 @@ function buildWorld(root) {
     }
   }
 
-  // 北侧白光楼梯：走近后按 Q 触发「回家了」结局。
+  // 北侧白光楼梯：走近后按 Q → Level 363
   for (var s = 0; s < 10; s++) {
     var step = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.45, 1.35), stairMat);
-    step.position.set(HOME_STAIRS.x, 0.23 + s * 0.43, HOME_STAIRS.z - s * 0.9);
+    step.position.set(EXIT_STAIRS.x, 0.23 + s * 0.43, EXIT_STAIRS.z - s * 0.9);
     root.add(step);
   }
   var homeGlow = new THREE.Mesh(
@@ -171,10 +168,10 @@ function buildWorld(root) {
       side: THREE.DoubleSide,
     })
   );
-  homeGlow.position.set(HOME_STAIRS.x, 4.5, -25.65);
+  homeGlow.position.set(EXIT_STAIRS.x, 4.5, -25.65);
   root.add(homeGlow);
   var stairLight = new THREE.PointLight(0xffffff, 4.2, 28, 1.4);
-  stairLight.position.set(HOME_STAIRS.x, 4.5, -23);
+  stairLight.position.set(EXIT_STAIRS.x, 4.5, -23);
   root.add(stairLight);
 
   root.add(new THREE.HemisphereLight(0x7fc0e0, 0x0c2432, 0.95));
@@ -190,21 +187,21 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen() || homeEndingActive;
+      return isInventoryOpen() || transitionLock;
     },
     onJump: function () {
-      tryBackroomsJump(fps, 7);
+      if (!transitionLock) tryBackroomsJump(fps, 7);
     },
     onKeyDown: function (event) {
-      if (homeEndingActive) return true;
+      if (transitionLock) return true;
       if (event.code === "KeyB" && !event.repeat) {
         event.preventDefault();
         toggleBackpack();
         return true;
       }
-      if (event.code === "KeyQ" && !event.repeat && isNearHomeStairs()) {
+      if (event.code === "KeyQ" && !event.repeat && isNearExitStairs()) {
         event.preventDefault();
-        triggerHomeEnding();
+        exitToLevel363();
         return true;
       }
       return false;
@@ -265,12 +262,12 @@ function init() {
     var dt = Math.min(clock.getDelta(), 0.05);
     var moving = isBackroomsPlayerMoving(fps);
     var sprinting = isBackroomsSprintHeld(fps) && moving;
-    if (survival && !survival.dead && !homeEndingActive) {
+    if (survival && !survival.dead && !transitionLock) {
       _survCtx.sprinting = sprinting;
       survival.update(dt, _survCtx);
     }
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !homeEndingActive) {
+    if ((!survival || !survival.dead) && !isInventoryOpen() && !transitionLock) {
       var mul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
@@ -280,10 +277,10 @@ function init() {
       });
     }
     applyBackroomsCamera(fps, camera, EYE_HEIGHT);
-    if (interactHintEl && !homeEndingActive) {
-      interactHintEl.hidden = !isNearHomeStairs();
+    if (interactHintEl && !transitionLock) {
+      interactHintEl.hidden = !isNearExitStairs();
       if (!interactHintEl.hidden) {
-        interactHintEl.innerHTML = '白光楼梯 · 按 <kbd>Q</kbd> 回家';
+        interactHintEl.innerHTML = '白光楼梯 · 按 <kbd>Q</kbd> 上行';
       }
     }
     if (causticLight) {

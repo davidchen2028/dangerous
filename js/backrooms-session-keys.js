@@ -108,6 +108,8 @@ export const BACKROOMS_SESSION_KEYS = [
   "backrooms_c192_yaw",
   "backrooms_c370_pass",
   "backrooms_c370_yaw",
+  "backrooms_l363_pass",
+  "backrooms_l363_yaw",
   "backrooms_l3_maze_seed",
   "backrooms_l3_maze_v2",
   "backrooms_level1_1_chests_v1",

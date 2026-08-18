@@ -3,16 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-  <title>后室 Level C-370</title>
+  <title>后室 Level 363</title>
   <link rel="stylesheet" href="css/backrooms-level0.css?v=22">
   <link rel="stylesheet" href="css/backrooms-survival.css?v=6">
+  <style>
+    .backrooms-level363__warning {
+      position: absolute;
+      top: 46px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: calc(100vw - 32px);
+      margin: 0;
+      color: rgba(255, 244, 196, 0.72);
+      font-size: 11px;
+      line-height: 1.5;
+      letter-spacing: 0.05em;
+      text-align: center;
+      text-shadow: 0 1px 4px #000;
+    }
+  </style>
 </head>
-<body class="backrooms-level1 backrooms-level-c370">
-  <canvas id="backroomsCanvas" aria-label="后室 Level C-370"></canvas>
+<body class="backrooms-level1 backrooms-level363">
+  <canvas id="backroomsCanvas" aria-label="后室 Level 363"></canvas>
   <div id="backroomsInput" class="backrooms-input" aria-hidden="true"></div>
   <div class="backrooms-crosshair" id="backroomsCrosshair" aria-hidden="true"></div>
   <div class="backrooms-hud">
-    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level C-370</p>
+    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level 363</p>
+    <p class="backrooms-level363__warning">这里是后室，不要尝试去速通这里，否则你就会输的像这样彻底</p>
     <div class="backrooms-nav"><div class="backrooms-nav__row">
       <p class="backrooms-temp" id="backroomsTemp"><span class="backrooms-temp__label">温度</span><span class="backrooms-temp__meter"><span class="backrooms-temp__fill" id="backroomsTempFill"></span></span><strong class="backrooms-temp__value" id="backroomsTempValue">—</strong></p>
       <p class="backrooms-points"><span class="backrooms-points__label">积分点</span><strong class="backrooms-points__value" id="backroomsMegPoints">0</strong></p>
@@ -23,6 +41,6 @@
     <div class="backrooms-hud__error" id="backroomsError" hidden></div>
   </div>
   <script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
-  <script type="module" src="js/backrooms-level-c370.js?v=3"></script>
+  <script type="module" src="js/backrooms-level363.js?v=2"></script>
 </body>
 </html>

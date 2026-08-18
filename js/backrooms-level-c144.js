@@ -222,7 +222,8 @@ function buildCity(root) {
         collider: collider,
         x: x,
         z: z,
-        radius: Math.max(w, d) * 0.55,
+        halfW: w * 0.5,
+        halfD: d * 0.5,
         height: h,
         collapsing: false,
         collapsed: false,
@@ -693,11 +694,11 @@ function findNearbySampleBuilding() {
   for (var i = 0; i < cityBuildings.length; i++) {
     var b = cityBuildings[i];
     if (!b.collapsed && !(b.collapsing && b.progress >= 0.15)) continue;
-    var dx = b.x - fps.player.x;
-    var dz = b.z - fps.player.z;
-    var reach = SAMPLE_REACH + b.radius * 0.35;
+    // 距残墟占地范围的距离：站在废墟上或贴着任意一边都算靠近，不再从楼中心量
+    var dx = Math.max(0, Math.abs(fps.player.x - b.x) - b.halfW);
+    var dz = Math.max(0, Math.abs(fps.player.z - b.z) - b.halfD);
     var d2 = dx * dx + dz * dz;
-    if (d2 <= reach * reach && d2 < bestD2) {
+    if (d2 <= bestD2) {
       bestD2 = d2;
       best = b;
     }
