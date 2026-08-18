@@ -41,6 +41,7 @@ import {
   applyBackroomsToneMapping,
 } from "./backrooms-gfx-profile.js";
 import { createPointLightPool } from "./backrooms-point-light-pool.js";
+import { startGuardedRafLoop } from "./backrooms-frame-guard.js";
 import {
   createBackroomsFpsState,
   moveBackroomsPlayer,
@@ -1332,8 +1333,10 @@ function init() {
 
 function startLoop() {
   var clock = new THREE.Clock();
-  function frame() {
-    animId = requestAnimationFrame(frame);
+  startGuardedRafLoop({
+    label: "Backrooms L0",
+    showError: showError,
+    tick: function () {
     var dt = Math.min(clock.getDelta(), 0.05);
     if (typeof document !== "undefined" && document.hidden) return;
 
@@ -1398,8 +1401,8 @@ function startLoop() {
     if (renderer && scene && camera) {
       renderer.render(scene, camera);
     }
-  }
-  frame();
+    },
+  });
 }
 
 function boot() {

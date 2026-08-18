@@ -979,6 +979,7 @@ function respawnAtCommunitySpawn(reason) {
 }
 
 function installLocalRespawn() {
+  survival.skipDeathPenalty = true;
   survival.onPrepareDeath = function (reason) {
     failTasksOnDeath(showToast);
     if (!survival.deathEl) return;

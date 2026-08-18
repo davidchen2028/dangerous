@@ -25,8 +25,27 @@ export const SURVIVAL_DIFFICULTY = {
   75: 5,
   119: 4,
   121: 2,
+  149: "宜居",
   283: 3,
 };
+
+/**
+ * 生存难度为「宜居」的正式层级（等概率目的地）。
+ * @returns {{ pass: string, page: string, banner: string, number: number }[]}
+ */
+export function listHabitableLevelDests() {
+  var dests = [];
+  Object.keys(SURVIVAL_DIFFICULTY).forEach(function (key) {
+    if (SURVIVAL_DIFFICULTY[key] !== "宜居") return;
+    dests.push({
+      pass: "l" + key,
+      page: "backrooms-level" + key + ".html",
+      banner: "Level " + key,
+      number: Number(key),
+    });
+  });
+  return dests;
+}
 
 /**
  * @param {string | number} level

@@ -40,6 +40,7 @@ import {
   queueEnterLevelBanner,
 } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import { startGuardedRafLoop } from "./backrooms-frame-guard.js";
 import { refreshLevel1_1OutpostChestsOnFirstL4Visit } from "./backrooms-level1-1-chests.js";
 import {
   bindLevel4Music,
@@ -711,8 +712,10 @@ function init() {
   syncLookUi();
 
   var clock = new THREE.Clock();
-  function frame() {
-    requestAnimationFrame(frame);
+  startGuardedRafLoop({
+    label: "Backrooms L4",
+    showError: showError,
+    tick: function () {
     var dt = Math.min(clock.getDelta(), 0.05);
     var moving = isBackroomsPlayerMoving(fps);
     var sprinting = isBackroomsSprintHeld(fps) && moving;
@@ -768,8 +771,8 @@ function init() {
     updateBackroomsTemperature(dt, performance.now());
     updateBackroomsHeatDamage(survival, performance.now());
     renderer.render(scene, camera);
-  }
-  frame();
+    },
+  });
 }
 
 try {

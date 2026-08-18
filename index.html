@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>极危行动 — 行动基地</title>
-  <link rel="stylesheet" href="css/lobby.css?v=25">
+  <link rel="stylesheet" href="css/lobby.css?v=26">
   <link rel="stylesheet" href="css/market-page.css?v=9">
   <link rel="stylesheet" href="css/action-scene.css?v=39">
 </head>
@@ -150,17 +150,32 @@
       <div class="hub-panel__backdrop" id="minigameBackdrop"></div>
       <button type="button" class="btn-close-ring" id="btnMinigameClose" aria-label="返回大厅">×</button>
       <div class="hub-panel__box hub-panel__box--minigame">
-        <header class="hub-panel__head">
-          <h2 class="hub-panel__title">设置密码</h2>
-          <span class="hub-panel__meta">满足当前条件后才会出现下一条；前面变红则挡住更后面的条件</span>
-        </header>
-        <div class="pw-game">
-          <label class="pw-game__field">
-            <span class="pw-game__label">请设置密码</span>
-            <input type="text" id="pwGameInput" class="pw-game__input" maxlength="64" autocomplete="off" spellcheck="false" placeholder="在此输入…">
-          </label>
-          <ol class="pw-game__rules" id="pwGameRules"></ol>
-          <p class="pw-game__win" id="pwGameWin" hidden>全部条件已满足。这就是你的密码。</p>
+        <div id="pwGameView">
+          <header class="hub-panel__head">
+            <h2 class="hub-panel__title">设置密码</h2>
+            <span class="hub-panel__meta">满足当前条件后才会出现下一条；前面变红则挡住更后面的条件</span>
+          </header>
+          <div class="pw-game">
+            <label class="pw-game__field">
+              <span class="pw-game__label">请设置密码</span>
+              <input type="text" id="pwGameInput" class="pw-game__input" maxlength="64" autocomplete="off" spellcheck="false" placeholder="在此输入…">
+            </label>
+            <ol class="pw-game__rules" id="pwGameRules"></ol>
+            <p class="pw-game__win" id="pwGameWin" hidden>全部条件已满足。这就是你的密码。</p>
+          </div>
+        </div>
+        <div class="platform-game" id="platformGameView" hidden>
+          <canvas id="platformGameCanvas" aria-label="小游戏 2"></canvas>
+          <div class="platform-game__hud">
+            <button type="button" class="platform-game__icon" id="platformGameRestart" aria-label="重开本关">↻</button>
+            <div class="platform-game__dots" id="platformGameDots" aria-hidden="true"></div>
+          </div>
+          <p class="platform-game__keys">A / D 移动 · 空格 跳</p>
+          <div class="platform-game__pad" id="platformGamePad">
+            <button type="button" data-dir="left">A</button>
+            <button type="button" data-dir="jump">跳</button>
+            <button type="button" data-dir="right">D</button>
+          </div>
         </div>
       </div>
     </div>
@@ -439,8 +454,9 @@
   </script>
   <script src="js/socket.io.min.js?v=4"></script>
   <script src="js/tutorial-progress.js?v=2"></script>
-  <script src="js/lobby-ui.js?v=20"></script>
-  <script src="js/password-minigame.js?v=6"></script>
+  <script src="js/lobby-ui.js?v=21"></script>
+  <script src="js/password-minigame.js?v=8"></script>
+  <script src="js/platform-minigame.js?v=7"></script>
   <script src="js/item-catalog.js?v=38"></script>
   <script src="js/grid-inventory.js?v=5"></script>
   <script src="js/grid-stash-ui.js?v=26"></script>

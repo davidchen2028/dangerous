@@ -19,9 +19,10 @@ import {
 } from "./backrooms-temperature.js";
 import {
   showEnterLevelBannerIfQueued,
-  queueEnterLevelNumber,
+  queueEnterLevelBanner,
 } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import { listHabitableLevelDests } from "./backrooms-survival-difficulty.js";
 import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
 import { updatePastoralStareClip } from "./backrooms-c1298-stare.js";
 import {
@@ -206,16 +207,30 @@ function buildWorld(root) {
   root.add(moon);
 }
 
-function exitToLevel48() {
+function pickHabitableDest() {
+  var pool = listHabitableLevelDests();
+  if (!pool.length) {
+    return {
+      pass: "l48",
+      page: "backrooms-level48.html",
+      banner: "Level 48",
+      number: 48,
+    };
+  }
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function exitToHabitableLevel() {
   if (transitionLock) return;
+  var dest = pickHabitableDest();
   transitionLock = true;
   if (survival) saveBackroomsSurvival(survival);
-  grantLevelPass("l48", fps.yaw);
-  queueEnterLevelNumber(48);
-  showToast("你切入了树干，潮湿的森林气味变成了海风…");
+  grantLevelPass(dest.pass, fps.yaw);
+  queueEnterLevelBanner(dest.banner);
+  showToast("你切入了树干，封闭森林在身后合拢…切出到 " + dest.banner);
   if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
   window.setTimeout(function () {
-    window.location.href = "backrooms-level48.html";
+    window.location.href = dest.page;
   }, 650);
 }
 
@@ -309,7 +324,7 @@ function tryQAction() {
     return;
   }
   var data = resolveInteract();
-  if (data && data.kind === "c192_tree") exitToLevel48();
+  if (data && data.kind === "c192_tree") exitToHabitableLevel();
 }
 
 function bindControls() {

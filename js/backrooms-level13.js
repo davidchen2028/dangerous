@@ -224,8 +224,11 @@ function spawnFaceling(root) {
         for (var w = 0; w < waiters.length; w++) waiters[w](model);
       },
       undefined,
-      function () {
+      function (err) {
+        console.warn("[Backrooms L13] Faceling 模型加载失败", err);
+        var waiters = _facelingLoadWaiters || [];
         _facelingLoadWaiters = null;
+        for (var w = 0; w < waiters.length; w++) waiters[w](null);
       }
     );
   }

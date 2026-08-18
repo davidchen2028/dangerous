@@ -318,8 +318,11 @@ function scatterTrees(root) {
         for (var w = 0; w < waiters.length; w++) waiters[w](template);
       },
       undefined,
-      function () {
+      function (err) {
+        console.warn("[Backrooms L14] 树模型加载失败", TREE_GLB_URL, err);
+        var waiters = _treeLoadWaiters || [];
         _treeLoadWaiters = null;
+        for (var w = 0; w < waiters.length; w++) waiters[w](null);
       }
     );
   }
@@ -366,8 +369,11 @@ function scatterLeaves(root) {
         for (var w = 0; w < waiters.length; w++) waiters[w](template);
       },
       undefined,
-      function () {
+      function (err) {
+        console.warn("[Backrooms L14] 落叶模型加载失败", LEAF_GLB_URL, err);
+        var waiters = _leafLoadWaiters || [];
         _leafLoadWaiters = null;
+        for (var w = 0; w < waiters.length; w++) waiters[w](null);
       }
     );
   }

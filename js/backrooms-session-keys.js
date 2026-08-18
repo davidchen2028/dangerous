@@ -6,6 +6,7 @@ import {
   MEG_CHECKPOINT_KEY,
   MEG_DEATH_KEY,
   MEG_RESPAWN_FLAG,
+  L283_MEG_EXIT_FLAG,
 } from "./backrooms-meg-checkpoint.js";
 import {
   XIAOYE_STORAGE_KEY,
@@ -121,6 +122,7 @@ export const BACKROOMS_SESSION_KEYS = [
   MEG_CHECKPOINT_KEY,
   MEG_DEATH_KEY,
   MEG_RESPAWN_FLAG,
+  L283_MEG_EXIT_FLAG,
   XIAOYE_STORAGE_KEY,
   "backrooms_l2_xiaoye_triggered",
   XIAOYE_FULL_HEAL_KEY,

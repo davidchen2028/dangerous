@@ -10,6 +10,7 @@ export const LEVEL4_MUSIC_FADE_OUT_MS = 800;
 let audio = null;
 let gestureBound = false;
 let fadeFrame = 0;
+let audioFailed = false;
 
 function ensureAudio() {
   if (audio) return audio;
@@ -17,6 +18,10 @@ function ensureAudio() {
   audio.loop = true;
   audio.volume = MUSIC_VOLUME;
   audio.preload = "auto";
+  audio.addEventListener("error", function () {
+    audioFailed = true;
+    console.warn("[Backrooms L4] 背景音乐加载失败", MUSIC_SRC, audio && audio.error);
+  });
   return audio;
 }
 
@@ -36,7 +41,9 @@ function bindGestureOnce() {
 }
 
 export function startLevel4Music() {
+  if (audioFailed) return;
   var el = ensureAudio();
+  if (audioFailed) return;
   if (fadeFrame) {
     cancelAnimationFrame(fadeFrame);
     fadeFrame = 0;
@@ -46,7 +53,12 @@ export function startLevel4Music() {
   var p = el.play();
   // 浏览器要求先有用户交互才允许带声播放：被拒绝时等首次交互重试
   if (p && typeof p.catch === "function") {
-    p.catch(function () {
+    p.catch(function (err) {
+      if (audioFailed || (el && el.error)) {
+        audioFailed = true;
+        console.warn("[Backrooms L4] 背景音乐无法播放", MUSIC_SRC, err);
+        return;
+      }
       bindGestureOnce();
     });
   }

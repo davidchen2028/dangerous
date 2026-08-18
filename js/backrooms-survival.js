@@ -162,6 +162,8 @@ export class BackroomsSurvival {
     this.onPrepareDeath = options.onPrepareDeath || null;
     this.onDeath = options.onDeath || null;
     this.onInterceptDeath = options.onInterceptDeath || null;
+    /** true：本地重生，不计入死亡惩罚 / 删档进度 */
+    this.skipDeathPenalty = !!options.skipDeathPenalty;
     this.rootEl = null;
     this.deathEl = null;
     this._fillHp = null;
@@ -672,6 +674,10 @@ export class BackroomsSurvival {
     }
     // 等死亡遮罩出现后弹出负面选择
     this._deathTimer = setTimeout(function () {
+      if (self.skipDeathPenalty) {
+        self.respawn(reason);
+        return;
+      }
       offerDeathPenaltyChoice(self, reason, function (outcome) {
         if (outcome === "wipe") {
           resetBackroomsRun();

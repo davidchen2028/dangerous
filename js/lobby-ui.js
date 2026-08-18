@@ -158,6 +158,9 @@
       "minigame-open"
     );
     document.body.classList.add("hub-home");
+    if (window.PlatformMinigame && window.PlatformMinigame.stop) {
+      window.PlatformMinigame.stop();
+    }
     hideAllPanels();
   }
 
@@ -304,6 +307,15 @@
     );
     document.body.classList.add("minigame-open");
     if (minigamePanel) minigamePanel.hidden = false;
+    if (window.PasswordMinigame && window.PasswordMinigame.isDone && window.PasswordMinigame.isDone()) {
+      if (window.PlatformMinigame && window.PlatformMinigame.start) {
+        window.PlatformMinigame.start();
+      }
+      return;
+    }
+    if (window.PlatformMinigame && window.PlatformMinigame.hide) {
+      window.PlatformMinigame.hide();
+    }
     if (window.PasswordMinigame && window.PasswordMinigame.reset) {
       window.PasswordMinigame.reset();
     }
@@ -346,6 +358,9 @@
   syncMapSelectionUi();
 
   function hidePanelsForAction() {
+    if (window.PlatformMinigame && window.PlatformMinigame.stop) {
+      window.PlatformMinigame.stop();
+    }
     hideAllPanels();
     document.body.classList.remove(
       "room-open",

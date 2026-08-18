@@ -285,15 +285,32 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
     return false;
   };
 
-  survival.onPrepareDeath = function (reason) {
-    var ctx = getCtx() || {};
-    // 真正死亡一律掉落全部随身物品。被 C-1289 接走属于「没死透」，
-    // 那条路径在 onInterceptDeath 就已 return，走不到这里，因此仍然保包。
+  function clearPendingDeathPersist() {
+    try {
+      sessionStorage.removeItem(MEG_DEATH_KEY);
+      sessionStorage.removeItem(MEG_RESPAWN_FLAG);
+    } catch (err) {
+      /* ignore */
+    }
+  }
+
+  function commitTrueDeathSideEffects() {
     try {
       resetBackpack();
     } catch (errWipe) {
       /* ignore */
     }
+  }
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("pagehide", function () {
+      if (deathPlan) clearPendingDeathPersist();
+    });
+  }
+
+  survival.onPrepareDeath = function (reason) {
+    var ctx = getCtx() || {};
+    // 背包清空 / MEG_DEATH_KEY 延后到 onDeath，避免 700ms 选罚窗口关页残留半完成状态。
     var inBase = ctx.level === 1 && ctx.isInMegBase && ctx.isInMegBase();
     if (!hasMegBaseCheckpoint() && !inBase) {
       deathPlan = "l0_reset";
@@ -301,8 +318,8 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
         survival,
         reason,
         reason === "sanity"
-          ? "精神崩溃 — 随身物品已全部遗失…即将在 Level 0 醒来…"
-          : "你已死亡 — 随身物品已全部遗失…即将在 Level 0 醒来…"
+          ? "精神崩溃 — 随身物品即将全部遗失…即将在 Level 0 醒来…"
+          : "你已死亡 — 随身物品即将全部遗失…即将在 Level 0 醒来…"
       );
       return;
     }
@@ -312,14 +329,13 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
       if (sp) saveMegBaseCheckpoint(sp);
     }
 
-    captureMegDeathPayload(survival, reason);
     deathPlan = ctx.level !== 1 ? "meg_hub_redirect" : "meg_local";
     setMegDeathOverlayMessage(
       survival,
       reason,
       ctx.level !== 1
-        ? "你已死亡 — 随身物品已全部遗失…正在传送至 M.E.G 基地…"
-        : "你已死亡 — 随身物品已全部遗失…正在 M.E.G 基地复活…"
+        ? "你已死亡 — 随身物品即将全部遗失…正在传送至 M.E.G 基地…"
+        : "你已死亡 — 随身物品即将全部遗失…正在 M.E.G 基地复活…"
     );
   };
 
@@ -327,9 +343,13 @@ export function installMegCheckpointDeathHooks(survival, getCtx, options) {
     var plan = deathPlan;
     deathPlan = null;
     survival._deathSnapshot = null;
+    commitTrueDeathSideEffects();
+    if (plan === "meg_hub_redirect" || plan === "meg_local") {
+      captureMegDeathPayload(survival, reason);
+    }
 
     if (plan === "l0_reset") {
-      // 第 1/2 次死亡：软回 L0（保留背包/负面/积分），不再整局清档
+      // 第 1/2 次死亡：软回 L0（清空背包，保留负面/积分），不再整局清档
       try {
         clearRoyalRationsBuff();
         clearSoyMilkBuffs();

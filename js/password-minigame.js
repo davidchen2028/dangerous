@@ -137,11 +137,37 @@
     },
   ];
 
+  var DONE_KEY = "jiwei_minigame1_done";
   var inputEl = document.getElementById("pwGameInput");
   var rulesEl = document.getElementById("pwGameRules");
   var winEl = document.getElementById("pwGameWin");
+  var viewEl = document.getElementById("pwGameView");
   var revealed = 1;
-  var enteringL4 = false;
+  var enteringNext = false;
+
+  function isDone() {
+    try {
+      return window.localStorage.getItem(DONE_KEY) === "1";
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function markDone() {
+    try {
+      window.localStorage.setItem(DONE_KEY, "1");
+    } catch (err) {
+      /* ignore */
+    }
+  }
+
+  function showView() {
+    if (viewEl) viewEl.hidden = false;
+  }
+
+  function hideView() {
+    if (viewEl) viewEl.hidden = true;
+  }
 
   function checks(pw) {
     var ok = [];
@@ -199,31 +225,37 @@
     }
     rulesEl.innerHTML = html;
     if (winEl) winEl.hidden = !state.done;
-    if (state.done) enterLevel4Base();
+    if (state.done) enterGame2();
   }
 
-  function enterLevel4Base() {
-    if (enteringL4) return;
-    enteringL4 = true;
+  function enterGame2() {
+    if (enteringNext) return;
+    enteringNext = true;
+    markDone();
     if (inputEl) inputEl.disabled = true;
     if (winEl) {
       winEl.hidden = false;
-      winEl.textContent = "密码已设置。正在进入 Level 4 基地…";
-    }
-    try {
-      sessionStorage.setItem("backrooms_l4_pass", "1");
-      sessionStorage.setItem("backrooms_enter_banner", "Level 4");
-    } catch (err) {
-      /* ignore */
+      winEl.textContent = "密码已设置。正在进入下一关…";
     }
     window.setTimeout(function () {
-      window.location.href = "backrooms-level4.html";
+      if (window.PlatformMinigame && typeof window.PlatformMinigame.start === "function") {
+        window.PlatformMinigame.start();
+        return;
+      }
+      enteringNext = false;
+      if (inputEl) inputEl.disabled = false;
+      if (winEl) winEl.textContent = "下一关未就绪，请再开一次小游戏。";
     }, 400);
   }
 
   function reset() {
+    if (isDone()) {
+      hideView();
+      return;
+    }
     revealed = 1;
-    enteringL4 = false;
+    enteringNext = false;
+    showView();
     if (inputEl) inputEl.disabled = false;
     if (inputEl) {
       inputEl.value = "";
@@ -243,5 +275,8 @@
   window.PasswordMinigame = {
     reset: reset,
     render: render,
+    isDone: isDone,
+    show: showView,
+    hide: hideView,
   };
 })();

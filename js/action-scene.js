@@ -6081,16 +6081,20 @@ if (typeof window !== "undefined") {
     }
   }
 
+  var frameFailCount = 0;
+  var frameFailToastAt = 0;
+
   function tick() {
     if (!running) return;
+    animId = requestAnimationFrame(tick);
+    try {
     if (playerDead) {
-      animId = requestAnimationFrame(tick);
       if (renderer && scene && camera) {
         renderer.render(scene, camera);
       }
+      frameFailCount = 0;
       return;
     }
-    animId = requestAnimationFrame(tick);
     var dt = Math.min(clock.getDelta(), 0.05);
     if (typeof document !== "undefined" && document.hidden) return;
 
@@ -6179,6 +6183,20 @@ if (typeof window !== "undefined") {
     }
 
     renderer.render(scene, camera);
+    frameFailCount = 0;
+    } catch (err) {
+      frameFailCount += 1;
+      console.error("[ActionScene] frame", err);
+      var now = performance.now();
+      if (now - frameFailToastAt > 4000) {
+        frameFailToastAt = now;
+        showLoadError((err && err.message) || String(err));
+      }
+      if (frameFailCount >= 12) {
+        running = false;
+        showLoadError("画面循环连续异常，已停止渲染。请返回大厅后重进。");
+      }
+    }
   }
 
   function resetPlayer() {
