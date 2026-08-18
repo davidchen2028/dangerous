@@ -4,10 +4,7 @@
 import { addItem, countItem, removeFirstItem } from "./backrooms-inventory.js";
 import { addMegPoints, getMegPoints } from "./backrooms-meg-points.js";
 import { showBackroomsLootToast } from "./backrooms-fps-controller.js";
-import {
-  grantItemListOrStore,
-  removeFirstFromBaseStorage,
-} from "./backrooms-base-storage.js?v=2";
+import { grantItemListOrStore } from "./backrooms-base-storage.js?v=4";
 
 const ACCEPTED_KEY = "backrooms_tasks_accepted_v1";
 const COMPLETED_KEY = "backrooms_tasks_completed_v1";
@@ -292,6 +289,8 @@ export const TASK_DEFS = [
     alwaysOfferWhenUnlocked: true,
     requiresEverCompleted: ["sample_c1299_fog", "beacon_c1299"],
     requireEverCount: 2,
+    // 领赏进入冷却后清空前置「曾完成」标记，下次需重新完成汤雾采样与信标任务。
+    resetPrereqsOnCooldown: true,
     reconLevelId: "c1299",
     reconTarget: 4,
     deferDeliver: true,
@@ -311,7 +310,8 @@ export const TASK_DEFS = [
       "极限任务（需先完成「汤雾样本采集」与「标记空间坐标」后才会挂出）。" +
       "在 C-1299 汤雾中搜寻拾取 4 份漂浮残页，残页不能被烧蚀，携带全部残页成功撤离。" +
       "中途阅读残页会加快熬煮进度——请带回 Level 4 再查阅。" +
-      "奖励 550 保险库积分 + 层级密钥(L14) + 大量补给。失败扣 160 积分。上限 1 次，冷却 60 分钟。",
+      "奖励 550 保险库积分 + 层级密钥(L14) + 大量补给。失败扣 160 积分。" +
+      "上限 1 次，冷却 60 分钟；冷却开始后前置重置，下次须再次完成上述两项任务。",
   },
 ];
 
@@ -532,6 +532,29 @@ export function getTaskDef(id) {
   return null;
 }
 
+/** 任务道具 id 集合：包裹 / 设备 / 易损采集物。奖励补给不算。 */
+var taskPropIdSet = null;
+function getTaskPropIdSet() {
+  if (taskPropIdSet) return taskPropIdSet;
+  taskPropIdSet = Object.create(null);
+  for (var i = 0; i < TASK_DEFS.length; i++) {
+    var t = TASK_DEFS[i];
+    if (t.packageId) taskPropIdSet[t.packageId] = true;
+    if (t.deviceId) taskPropIdSet[t.deviceId] = true;
+    if (t.fragileItemIds) {
+      for (var f = 0; f < t.fragileItemIds.length; f++) {
+        if (t.fragileItemIds[f]) taskPropIdSet[t.fragileItemIds[f]] = true;
+      }
+    }
+  }
+  return taskPropIdSet;
+}
+
+/** 是否为接取/执行任务用的实体道具（不可进基地寄存柜）。 */
+export function isTaskPropItem(itemId) {
+  return !!(itemId && getTaskPropIdSet()[itemId]);
+}
+
 function readIds(key) {
   try {
     var parsed = JSON.parse(sessionStorage.getItem(key) || "[]");
@@ -641,6 +664,31 @@ function markTaskEverDone(id) {
   if (ids.indexOf(id) >= 0) return;
   ids.push(id);
   writeIds(EVER_DONE_KEY, ids);
+}
+
+/** 清空「曾完成」标记（用于冷却后重置前置链）。 */
+function clearTasksEverDone(taskIds) {
+  if (!taskIds || !taskIds.length) return;
+  var ids = getEverDoneTaskIds().slice();
+  var changed = false;
+  for (var i = 0; i < taskIds.length; i++) {
+    var idx = ids.indexOf(taskIds[i]);
+    if (idx >= 0) {
+      ids.splice(idx, 1);
+      changed = true;
+    }
+  }
+  if (changed) writeIds(EVER_DONE_KEY, ids);
+}
+
+/**
+ * 领赏进入冷却时，若任务声明了 resetPrereqsOnCooldown，
+ * 清掉前置任务的 ever-done，下次须重新完成前置才会再挂出。
+ */
+function resetPrereqsOnCooldownIfNeeded(task) {
+  if (!task || !task.resetPrereqsOnCooldown) return;
+  if (!task.requiresEverCompleted || !task.requiresEverCompleted.length) return;
+  clearTasksEverDone(task.requiresEverCompleted);
 }
 
 function taskPrereqsMet(task) {
@@ -1165,33 +1213,23 @@ export function acceptTask(id) {
     }
   }
   if (task.deviceId) {
+    // 任务设备必须随身携带，不能进寄存柜；背包满则拒接。
     var deviceCount = task.deviceCount > 0 ? task.deviceCount : 1;
-    var deviceList = [];
+    var granted = 0;
     for (var di = 0; di < deviceCount; di++) {
-      deviceList.push({ id: task.deviceId, name: task.deviceName, count: 1 });
-    }
-    var deviceGrant = grantItemListOrStore(deviceList, null);
-    if (deviceGrant.failed > 0) {
-      // 尽量回滚已成功发放的（含寄存）
-      var needRollback = deviceCount - deviceGrant.failed;
-      for (var ri = 0; ri < needRollback; ri++) {
-        if (countItem(task.deviceId) > 0) removeFirstItem(task.deviceId);
-        else removeFirstFromBaseStorage(task.deviceId);
+      if (addItem({ id: task.deviceId, name: task.deviceName || task.deviceId })) {
+        granted++;
+      } else {
+        break;
       }
+    }
+    if (granted < deviceCount) {
+      for (var ri = 0; ri < granted; ri++) removeFirstItem(task.deviceId);
       if (task.packageId) removeFirstItem(task.packageId);
       return {
         ok: false,
-        reason: "背包与寄存柜都满了，放不下全部" + task.deviceName,
+        reason: "背包和快捷栏已满，放不下全部" + (task.deviceName || "任务设备"),
       };
-    }
-    if (deviceGrant.stored > 0) {
-      defaultToast(
-        "背包满了，工作人员帮你把 " +
-          deviceGrant.stored +
-          " 件" +
-          task.deviceName +
-          "寄存了（请到 L1 / L4 / L11 基地取出后再进层）"
-      );
     }
   }
   if (task.grantItems && task.grantItems.length) {
@@ -1288,6 +1326,7 @@ function noteTaskCompletion(id) {
     var offers = readIds(BOARD_OFFERS_KEY).slice();
     setOfferPresent(offers, id, false);
     writeIds(BOARD_OFFERS_KEY, offers);
+    resetPrereqsOnCooldownIfNeeded(task);
     return "已达次数上限，冷却 " + Math.round(cd / 60000) + " 分钟";
   }
   counts[id] = n;
@@ -1314,6 +1353,45 @@ function setOfferPresent(offers, taskId, present) {
   if (!present && idx >= 0) offers.splice(idx, 1);
 }
 
+function isHighDifficultyTask(task) {
+  return !!(task && task.rare);
+}
+
+/** 当前挂出里是否已有高难度（★）委托。 */
+function boardHasHighDifficulty(offers) {
+  for (var i = 0; i < offers.length; i++) {
+    if (isHighDifficultyTask(getTaskDef(offers[i]))) return true;
+  }
+  return false;
+}
+
+/**
+ * 保底：若板上没有任何高难度任务，从可挂出的 ★ 任务里随机塞一个。
+ * 冷却中 / 前置未满足的不参与；无可塞时保持原样。
+ */
+function ensureHighDifficultyPity(offers) {
+  if (boardHasHighDifficulty(offers)) return;
+  for (var k = 0; k < TASK_DEFS.length; k++) {
+    var kept = TASK_DEFS[k];
+    if (isHighDifficultyTask(kept) && shouldKeepOffer(kept)) {
+      setOfferPresent(offers, kept.id, true);
+      return;
+    }
+  }
+  var pool = [];
+  for (var i = 0; i < TASK_DEFS.length; i++) {
+    var task = TASK_DEFS[i];
+    if (!isHighDifficultyTask(task)) continue;
+    if (isTaskCooling(task.id)) continue;
+    if (!taskPrereqsMet(task)) continue;
+    if (offers.indexOf(task.id) >= 0) continue;
+    pool.push(task);
+  }
+  if (!pool.length) return;
+  var pick = pool[Math.floor(Math.random() * pool.length)];
+  setOfferPresent(offers, pick.id, true);
+}
+
 /**
  * 每次进入 Level 4 重掷「进层刷新」委托；间隔类委托的挂出状态保留不动。
  * 已接取 / 已交付的委托始终保留在板上；冷却中的不挂出。
@@ -1333,6 +1411,7 @@ function rollEnterBoardOffers() {
     }
     setOfferPresent(offers, task.id, rollOfferOnce(task));
   }
+  ensureHighDifficultyPity(offers);
   writeIds(BOARD_OFFERS_KEY, offers);
 }
 
@@ -1372,6 +1451,13 @@ function refreshIntervalBoardOffers() {
     setOfferPresent(offers, task.id, rollOfferOnce(task));
     rolls[task.id] = now;
     changed = true;
+  }
+  if (!boardHasHighDifficulty(offers)) {
+    var before = offers.slice();
+    ensureHighDifficultyPity(offers);
+    if (offers.length !== before.length || offers.join(",") !== before.join(",")) {
+      changed = true;
+    }
   }
   if (changed) {
     writeIds(BOARD_OFFERS_KEY, offers);
@@ -1414,6 +1500,7 @@ export function rerollBoardOffersWithPoints() {
     setOfferPresent(offers, task.id, rollOfferOnce(task));
     rolls[task.id] = now;
   }
+  ensureHighDifficultyPity(offers);
   writeIds(BOARD_OFFERS_KEY, offers);
   writeMap(BOARD_OFFER_ROLLS_KEY, rolls);
   if (boardOpen) renderBoard("已花费 " + BOARD_REROLL_COST + " 积分刷新委托。");

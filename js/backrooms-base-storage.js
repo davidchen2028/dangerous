@@ -13,6 +13,7 @@ import {
   renderGridPublic,
 } from "./backrooms-inventory.js";
 import { showBackroomsLootToast } from "./backrooms-fps-controller.js";
+import { isTaskPropItem } from "./backrooms-tasks.js";
 
 export const BASE_STORAGE_KEY = "backrooms_base_storage_v1";
 export const BASE_STORAGE_CAPACITY = 100;
@@ -22,10 +23,13 @@ export const BASE_STORAGE_ROWS = 10;
 /** @type {(null | { id: string, name: string })[]} */
 let storageSlots = new Array(BASE_STORAGE_CAPACITY).fill(null);
 let panelEl = null;
+let closeBtnEl = null;
 let open = false;
 let onOpenChange = null;
 let selected = null; // { side: "storage"|"backpack"|"hotbar", index: number }
 let dragging = null; // { side, index } 拖拽起点
+/** 打开时主动 exitPointerLock 会触发 pointerlockchange，用此标志避免误关面板 */
+let ignoreUnlockClose = false;
 
 function cloneItem(item) {
   if (!item || !item.id) return null;
@@ -72,9 +76,10 @@ export function countBaseStorageFree() {
   return n;
 }
 
-/** 背包满时奖励/发放写入寄存柜。 */
+/** 背包满时奖励/发放写入寄存柜。任务道具拒绝写入。 */
 export function addToBaseStorage(item) {
   if (!item || !item.id) return false;
+  if (isTaskPropItem(item.id)) return false;
   // 每次写入前重读：所有改动都即时落盘，重读可避免覆盖掉别处刚寄存的物品。
   loadStorage();
   for (var i = 0; i < storageSlots.length; i++) {
@@ -177,6 +182,18 @@ function capacityOf(side) {
   return 0;
 }
 
+function wouldDepositTaskProp(fromSide, toSide, fromItem, toItem) {
+  // 只有「进入寄存区」才禁；从寄存取出、背包↔快捷栏、寄存区内挪动都允许。
+  if (toSide === "storage" && fromSide !== "storage" && fromItem && isTaskPropItem(fromItem.id)) {
+    return true;
+  }
+  // 互换：寄存格里的普通物换出时，对方任务道具会进寄存。
+  if (fromSide === "storage" && toSide !== "storage" && toItem && isTaskPropItem(toItem.id)) {
+    return true;
+  }
+  return false;
+}
+
 function swapOrMove(fromSide, fromIndex, toSide, toIndex) {
   selected = null;
   if (fromSide === toSide && fromIndex === toIndex) {
@@ -187,6 +204,11 @@ function swapOrMove(fromSide, fromIndex, toSide, toIndex) {
   if (toIndex < 0 || toIndex >= capacityOf(toSide)) return;
   var a = getSlot(fromSide, fromIndex);
   var b = getSlot(toSide, toIndex);
+  if (wouldDepositTaskProp(fromSide, toSide, a, b)) {
+    showBackroomsLootToast("任务道具不能寄存，须随身携带", { durationMs: 2400 });
+    renderStorageUi();
+    return;
+  }
   setSlot(fromSide, fromIndex, b);
   setSlot(toSide, toIndex, a);
   renderStorageUi();
@@ -199,18 +221,12 @@ function ensurePanel() {
   panelEl = document.createElement("div");
   panelEl.id = "backroomsBaseStorage";
   panelEl.hidden = true;
-  panelEl.style.cssText =
-    "position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;" +
-    "background:rgba(8,10,14,.72);font-family:ui-sans-serif,system-ui,sans-serif;color:#efe8d8;";
   panelEl.innerHTML =
-    '<div style="width:min(920px,96vw);max-height:92vh;overflow:auto;background:#1c1f24;border:1px solid #6a6354;padding:1rem 1.1rem 1.2rem;">' +
-    '<div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.7rem;">' +
-    '<button type="button" data-storage-close="1" title="关闭寄存柜" aria-label="关闭寄存柜" ' +
-    'style="flex:none;width:38px;height:38px;line-height:1;padding:0;border:1px solid #8a8272;' +
-    'border-radius:4px;background:#3a2222;color:#ffdede;font-size:1.4rem;font-weight:700;' +
-    'cursor:pointer;">✕</button>' +
+    '<button type="button" class="br-storage-close" data-storage-close="1" title="关闭寄存柜" aria-label="关闭寄存柜">✕</button>' +
+    '<div class="br-storage-panel" style="width:min(920px,96vw);max-height:92vh;overflow:auto;background:#1c1f24;border:1px solid #6a6354;padding:1rem 1.1rem 1.2rem;">' +
+    '<div style="display:flex;align-items:baseline;gap:.8rem;margin-bottom:.7rem;flex-wrap:wrap;">' +
     "<strong style=\"font-size:1.05rem;\">基地寄存柜 · 100 格</strong>" +
-    '<span style="opacity:.75;font-size:.85rem;">点左上角 ✕ 关闭 · 拖拽移动 · 或点击两格互换 · 死亡不会清空</span>' +
+    '<span style="opacity:.75;font-size:.85rem;">点左上角 ✕ 或 Esc 关闭 · 任务道具不可寄存 · 死亡不会清空</span>' +
     "</div>" +
     '<p style="margin:.2rem 0 .55rem;opacity:.8;font-size:.86rem;">寄存区</p>' +
     '<div id="brStorageGrid" style="display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px;"></div>' +
@@ -220,29 +236,37 @@ function ensurePanel() {
     '<div id="brStorageHotbar" style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;max-width:420px;"></div>' +
     "</div>";
   document.body.appendChild(panelEl);
+  closeBtnEl = panelEl.querySelector(".br-storage-close");
 
-  function isCloseTarget(e) {
-    return !!(e.target && e.target.closest && e.target.closest("[data-storage-close]"));
-  }
-  // pointerdown 捕获：即使关卡的输入层想抢这次点击，✕ 也一定能关掉面板。
-  panelEl.addEventListener(
-    "pointerdown",
-    function (e) {
-      if (!isCloseTarget(e)) return;
+  function requestClose(e) {
+    if (e) {
       e.preventDefault();
       e.stopPropagation();
-      closeBaseStorage();
-    },
-    true
-  );
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    }
+    closeBaseStorage();
+  }
+
+  // 关闭钮：多事件绑定，避免某一路径被关卡输入层吞掉
+  ["pointerdown", "mousedown", "click", "touchend"].forEach(function (type) {
+    closeBtnEl.addEventListener(type, requestClose, true);
+  });
+
   panelEl.addEventListener("click", function (e) {
-    if (isCloseTarget(e)) {
-      e.stopPropagation();
-      closeBaseStorage();
+    if (e.target === panelEl) requestClose(e);
+  });
+
+  // 打开期间 Esc 释放指针锁时（浏览器常不派发 keydown），也关掉面板
+  document.addEventListener("pointerlockchange", function () {
+    if (!open) return;
+    if (document.pointerLockElement) return;
+    if (ignoreUnlockClose) {
+      ignoreUnlockClose = false;
       return;
     }
-    if (e.target === panelEl) closeBaseStorage();
+    closeBaseStorage();
   });
+
   bindStorageDragAndDrop(panelEl);
   return panelEl;
 }
@@ -370,12 +394,18 @@ export function openBaseStorage(opts) {
   selected = null;
   dragging = null;
   panelEl.hidden = false;
-  if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
-  // 捕获阶段接管按键：关卡自己的 keydown 处理会先吃掉 Esc，冒泡监听收不到。
+  document.body.classList.add("backrooms-storage-open");
+  if (document.pointerLockElement && document.exitPointerLock) {
+    ignoreUnlockClose = true;
+    document.exitPointerLock();
+  }
+  // window + document 捕获：关卡自己的 keydown 再怎么拦也能收到 Esc。
+  window.addEventListener("keydown", onStorageKeydown, true);
   document.addEventListener("keydown", onStorageKeydown, true);
+  window.addEventListener("keyup", onStorageKeyup, true);
   renderStorageUi();
   if (opts.toast !== false) {
-    showBackroomsLootToast("寄存柜已打开 · 把物品挪进寄存区即可离开后保管", {
+    showBackroomsLootToast("寄存柜已打开 · 点左上角 ✕ 或按 Esc 关闭", {
       durationMs: 2800,
     });
   }
@@ -387,8 +417,12 @@ export function closeBaseStorage() {
   open = false;
   selected = null;
   dragging = null;
+  ignoreUnlockClose = false;
   if (panelEl) panelEl.hidden = true;
+  document.body.classList.remove("backrooms-storage-open");
+  window.removeEventListener("keydown", onStorageKeydown, true);
   document.removeEventListener("keydown", onStorageKeydown, true);
+  window.removeEventListener("keyup", onStorageKeyup, true);
   persistStorage();
   if (onOpenChange) onOpenChange(false);
 }
@@ -409,6 +443,17 @@ function onStorageKeydown(e) {
   e.stopPropagation();
   e.stopImmediatePropagation();
   if (e.code === "Escape" || e.key === "Escape" || e.code === "KeyB" || e.code === "KeyQ") {
+    closeBaseStorage();
+  }
+}
+
+/** 指针锁占用 Esc 时常只看得到 keyup，作兜底。 */
+function onStorageKeyup(e) {
+  if (!open) return;
+  if (e.code === "Escape" || e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
     closeBaseStorage();
   }
 }

@@ -27,7 +27,7 @@ import {
   openBaseStorage,
   isBaseStorageOpen,
   wrapInventoryOpenHandler,
-} from "./backrooms-base-storage.js?v=2";
+} from "./backrooms-base-storage.js?v=4";
 import { getSellPrice } from "./backrooms-shop-prices.js";
 import {
   tryBeginMerchantTrade,
@@ -1971,6 +1971,7 @@ function bindControls() {
   var cap = inputEl || canvas;
   if (cap) {
     cap.addEventListener("pointerdown", function (e) {
+      if (isInventoryOpen() || isBaseStorageOpen()) return;
       if (shouldUseDragLook()) {
         if (e.pointerType === "mouse" && e.button !== 0) return;
         lookDragId = e.pointerId;
@@ -1980,7 +1981,6 @@ function bindControls() {
         e.preventDefault();
         return;
       }
-      if (isInventoryOpen() || isBaseStorageOpen()) return;
       if (e.pointerType === "mouse" && e.button === 0 && !pointerLocked) {
         requestLock(e.currentTarget);
       }

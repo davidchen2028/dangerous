@@ -334,13 +334,54 @@ body.backrooms-home-ending-open .br-hotbar {
 body.backrooms-pack-open #backroomsCanvas,
 body.backrooms-pack-open .backrooms-input,
 body.backrooms-settings-open #backroomsCanvas,
-body.backrooms-settings-open .backrooms-input {
+body.backrooms-settings-open .backrooms-input,
+body.backrooms-storage-open #backroomsCanvas,
+body.backrooms-storage-open .backrooms-input {
   pointer-events: none;
 }
 
 body.backrooms-pack-open .br-pack,
 body.backrooms-settings-open .br-settings {
   pointer-events: auto;
+}
+
+/* 基地寄存柜：盖住输入层，屏幕左上角固定关闭钮 */
+#backroomsBaseStorage {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 14, 0.72);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  color: #efe8d8;
+  pointer-events: auto;
+}
+
+#backroomsBaseStorage[hidden] {
+  display: none !important;
+}
+
+#backroomsBaseStorage .br-storage-close {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 201;
+  width: 48px;
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 2px solid #c9b28a;
+  border-radius: 6px;
+  background: #5a1e1e;
+  color: #ffe8e8;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 /* —— 商店收购：对话框压在背包之上，快捷栏保持可点 —— */

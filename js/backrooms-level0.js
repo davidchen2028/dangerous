@@ -301,7 +301,7 @@ let level0WorldRoot = null;
 let level0Zones = null;
 const CLIP_DASH_SPEED = 13;
 const CLIP_DASH_TIME = 0.55;
-const AUTO_CLIP_TO_L1_SEC = 55;
+const AUTO_CLIP_TO_L1_SEC = 20;
 
 function syncLevel0HudTitle(title) {
   var el = document.querySelector(".backrooms-hud__title");
@@ -1099,7 +1099,7 @@ function updateClipDash(dt) {
   }
 }
 
-/** 在主迷宫探索满 55 秒后强制切出到 Level 1（子区域不计时）。 */
+/** 在主迷宫探索满 20 秒后强制切出到 Level 1（子区域不计时）。 */
 function updateAutoClipToL1(dt) {
   if (autoClipTriggered || clipState !== "idle") return;
   if (survival && survival.dead) return;

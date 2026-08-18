@@ -464,17 +464,17 @@ function maybeUnlockExitAfterDocs() {
   if (readDocIds.size >= UEC_DOCS.length) unlockEmergencyExit();
 }
 
-function leaveToL4() {
+function leaveToL11() {
   if (transitionLock) return;
   transitionLock = true;
   closeDocOverlay();
   showToast("你挤进撤离缝隙——衰退瘾的压迫感在身后戛然而止。", 3600);
   if (survival) saveBackroomsSurvival(survival);
   // 离开本层即清除侵蚀 debuff（memory 不跨层持久化）。
-  grantLevelPass("l4", fps.yaw);
-  queueEnterLevelBanner("Level 4");
+  grantLevelPass("l11", fps.yaw);
+  queueEnterLevelBanner("Level 11");
   window.setTimeout(function () {
-    window.location.href = "backrooms-level4.html";
+    window.location.href = "backrooms-level11.html";
   }, 750);
 }
 
@@ -483,7 +483,7 @@ function tryReadAimedDoc() {
   var data = currentAimDoc.data;
   if (!data) return;
   if (data.kind === "uec_exit") {
-    if (exitUnlocked) leaveToL4();
+    if (exitUnlocked) leaveToL11();
     return;
   }
   if (data.kind !== "uec_doc") return;
@@ -507,7 +507,7 @@ function tryReadAimedDoc() {
     var res = recordReconSighting(DOCS_TASK_ID, doc.id);
     if (res.ok) {
       if (res.done) {
-        showToast("三份实验档案已齐 · 从北侧撤离缝隙离开，回 Level 4 领赏！", 4200);
+        showToast("三份实验档案已齐 · 从北侧撤离缝隙前往 Level 11，再回 Level 4 领赏！", 4200);
       } else {
         showToast("档案回收进度 " + res.count + " / " + res.target, 2800);
       }
@@ -542,7 +542,7 @@ function updateDocInteractUi() {
   }
   var data = currentAimDoc.data || null;
   if (data && data.kind === "uec_exit") {
-    interactHintEl.innerHTML = 'UEC 应急撤离缝隙 · 按 <kbd>Q</kbd> 离开（前往 Level 4）';
+    interactHintEl.innerHTML = 'UEC 应急撤离缝隙 · 按 <kbd>Q</kbd> 离开（前往 Level 11）';
     interactHintEl.hidden = false;
     return;
   }
