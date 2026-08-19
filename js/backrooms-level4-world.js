@@ -213,6 +213,11 @@ function sharedMaterials() {
       color: 0xffffff,
       roughness: 0.45,
     }),
+    megDavidchen: new THREE.MeshStandardMaterial({
+      map: davidchenWallTexture() || undefined,
+      color: 0xffffff,
+      roughness: 0.62,
+    }),
   };
   return _mats;
 }
@@ -776,6 +781,29 @@ function megTaskBoardTexture() {
   return _megTaskBoardTex;
 }
 
+var _davidchenWallTex = null;
+function davidchenWallTexture() {
+  if (_davidchenWallTex) return _davidchenWallTex;
+  var canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 128;
+  var ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#2a3036";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "#8a9298";
+  ctx.lineWidth = 6;
+  ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+  ctx.fillStyle = "#f2f4f6";
+  ctx.font = "bold 52px Arial, PingFang SC, Microsoft YaHei, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Davidchen", 256, 64);
+  _davidchenWallTex = new THREE.CanvasTexture(canvas);
+  _davidchenWallTex.colorSpace = THREE.SRGBColorSpace;
+  return _davidchenWallTex;
+}
+
 /** 出生区东侧固定区块：M.E.G Level 4 任务前哨站 + B.N.T.G 联络员 */
 function addMegL4Outpost(group, batches, colliders, interactRoots, ox, oz, mats) {
   var wallMat = mats.megWall;
@@ -805,6 +833,12 @@ function addMegL4Outpost(group, batches, colliders, interactRoots, ox, oz, mats)
   sign.position.set(minX + 0.13, 2.05, oz);
   sign.scale.set(0.08, 0.6, 3.6);
   group.add(sign);
+
+  var nameplate = new THREE.Mesh(sharedBoxGeometry(), mats.megDavidchen);
+  nameplate.position.set(ox - 3.4, 1.72, maxZ - 0.2);
+  nameplate.scale.set(2.8, 0.7, 0.05);
+  tagShadowMesh(nameplate, false, true);
+  group.add(nameplate);
 
   // 任务发布台。
   queueBox(batches, "megDesk", darkMat, ox + 4.8, 0.55, oz, 1.0, 1.1, 7.5, 0, true, true);

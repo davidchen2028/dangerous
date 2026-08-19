@@ -1,14 +1,24 @@
 /**
  * 大厅小游戏 2 — Level Devil 风格平台：天空 + 灰地板。
- * 1 空关 → 2 三刺挤一起 → 3 前中后三刺 → 4 中间裂开 → 5 裂开 + 木箱 → 6 门搬家 + 绿箱。
- * 死亡只重开当前关。
+ * 1 空关 → 2 三刺挤一起 → 3 前中后三刺 → 4 中间裂开 → 5 裂开 + 木箱
+ * → 6 门搬家 + 绿箱 → 7 前中后三缝 → 8 三缝（可见）+ 绿箱/木箱/按钮
+ * → 9 中刺变三刺 → 过刺出灰箱瞬移回出生点，0.3 秒后出缝 + 绿箱/木箱/红箱
+ * → 10 巨大缝，鼠标拖到门边再走进去。
+ * 死亡只重开当前关。刷新保留关卡进度，左上角可回第一关。
  */
 (function () {
-  var STAGE_COUNT = 6;
+  var STAGE_COUNT = 10;
+  var STAGE_KEY = "jiwei_minigame2_stage";
   var viewEl = document.getElementById("platformGameView");
   var canvas = document.getElementById("platformGameCanvas");
   var dotsEl = document.getElementById("platformGameDots");
   var restartBtn = document.getElementById("platformGameRestart");
+  var firstBtn = document.getElementById("platformGameFirst");
+  var selectEl = document.getElementById("platformSelect");
+  var selectPassEl = document.getElementById("platformSelectPass");
+  var selectMenuEl = document.getElementById("platformSelectMenu");
+  var selectInputEl = document.getElementById("platformSelectInput");
+  var selectChoicesEl = document.getElementById("platformSelectChoices");
   var padEl = document.getElementById("platformGamePad");
   if (!viewEl || !canvas) return;
 
@@ -23,11 +33,33 @@
   var spike = { armed: false, maxH: 18 };
   var spikeStates = [];
   var crack = { armed: false, open: false };
+  var gapStates = [];
   var crate = { active: false, cancelled: false, dir: -1, x: 0, y: 0, w: 28, h: 26, vx: 0, vy: 0 };
   var green = { active: false, started: false, landed: false, x: 0, y: 0, w: 28, h: 26, vy: 0 };
   var portalSide = "right";
   var waitAtGap = 0;
   var woodArmed = false;
+  var greenFlags = [false, false, false];
+  var floorGone = false;
+  var s9SideOn = false;
+  var s9BecameGap = false;
+  var s9GapTimer = -1;
+  var grey = { active: false, spawned: false, x: 0, y: 0, w: 28, h: 26, vx: 0 };
+  var red = { active: false, spawned: false, x: 0, y: 0, w: 28, h: 22, vx: 0 };
+  var selectOpen = false;
+  var STAGE_LABELS = [
+    "第 1 关 · 空关",
+    "第 2 关 · 三刺挤一起",
+    "第 3 关 · 前中后刺",
+    "第 4 关 · 中间裂开",
+    "第 5 关 · 木箱",
+    "第 6 关 · 门搬家",
+    "第 7 关 · 三缝",
+    "第 8 关 · 三缝陷阱",
+    "第 9 关 · 中刺变缝",
+    "第 10 关 · 大缝",
+  ];
+  var drag = { on: false, ox: 0, oy: 0 };
   var fade = 0;
   var fadeDir = 0;
   var pendingStage = 0;
@@ -58,7 +90,36 @@
     return { x: x, y: L.pathY - h, w: w, h: h };
   }
 
+  function gapSlots() {
+    if (stage === 7) return [0.24, 0.5, 0.76];
+    if (stage === 8) return [0.2, 0.42, 0.62];
+    if (stage === 9 && s9BecameGap) return [0.5];
+    if (stage === 10) return [0.5];
+    if (stage === 4 || stage === 5 || stage === 6) return [0.5];
+    return [];
+  }
+
+  function gapBoxAt(L, t) {
+    var gw =
+      stage === 10
+        ? Math.round(L.pathW * 0.66)
+        : Math.max(28, Math.round(player.w * 1.5));
+    var cx = L.pathX + L.pathW * t;
+    return { x: cx - gw * 0.5, w: gw };
+  }
+
+  function listGaps(L) {
+    var slots = gapSlots();
+    return slots.map(function (t, i) {
+      var box = gapBoxAt(L, t);
+      box.open = !!(gapStates[i] && gapStates[i].open);
+      return box;
+    });
+  }
+
   function gapBox(L) {
+    var gaps = listGaps(L);
+    if (gaps.length) return gaps[Math.min(1, gaps.length - 1)] || gaps[0];
     var gw = Math.max(28, Math.round(player.w * 1.5));
     var cx = L.pathX + L.pathW * 0.5;
     return { x: cx - gw * 0.5, w: gw };
@@ -69,7 +130,31 @@
     if (stage === 3) {
       return [{ t: 0.24, count: 1 }, { t: 0.5, count: 1 }, { t: 0.76, count: 1 }];
     }
+    if (stage === 9 && !s9BecameGap) {
+      if (s9SideOn) {
+        return [{ t: 0.48, count: 1 }, { t: 0.5, count: 1 }, { t: 0.52, count: 1 }];
+      }
+      return [{ t: 0.5, count: 1 }];
+    }
     return [];
+  }
+
+  function persistStage(n) {
+    try {
+      window.localStorage.setItem(STAGE_KEY, String(n));
+    } catch (err) {
+      /* ignore */
+    }
+  }
+
+  function readStage() {
+    try {
+      var n = parseInt(window.localStorage.getItem(STAGE_KEY), 10);
+      if (n >= 1 && n <= STAGE_COUNT) return n;
+    } catch (err) {
+      /* ignore */
+    }
+    return 1;
   }
 
   function placePlayer(L) {
@@ -88,8 +173,18 @@
     spikeStates = spikeGroups().map(function () {
       return { shown: false, h: 0 };
     });
-    crack.armed = stage === 4 || stage === 5 || stage === 6;
-    crack.open = false;
+    s9SideOn = false;
+    s9BecameGap = false;
+    s9GapTimer = -1;
+    grey.active = false;
+    grey.spawned = false;
+    grey.vx = 0;
+    drag.on = false;
+    crack.armed = (stage >= 4 && stage <= 8) || stage === 9 || stage === 10;
+    crack.open = stage === 8 || stage === 10;
+    gapStates = gapSlots().map(function () {
+      return { open: stage === 8 || stage === 10 };
+    });
     portalSide = "right";
     crate.w = player.h;
     crate.h = player.h;
@@ -108,6 +203,14 @@
     green.vy = 0;
     waitAtGap = 0;
     woodArmed = false;
+    greenFlags = [false, false, false];
+    floorGone = false;
+    red.active = false;
+    red.spawned = false;
+    if (stage === 9) {
+      spike.armed = true;
+      spikeStates = [{ shown: true, h: spike.maxH }];
+    }
   }
 
   function spawnCrate(L, dir) {
@@ -125,8 +228,8 @@
     }
   }
 
-  function spawnGreen(L) {
-    var g = gapBox(L);
+  function spawnGreen(L, gap) {
+    var g = gap || gapBox(L);
     green.active = true;
     green.started = true;
     green.landed = false;
@@ -137,8 +240,45 @@
     green.vy = H * 0.85;
   }
 
+  function buttonBox(L) {
+    if (stage !== 8 || floorGone) return null;
+    var gaps = listGaps(L);
+    if (!gaps[2]) return null;
+    var bw = Math.max(22, Math.round(player.w * 1.2));
+    var bh = Math.max(8, Math.round(player.h * 0.2));
+    return {
+      x: gaps[2].x + gaps[2].w + Math.round(player.w * 1.7),
+      y: L.pathY - bh,
+      w: bw,
+      h: bh,
+    };
+  }
+
+  function spawnGrey(L) {
+    var door = portalBox(L);
+    grey.active = true;
+    grey.spawned = true;
+    grey.w = player.h;
+    grey.h = player.h;
+    grey.x = door.x - grey.w * 0.1;
+    grey.y = L.pathY - grey.h;
+    grey.vx = -W * 0.68;
+  }
+
+  function spawnRed(L) {
+    var door = portalBox(L);
+    red.active = true;
+    red.spawned = true;
+    red.w = Math.max(18, Math.round(player.h * 0.62));
+    red.h = Math.max(10, Math.round(player.h * 0.36));
+    red.x = door.x - red.w * 0.1;
+    red.y = L.pathY - red.h;
+    red.vx = -W * 0.5;
+  }
+
   function setStage(next) {
     stage = next;
+    persistStage(next);
     dead = false;
     deadT = 0;
     jumpQueued = false;
@@ -177,10 +317,27 @@
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
 
+  function vanishedOverlap(x, w, L) {
+    if (stage !== 8 || !floorGone) return 0;
+    var gaps = listGaps(L);
+    if (!gaps[2]) return 0;
+    var left = gaps[2].x + gaps[2].w;
+    var right = L.pathX + L.pathW + 24;
+    return Math.max(0, Math.min(x + w, right) - Math.max(x, left));
+  }
+
   function gapOverlap(x, w, L) {
-    if (!crack.open) return 0;
-    var g = gapBox(L);
-    return Math.max(0, Math.min(x + w, g.x + g.w) - Math.max(x, g.x));
+    var gaps = listGaps(L);
+    var total = vanishedOverlap(x, w, L);
+    var i;
+    for (i = 0; i < gaps.length; i++) {
+      if (!gaps[i].open) continue;
+      total += Math.max(
+        0,
+        Math.min(x + w, gaps[i].x + gaps[i].w) - Math.max(x, gaps[i].x)
+      );
+    }
+    return total;
   }
 
   function overGap(x, w, L) {
@@ -196,10 +353,18 @@
 
   function resolvePitWalls(L) {
     if (!crack.open) return;
-    var g = gapBox(L);
     if (player.y + player.h <= L.pathY + 2) return;
-    if (player.x < g.x) player.x = g.x;
-    if (player.x + player.w > g.x + g.w) player.x = g.x + g.w - player.w;
+    var gaps = listGaps(L);
+    var mid = player.x + player.w * 0.5;
+    var i;
+    for (i = 0; i < gaps.length; i++) {
+      if (!gaps[i].open) continue;
+      var g = gaps[i];
+      if (mid < g.x || mid > g.x + g.w) continue;
+      if (player.x < g.x) player.x = g.x;
+      if (player.x + player.w > g.x + g.w) player.x = g.x + g.w - player.w;
+      return;
+    }
   }
 
   function spikeBoxes(L) {
@@ -239,15 +404,18 @@
     jumpQueued = false;
   }
 
-  function atGapFront(L, side) {
-    var g = gapBox(L);
-    if (!player.onGround || player.y + player.h > L.pathY + 2) return false;
+  function atGapFrontOf(L, g, side) {
+    if (!g || !player.onGround || player.y + player.h > L.pathY + 2) return false;
     if (side === "left") {
       var leftDist = g.x - (player.x + player.w);
       return leftDist >= -10 && leftDist <= player.w * 3.8;
     }
     var rightDist = player.x - (g.x + g.w);
     return rightDist >= -10 && rightDist <= player.w * 3.8;
+  }
+
+  function atGapFront(L, side) {
+    return atGapFrontOf(L, gapBox(L), side);
   }
 
   function enterPortal() {
@@ -304,7 +472,184 @@
     }
   }
 
+  function moveCrate(dt, L, g) {
+    if (!crate.active || crate.cancelled) return;
+    crate.vx += crate.dir * W * 2.6 * dt;
+    if (crate.dir < 0 && crate.vx < -W * 1.15) crate.vx = -W * 1.15;
+    if (crate.dir > 0 && crate.vx > W * 1.15) crate.vx = W * 1.15;
+    crate.x += crate.vx * dt;
+    if (crate.dir < 0 && crate.x < g.x + g.w) {
+      crate.x = g.x + g.w;
+      crate.vx = 0;
+    }
+    if (crate.dir > 0 && crate.x + crate.w > g.x) {
+      crate.x = g.x - crate.w;
+      crate.vx = 0;
+    }
+    crate.y = L.pathY - crate.h;
+    crate.vy = 0;
+    if (overlaps(player, { x: crate.x, y: crate.y, w: crate.w, h: crate.h })) {
+      player.x = crate.dir < 0 ? crate.x - player.w : crate.x + crate.w;
+      player.onGround = false;
+      if (player.vy < H * 0.12) player.vy = H * 0.12;
+    }
+  }
+
+  function updateStage8(dt, L, justJumped) {
+    var gaps = listGaps(L);
+    if (gaps.length < 3) return;
+    if (!greenFlags[0] && atGapFrontOf(L, gaps[0], "left")) {
+      greenFlags[0] = true;
+      spawnGreen(L, gaps[0]);
+    }
+    if (!greenFlags[2] && atGapFrontOf(L, gaps[2], "left")) {
+      greenFlags[2] = true;
+      spawnGreen(L, gaps[2]);
+    }
+    updateGreen(dt, L, justJumped);
+    if (dead) return;
+
+    var mid = gaps[1];
+    var atMid = atGapFrontOf(L, mid, "left");
+    if (justJumped && atMid) woodArmed = true;
+    if (
+      woodArmed &&
+      player.x >= mid.x + mid.w * 0.55 &&
+      !crate.cancelled &&
+      !crate.active
+    ) {
+      spawnCrate(L, -1);
+    }
+    if (!crate.cancelled && atMid) {
+      waitAtGap += dt;
+      if (waitAtGap >= 1) {
+        crate.cancelled = true;
+        crate.active = false;
+      }
+    } else if (!crate.cancelled && !atMid) {
+      waitAtGap = 0;
+    }
+    moveCrate(dt, L, mid);
+
+    var btn = buttonBox(L);
+    if (btn && player.onGround && overlaps(player, btn)) {
+      floorGone = true;
+      shake = 10;
+      player.onGround = false;
+      if (player.vy < H * 0.25) player.vy = H * 0.25;
+    }
+  }
+
+  function becomeStage9Gap(L) {
+    s9BecameGap = true;
+    s9SideOn = false;
+    s9GapTimer = -1;
+    grey.active = false;
+    spike.armed = false;
+    spikeStates = [];
+    crack.armed = true;
+    crack.open = true;
+    gapStates = [{ open: true }];
+    shake = 8;
+  }
+
+  function updateRed(dt, L) {
+    if (!red.active) return;
+    red.x += red.vx * dt;
+    if (
+      overlaps(player, { x: red.x, y: red.y, w: red.w, h: red.h }) &&
+      player.y + player.h > red.y + 2
+    ) {
+      die();
+      return;
+    }
+    if (red.x + red.w < L.pathX - 40) red.active = false;
+  }
+
+  function updateGrey(dt, L) {
+    if (s9GapTimer >= 0) {
+      s9GapTimer -= dt;
+      if (s9GapTimer <= 0) {
+        s9GapTimer = -1;
+        becomeStage9Gap(L);
+      }
+    }
+    if (!grey.active) return;
+    grey.x += grey.vx * dt;
+    if (overlaps(player, { x: grey.x, y: grey.y, w: grey.w, h: grey.h })) {
+      placePlayer(L);
+      grey.active = false;
+      s9GapTimer = 0.3;
+      shake = 8;
+      return;
+    }
+    if (grey.x + grey.w < L.pathX - 40) grey.active = false;
+  }
+
+  function updateStage9(dt, L, justJumped) {
+    if (!s9BecameGap) {
+      var midX = L.pathX + L.pathW * 0.5;
+      var overSpike =
+        !player.onGround &&
+        player.x + player.w > midX - player.w &&
+        player.x < midX + player.w &&
+        player.y + player.h < L.pathY - 6;
+      if (overSpike && !s9SideOn) {
+        s9SideOn = true;
+        spikeStates = [
+          { shown: true, h: spike.maxH },
+          { shown: true, h: spike.maxH },
+          { shown: true, h: spike.maxH },
+        ];
+        shake = 7;
+      }
+      var rightX = L.pathX + L.pathW * 0.52;
+      if (s9SideOn && !grey.spawned && player.x >= rightX + 4) {
+        spawnGrey(L);
+      }
+      updateGrey(dt, L);
+      return;
+    }
+
+    var g = gapBox(L);
+    if (!green.started && atGapFrontOf(L, g, "left")) {
+      spawnGreen(L, g);
+    }
+    updateGreen(dt, L, justJumped);
+    if (dead) return;
+    if (green.landed && !red.spawned) spawnRed(L);
+    if (justJumped && green.landed && atGapFrontOf(L, g, "left")) woodArmed = true;
+    if (
+      woodArmed &&
+      player.x >= g.x + g.w * 0.55 &&
+      !crate.cancelled &&
+      !crate.active
+    ) {
+      spawnCrate(L, -1);
+    }
+    var atFront = atGapFrontOf(L, g, "left");
+    if (!crate.cancelled && atFront && green.landed) {
+      waitAtGap += dt;
+      if (waitAtGap >= 1) {
+        crate.cancelled = true;
+        crate.active = false;
+      }
+    } else if (!crate.cancelled && !atFront) {
+      waitAtGap = 0;
+    }
+    moveCrate(dt, L, g);
+    updateRed(dt, L);
+  }
+
   function updateWaitAndCrate(dt, L, justJumped) {
+    if (stage === 8) {
+      updateStage8(dt, L, justJumped);
+      return;
+    }
+    if (stage === 9) {
+      updateStage9(dt, L, justJumped);
+      return;
+    }
     if ((stage !== 5 && stage !== 6) || !crack.open) return;
     var g = gapBox(L);
     var fromLeft = stage === 6 && portalSide === "left";
@@ -338,27 +683,7 @@
       waitAtGap = 0;
     }
     if (crate.cancelled || !crate.active) return;
-
-    crate.vx += crate.dir * W * 2.6 * dt;
-    if (crate.dir < 0 && crate.vx < -W * 1.15) crate.vx = -W * 1.15;
-    if (crate.dir > 0 && crate.vx > W * 1.15) crate.vx = W * 1.15;
-    crate.x += crate.vx * dt;
-    if (crate.dir < 0 && crate.x < g.x + g.w) {
-      crate.x = g.x + g.w;
-      crate.vx = 0;
-    }
-    if (crate.dir > 0 && crate.x + crate.w > g.x) {
-      crate.x = g.x - crate.w;
-      crate.vx = 0;
-    }
-    crate.y = L.pathY - crate.h;
-    crate.vy = 0;
-
-    if (overlaps(player, { x: crate.x, y: crate.y, w: crate.w, h: crate.h })) {
-      player.x = crate.dir < 0 ? crate.x - player.w : crate.x + crate.w;
-      player.onGround = false;
-      if (player.vy < H * 0.12) player.vy = H * 0.12;
-    }
+    moveCrate(dt, L, g);
   }
 
   function update(dt) {
@@ -384,6 +709,13 @@
         fadeDir = 0;
       }
       if (fadeDir > 0) return;
+    }
+
+    if (selectOpen) return;
+    if (drag.on) {
+      player.vx = 0;
+      player.vy = 0;
+      return;
     }
 
     var speed = Math.round(W * 0.38);
@@ -443,12 +775,22 @@
         st.h = Math.min(spike.maxH, st.h + spike.maxH * dt * 9);
       }
     }
-    if (crack.armed && !crack.open && player.x + player.w >= gapBox(L).x - 8) {
-      crack.open = true;
-      shake = 8;
-      if (!isSupported(player.x, player.w, L)) {
-        player.onGround = false;
-        if (player.vy < H * 0.2) player.vy = H * 0.2;
+    if (crack.armed) {
+      var slots = gapSlots();
+      var si;
+      for (si = 0; si < slots.length; si++) {
+        if (gapStates[si] && gapStates[si].open) continue;
+        var nextGap = gapBoxAt(L, slots[si]);
+        if (player.x + player.w >= nextGap.x - 8) {
+          if (!gapStates[si]) gapStates[si] = { open: false };
+          gapStates[si].open = true;
+          crack.open = true;
+          shake = 8;
+          if (!isSupported(player.x, player.w, L)) {
+            player.onGround = false;
+            if (player.vy < H * 0.2) player.vy = H * 0.2;
+          }
+        }
       }
     }
 
@@ -463,7 +805,13 @@
 
     updateWaitAndCrate(dt, L, justJumped);
     if (dead) return;
-    if (overlaps(player, portalBox(L)) && !overGap(player.x, player.w, L)) enterPortal();
+    if (
+      overlaps(player, portalBox(L)) &&
+      !overGap(player.x, player.w, L) &&
+      (stage !== 10 || keys.left || keys.right)
+    ) {
+      enterPortal();
+    }
   }
 
   function drawSky() {
@@ -546,18 +894,46 @@
     );
   }
 
+  function drawRed() {
+    if (!red.active) return;
+    drawWoodBox(
+      Math.round(red.x),
+      Math.round(red.y),
+      red.w,
+      red.h,
+      "#c43b32",
+      "#9a2a24",
+      "#6a1814"
+    );
+  }
+
+  function drawGrey() {
+    if (!grey.active) return;
+    drawWoodBox(
+      Math.round(grey.x),
+      Math.round(grey.y),
+      grey.w,
+      grey.h,
+      "#8a8e94",
+      "#6d7176",
+      "#4a4e54"
+    );
+  }
+
   function drawFloor(L) {
     ctx.fillStyle = "#4a525a";
     ctx.fillRect(0, L.pathY, W, H - L.pathY);
 
-    if (crack.open) {
-      var g = gapBox(L);
-      ctx.fillStyle = "#8d9196";
-      ctx.fillRect(L.pathX, L.pathY, g.x - L.pathX, L.pathH);
-      ctx.fillRect(g.x + g.w, L.pathY, L.pathX + L.pathW - (g.x + g.w), L.pathH);
-      ctx.fillStyle = "#9aa0a6";
-      ctx.fillRect(L.pathX, L.pathY, g.x - L.pathX, 6);
-      ctx.fillRect(g.x + g.w, L.pathY, L.pathX + L.pathW - (g.x + g.w), 6);
+    ctx.fillStyle = "#8d9196";
+    ctx.fillRect(L.pathX, L.pathY, L.pathW, L.pathH);
+    ctx.fillStyle = "#9aa0a6";
+    ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
+
+    var holes = listGaps(L);
+    var hi;
+    for (hi = 0; hi < holes.length; hi++) {
+      if (!holes[hi].open) continue;
+      var g = holes[hi];
       ctx.fillStyle = "#1c2228";
       ctx.fillRect(g.x, L.pathY, g.w, L.pathH + 8);
       ctx.fillStyle = "#14181c";
@@ -573,13 +949,21 @@
       ctx.lineTo(g.x + g.w, L.pathY + L.pathH);
       ctx.closePath();
       ctx.fill();
-      return;
     }
+    if (stage === 8 && floorGone && holes[2]) {
+      var goneX = holes[2].x + holes[2].w;
+      ctx.fillStyle = "#1c2228";
+      ctx.fillRect(goneX, L.pathY, L.pathX + L.pathW - goneX, L.pathH + 8);
+    }
+  }
 
-    ctx.fillStyle = "#8d9196";
-    ctx.fillRect(L.pathX, L.pathY, L.pathW, L.pathH);
-    ctx.fillStyle = "#9aa0a6";
-    ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
+  function drawButton(L) {
+    var btn = buttonBox(L);
+    if (!btn) return;
+    ctx.fillStyle = "#c43b32";
+    ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+    ctx.fillStyle = "#e25a4f";
+    ctx.fillRect(btn.x + 2, btn.y + 2, btn.w - 4, Math.max(2, btn.h * 0.4));
   }
 
   function draw() {
@@ -600,9 +984,13 @@
     drawSpike(L);
     drawCrate();
     drawGreen();
+    drawGrey();
+    drawRed();
+    drawButton(L);
 
     ctx.fillStyle = "#111214";
     ctx.fillRect(Math.round(player.x), Math.round(player.y), player.w, player.h);
+    canvas.style.cursor = stage === 10 ? (drag.on ? "grabbing" : "grab") : "";
 
     ctx.restore();
 
@@ -637,8 +1025,89 @@
     return true;
   }
 
+  function closeSelect() {
+    selectOpen = false;
+    if (selectEl) selectEl.hidden = true;
+    if (selectInputEl) selectInputEl.blur();
+    keys.left = keys.right = keys.jump = false;
+    jumpQueued = false;
+  }
+
+  function fillSelectChoices() {
+    if (!selectChoicesEl || selectChoicesEl.childNodes.length) return;
+    var html = "";
+    var i;
+    for (i = 0; i < STAGE_COUNT; i++) {
+      html +=
+        '<button type="button" class="platform-select__choice" data-stage="' +
+        (i + 1) +
+        '"><kbd>' +
+        (i + 1) +
+        "</kbd> " +
+        STAGE_LABELS[i] +
+        "</button>";
+    }
+    selectChoicesEl.innerHTML = html;
+  }
+
+  function showSelectMenu() {
+    fillSelectChoices();
+    if (selectPassEl) selectPassEl.hidden = true;
+    if (selectMenuEl) selectMenuEl.hidden = false;
+    if (selectInputEl) selectInputEl.blur();
+  }
+
+  function tryUnlockSelect() {
+    var typed = selectInputEl ? String(selectInputEl.value || "").trim() : "";
+    if (typed.toLowerCase() === "davidchen") {
+      showSelectMenu();
+      return;
+    }
+    if (selectInputEl) {
+      selectInputEl.value = "";
+      selectInputEl.placeholder = "不对，再看看墙上…";
+    }
+  }
+
+  function openSelect() {
+    if (!selectEl) return;
+    selectOpen = true;
+    keys.left = keys.right = keys.jump = false;
+    jumpQueued = false;
+    selectEl.hidden = false;
+    if (selectPassEl) selectPassEl.hidden = false;
+    if (selectMenuEl) selectMenuEl.hidden = true;
+    if (selectInputEl) {
+      selectInputEl.value = "";
+      selectInputEl.placeholder = "墙上的字…";
+      window.setTimeout(function () {
+        if (selectOpen && selectInputEl) selectInputEl.focus();
+      }, 0);
+    }
+  }
+
   function onKeyDown(e) {
     if (!running) return;
+    if (selectOpen) {
+      if (e.code === "Escape") {
+        closeSelect();
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (e.code === "Enter" && selectPassEl && !selectPassEl.hidden) {
+        tryUnlockSelect();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
+    if (e.code === "KeyY") {
+      openSelect();
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (setKey(e.code, true)) {
       e.preventDefault();
       e.stopPropagation();
@@ -647,6 +1116,7 @@
 
   function onKeyUp(e) {
     if (!running) return;
+    if (selectOpen) return;
     if (setKey(e.code, false)) {
       e.preventDefault();
       e.stopPropagation();
@@ -703,7 +1173,7 @@
     pendingStage = 0;
     keys.left = keys.right = keys.jump = false;
     jumpQueued = false;
-    setStage(1);
+    setStage(readStage());
     if (!running) {
       running = true;
       lastTs = 0;
@@ -711,11 +1181,59 @@
     }
   }
 
+  function canvasPoint(e) {
+    var rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (W / rect.width),
+      y: (e.clientY - rect.top) * (H / rect.height),
+    };
+  }
+
+  function hitPlayer(p) {
+    var pad = 10;
+    return (
+      p.x >= player.x - pad &&
+      p.x <= player.x + player.w + pad &&
+      p.y >= player.y - pad &&
+      p.y <= player.y + player.h + pad
+    );
+  }
+
+  function onCanvasPointerDown(e) {
+    if (!running || stage !== 10 || dead || entering || selectOpen) return;
+    var p = canvasPoint(e);
+    if (!hitPlayer(p)) return;
+    drag.on = true;
+    drag.ox = p.x - player.x;
+    drag.oy = p.y - player.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.onGround = false;
+    if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
+
+  function onCanvasPointerMove(e) {
+    if (!drag.on) return;
+    var p = canvasPoint(e);
+    player.x = Math.max(-player.w * 0.4, Math.min(W - player.w * 0.6, p.x - drag.ox));
+    player.y = Math.max(0, Math.min(H - player.h * 0.25, p.y - drag.oy));
+    player.vx = 0;
+    player.vy = 0;
+    e.preventDefault();
+  }
+
+  function endDrag() {
+    drag.on = false;
+  }
+
   function stop() {
     running = false;
     if (rafId) window.cancelAnimationFrame(rafId);
     rafId = 0;
     keys.left = keys.right = keys.jump = false;
+    endDrag();
+    closeSelect();
     hideViews();
   }
 
@@ -730,6 +1248,27 @@
       if (running && !entering) setStage(stage);
     });
   }
+  if (firstBtn) {
+    firstBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      if (running && !entering) setStage(1);
+    });
+  }
+  if (selectChoicesEl) {
+    selectChoicesEl.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-stage]");
+      if (!btn) return;
+      var n = parseInt(btn.getAttribute("data-stage"), 10);
+      if (n >= 1 && n <= STAGE_COUNT) {
+        closeSelect();
+        setStage(n);
+      }
+    });
+  }
+  canvas.addEventListener("pointerdown", onCanvasPointerDown);
+  canvas.addEventListener("pointermove", onCanvasPointerMove);
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
   bindPad();
 
   window.PlatformMinigame = {

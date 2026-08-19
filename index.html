@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>极危行动 — 行动基地</title>
-  <link rel="stylesheet" href="css/lobby.css?v=26">
+  <link rel="stylesheet" href="css/lobby.css?v=29">
   <link rel="stylesheet" href="css/market-page.css?v=9">
   <link rel="stylesheet" href="css/action-scene.css?v=39">
 </head>
@@ -168,6 +168,7 @@
           <canvas id="platformGameCanvas" aria-label="小游戏 2"></canvas>
           <div class="platform-game__hud">
             <button type="button" class="platform-game__icon" id="platformGameRestart" aria-label="重开本关">↻</button>
+            <button type="button" class="platform-game__icon platform-game__icon--first" id="platformGameFirst" aria-label="回到第一关">第一关</button>
             <div class="platform-game__dots" id="platformGameDots" aria-hidden="true"></div>
           </div>
           <p class="platform-game__keys">A / D 移动 · 空格 跳</p>
@@ -175,6 +176,20 @@
             <button type="button" data-dir="left">A</button>
             <button type="button" data-dir="jump">跳</button>
             <button type="button" data-dir="right">D</button>
+          </div>
+          <div class="platform-select" id="platformSelect" hidden>
+            <div class="platform-select__panel">
+              <div id="platformSelectPass">
+                <p class="platform-select__title">输入口令</p>
+                <input type="text" id="platformSelectInput" class="platform-select__input" maxlength="32" autocomplete="off" spellcheck="false" placeholder="墙上的字…">
+                <p class="platform-select__hint">Enter 确认 · Esc 关闭</p>
+              </div>
+              <div id="platformSelectMenu" hidden>
+                <p class="platform-select__title">选择关卡</p>
+                <div class="platform-select__choices" id="platformSelectChoices"></div>
+                <p class="platform-select__hint">点选进入 · Esc 关闭</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -456,7 +471,7 @@
   <script src="js/tutorial-progress.js?v=2"></script>
   <script src="js/lobby-ui.js?v=21"></script>
   <script src="js/password-minigame.js?v=8"></script>
-  <script src="js/platform-minigame.js?v=10"></script>
+  <script src="js/platform-minigame.js?v=19"></script>
   <script src="js/item-catalog.js?v=38"></script>
   <script src="js/grid-inventory.js?v=5"></script>
   <script src="js/grid-stash-ui.js?v=26"></script>

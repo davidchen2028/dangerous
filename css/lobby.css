@@ -543,6 +543,7 @@ body.action-open .btn-hub--action {
   display: block;
   width: 100%;
   height: 100%;
+  touch-action: none;
 }
 
 .platform-game__hud {
@@ -567,6 +568,16 @@ body.action-open .btn-hub--action {
   color: #1a1d20;
   font-size: 1.2rem;
   line-height: 1;
+  cursor: pointer;
+}
+
+.platform-game__icon--first {
+  width: auto;
+  min-width: 3.4rem;
+  padding: 0 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   cursor: pointer;
 }
 
@@ -634,6 +645,97 @@ body.action-open .btn-hub--action {
     font-weight: 700;
     touch-action: manipulation;
   }
+}
+
+.platform-select {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 10, 16, 0.55);
+}
+
+.platform-select[hidden] {
+  display: none;
+}
+
+.platform-select__panel {
+  width: min(26rem, 92vw);
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  padding: 1rem 1.1rem 1.05rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(12, 18, 28, 0.92);
+  color: #a8cce8;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.platform-select__title {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+}
+
+.platform-select__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8f2ff;
+  font: inherit;
+}
+
+.platform-select__input:focus {
+  outline: none;
+  border-color: rgba(160, 200, 255, 0.45);
+}
+
+.platform-select__hint {
+  margin: 0.55rem 0 0;
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+
+.platform-select__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.platform-select__choice {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.platform-select__choice:hover,
+.platform-select__choice:focus-visible {
+  background: rgba(120, 180, 240, 0.18);
+  border-color: rgba(160, 200, 255, 0.35);
+  outline: none;
+}
+
+.platform-select__choice kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 1px 6px;
+  margin: 0 2px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  text-align: center;
 }
 
 .map-panel__body {
