@@ -1,14 +1,22 @@
 export const C101_RESULT_KEY = "backrooms_c101_result_v1";
 
-export const DEFAULT_C101_SOURCE = `// Level 1 临时控制脚本
-// 修改后点击左上角 OK。刷新页面会恢复默认代码。
-level1.setFog("#3a4a58", 8, 42);
+export const DEFAULT_C101_SOURCE = `level1.setFog("#3a4a58", 8, 42);
 level1.setLights("#dcecff", 1.0);
 level1.setPillars({
   color: "#a8a39a",
   scale: 1.0,
   height: 1.0
 });`;
+
+const C101_ENTITY_ALIASES = {
+  "派对客": "partygoer",
+  partygoer: "partygoer",
+  "肢团": "clump",
+  clump: "clump",
+  "死亡飞蛾": "death_moth",
+  death_moth: "death_moth",
+  deathmoth: "death_moth",
+};
 
 function finiteIn(value, min, max, label) {
   var n = Number(value);
@@ -30,6 +38,18 @@ export function validateC101Config(raw) {
   var fog = raw.fog && typeof raw.fog === "object" ? raw.fog : {};
   var lights = raw.lights && typeof raw.lights === "object" ? raw.lights : {};
   var pillars = raw.pillars && typeof raw.pillars === "object" ? raw.pillars : {};
+  var entityInput = Array.isArray(raw.entities) ? raw.entities : [];
+  if (entityInput.length > 8) throw new Error("最多只能创建 8 个实体");
+  var entities = entityInput.map(function (name) {
+    var key = String(name == null ? "" : name).trim().toLowerCase();
+    var canonical = C101_ENTITY_ALIASES[key];
+    if (!canonical) {
+      throw new Error(
+        "未知实体“" + name + "”；可用：派对客、肢团、死亡飞蛾"
+      );
+    }
+    return canonical;
+  });
   var near = finiteIn(fog.near == null ? 8 : fog.near, 1, 30, "雾起点");
   var far = finiteIn(fog.far == null ? 42 : fog.far, near + 3, 120, "雾终点");
   return {
@@ -52,6 +72,7 @@ export function validateC101Config(raw) {
       scale: finiteIn(pillars.scale == null ? 1 : pillars.scale, 0.6, 1.45, "柱子宽度"),
       height: finiteIn(pillars.height == null ? 1 : pillars.height, 0.65, 1.35, "柱子高度"),
     },
+    entities: entities,
   };
 }
 

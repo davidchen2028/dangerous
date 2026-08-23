@@ -163,7 +163,8 @@ self.onmessage = function(event) {
   var config = {
     fog: { color: "#3a4a58", near: 8, far: 42 },
     lights: { color: "#dcecff", intensity: 1 },
-    pillars: { color: "#a8a39a", scale: 1, height: 1 }
+    pillars: { color: "#a8a39a", scale: 1, height: 1 },
+    entities: []
   };
   var level1 = Object.freeze({
     setFog: function(color, near, far) {
@@ -179,15 +180,28 @@ self.onmessage = function(event) {
         scale: value.scale,
         height: value.height
       };
+    },
+    create: function(name, count) {
+      if (typeof name !== "string" || !name.trim()) {
+        throw new Error("create 需要实体名称");
+      }
+      var n = count == null ? 1 : Number(count);
+      if (!Number.isFinite(n) || n < 1 || n > 8 || Math.floor(n) !== n) {
+        throw new Error("create 数量必须是 1 到 8 的整数");
+      }
+      if (config.entities.length + n > 8) throw new Error("最多只能创建 8 个实体");
+      var i;
+      for (i = 0; i < n; i++) config.entities.push(name.trim());
     }
   });
+  var create = level1.create;
   try {
     var run = new Function(
-      "level1", "self", "globalThis", "window", "document", "fetch",
+      "level1", "create", "self", "globalThis", "window", "document", "fetch",
       "XMLHttpRequest", "WebSocket", "indexedDB", "caches", "importScripts",
       "\\"use strict\\";\\n" + String(event.data.source)
     );
-    run(level1, undefined, undefined, undefined, undefined, undefined,
+    run(level1, create, undefined, undefined, undefined, undefined, undefined,
       undefined, undefined, undefined, undefined, undefined);
     self.postMessage({ ok: true, config: config });
   } catch (error) {

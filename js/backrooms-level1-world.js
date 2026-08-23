@@ -8,6 +8,9 @@ import {
   resolveCircleAgainstColliders,
   circleOverlapsAny,
 } from "./backrooms-collide.js";
+import { createPartygoersAt } from "./backrooms-partygoer.js";
+import { createClumpsAt } from "./backrooms-clump-ai.js";
+import { createDeathMothsAt } from "./backrooms-death-moth.js";
 
 export const BLOCK_SIZE = 4.0;
 export const WAREHOUSE_HEIGHT = 4.5;
@@ -1296,6 +1299,54 @@ function buildC101Entrance(root, wallScale) {
   };
 }
 
+/**
+ * C-101 create() 生成的实体：环绕出生点铺开，并接上各自的追击/攻击系统。
+ * 返回的 update 必须每帧调用，否则实体只会站着不动。
+ */
+function buildC101Entities(root, names, colliders) {
+  var list = Array.isArray(names) ? names : [];
+  var byKind = { partygoer: [], clump: [], death_moth: [] };
+  for (var i = 0; i < list.length; i++) {
+    if (!byKind[list[i]]) continue;
+    // 全部推到出生点外一圈，避免和玩家出生位置重叠导致立刻挨打
+    var angle = (i / Math.max(1, list.length)) * Math.PI * 2;
+    byKind[list[i]].push({
+      x: SPAWN_WORLD.x + Math.sin(angle) * 3.2,
+      z: SPAWN_WORLD.z + Math.cos(angle) * 3.2,
+      y: 1.62,
+      rotY: angle + Math.PI,
+      seed: 101 + i * 17,
+    });
+  }
+
+  var systems = [];
+  if (byKind.partygoer.length) {
+    systems.push(createPartygoersAt(root, byKind.partygoer));
+  }
+  if (byKind.clump.length) {
+    systems.push(createClumpsAt(root, byKind.clump, colliders));
+  }
+  if (byKind.death_moth.length) {
+    systems.push(createDeathMothsAt(root, byKind.death_moth, colliders));
+  }
+
+  return {
+    systems: systems,
+    update: function (dt, px, pz, survival, toastFn) {
+      for (var j = 0; j < systems.length; j++) {
+        systems[j].update(dt, px, pz, survival, toastFn);
+      }
+    },
+    dispose: function () {
+      for (var j = 0; j < systems.length; j++) {
+        if (systems[j].clear) systems[j].clear();
+        else if (systems[j].dispose) systems[j].dispose();
+      }
+      systems.length = 0;
+    },
+  };
+}
+
 var _chestPickGeo = null;
 var _chestPickMat = null;
 
@@ -1641,6 +1692,11 @@ export function buildBackroomsLevel1World(root, opts) {
   var colliders = [];
   var chunks = new Map();
   var c101Entrance = buildC101Entrance(root, 0.88 * pillarScale);
+  var c101Entities = buildC101Entities(
+    root,
+    modConfig && modConfig.entities ? modConfig.entities : [],
+    colliders
+  );
 
   var ctx = {
     horror: horror,
@@ -1684,6 +1740,7 @@ export function buildBackroomsLevel1World(root, opts) {
       unloadChunk(keys[i], ctx);
     }
     if (chunksRoot.parent) chunksRoot.parent.remove(chunksRoot);
+    c101Entities.dispose();
     resetMegModuleState();
   }
 
@@ -1795,6 +1852,9 @@ export function buildBackroomsLevel1World(root, opts) {
     },
     getC101ReturnSpawn: function () {
       return c101Entrance ? c101Entrance.returnSpawn : null;
+    },
+    updateC101Entities: function (dt, px, pz, survival, toastFn) {
+      c101Entities.update(dt, px, pz, survival, toastFn);
     },
     tryOpenMegFrontDoorAim: function () {
       return tryOpenMegFrontDoorAim();

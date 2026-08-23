@@ -2312,6 +2312,7 @@ function startLoop() {
       level1World.update(player.x, player.z);
       level1World.updateMegDoor(dt);
       level1World.updateMegCorridorVisibility(player.x, player.z);
+      level1World.updateC101Entities(dt, player.x, player.z, survival, showLootToast);
     }
     if (
       survival &&
