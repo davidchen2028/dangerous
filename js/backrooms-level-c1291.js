@@ -32,6 +32,7 @@ import {
   getTaskDeadlineRemainingMs,
 } from "./backrooms-tasks.js";
 import { getLuck } from "./backrooms-luck.js";
+import { playHugeExplosion } from "./backrooms-explosion-sfx.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -524,6 +525,21 @@ function playMetalImpact(volume) {
   osc.stop(now + 0.92);
 }
 
+/** 跳井触发爆炸时的巨响：压过底噪，并把环境轰鸣一起顶上去 */
+function playManholeExplosion() {
+  if (!audio || !audio.ctx) return;
+  var ctx = audio.ctx;
+  var now = ctx.currentTime;
+  playHugeExplosion(ctx, { volume: 1.35 });
+  vibration = Math.max(vibration, 1.2);
+  if (audio.rumbleGain) {
+    audio.rumbleGain.gain.cancelScheduledValues(now);
+    audio.rumbleGain.gain.setValueAtTime(0.018, now);
+    audio.rumbleGain.gain.linearRampToValueAtTime(0.16, now + 0.05);
+    audio.rumbleGain.gain.linearRampToValueAtTime(0.018, now + 3);
+  }
+}
+
 function playSteam() {
   if (!audio || !audio.ctx) return;
   var ctx = audio.ctx;
@@ -786,11 +802,12 @@ function openExitManhole() {
     }, 750);
   } else {
     showToast("井盖下方骤然爆炸！");
-    playMetalImpact(1.3);
+    playManholeExplosion();
+    // 留出时间让爆轰的冲击波先砸下来，再结算死亡
     window.setTimeout(function () {
       transitionLock = false;
       survival.triggerDeath("manhole_explosion");
-    }, 350);
+    }, 900);
   }
 }
 

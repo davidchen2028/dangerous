@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>井盖爆炸音效 · 试听</title>
+    <style>
+      :root {
+        --bg: #0a0806;
+        --panel: #16110d;
+        --line: #3a2a1c;
+        --fire: #ff6a1f;
+        --fire-soft: #ffb46b;
+        --text: #f2e6d8;
+        --muted: #9b8877;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 20px;
+        background: radial-gradient(circle at 50% 20%, #241609 0%, var(--bg) 62%);
+        color: var(--text);
+        font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      }
+      .card {
+        width: 100%;
+        max-width: 560px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 32px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65);
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 24px;
+        letter-spacing: 1px;
+      }
+      .sub {
+        margin: 0 0 26px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.7;
+      }
+      .warn {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        margin-bottom: 24px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: rgba(255, 106, 31, 0.09);
+        border: 1px solid rgba(255, 106, 31, 0.32);
+        color: var(--fire-soft);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      canvas {
+        width: 100%;
+        height: 120px;
+        display: block;
+        border-radius: 10px;
+        background: #0c0906;
+        border: 1px solid var(--line);
+        margin-bottom: 22px;
+      }
+      .boom {
+        width: 100%;
+        padding: 20px;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 6px;
+        color: #1a0d03;
+        background: linear-gradient(180deg, #ffb046, var(--fire));
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: transform 0.08s ease, box-shadow 0.2s ease;
+        box-shadow: 0 8px 26px rgba(255, 106, 31, 0.35);
+      }
+      .boom:hover {
+        box-shadow: 0 8px 34px rgba(255, 106, 31, 0.55);
+      }
+      .boom:active {
+        transform: scale(0.985);
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-top: 22px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .row label {
+        white-space: nowrap;
+      }
+      input[type="range"] {
+        flex: 1;
+        accent-color: var(--fire);
+      }
+      .val {
+        width: 52px;
+        text-align: right;
+        color: var(--fire-soft);
+        font-variant-numeric: tabular-nums;
+      }
+      .layers {
+        margin: 26px 0 0;
+        padding: 18px 0 0;
+        border-top: 1px solid var(--line);
+        font-size: 12.5px;
+        line-height: 1.9;
+        color: var(--muted);
+      }
+      .layers b {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .ghost {
+        margin-top: 14px;
+        width: 100%;
+        padding: 11px;
+        font-size: 13px;
+        color: var(--fire-soft);
+        background: transparent;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .ghost:hover {
+        border-color: var(--fire);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>井盖爆炸音效</h1>
+      <p class="sub">
+        Level C-1291 跳井失败时播放。纯 Web Audio 实时合成，不依赖任何音频文件。
+      </p>
+
+      <div class="warn">
+        <span>⚠️</span>
+        <span>这个音效设计得非常响，尤其是 20–130Hz 的次低频。先把系统音量调到一半以下再点。</span>
+      </div>
+
+      <canvas id="scope" width="1000" height="240"></canvas>
+
+      <button class="boom" id="boom">引 爆</button>
+
+      <div class="row">
+        <label for="vol">响度</label>
+        <input id="vol" type="range" min="0.2" max="2" step="0.05" value="1.35" />
+        <span class="val" id="volVal">1.35</span>
+      </div>
+
+      <button class="ghost" id="download">导出为 WAV 文件</button>
+
+      <div class="layers">
+        <b>四层叠加：</b><br />
+        1 · 起爆脆响 — 2.6kHz 以上噪声，110ms 内炸完，负责「炸」的锐度<br />
+        2 · 爆轰主体 — 宽频噪声，低通从 5.2kHz 扫到 140Hz，火球滚动感<br />
+        3 · 冲击波 — 两下正弦次低频（130→21Hz、78→17Hz），胸口被撞两次<br />
+        4 · 余震 — 低频长尾 4.4 秒，碎石回落与远处回声
+      </div>
+    </main>
+
+    <script type="module">
+      import { playHugeExplosion } from "./js/backrooms-explosion-sfx.js";
+
+      const boomBtn = document.getElementById("boom");
+      const volEl = document.getElementById("vol");
+      const volVal = document.getElementById("volVal");
+      const downloadBtn = document.getElementById("download");
+      const canvas = document.getElementById("scope");
+      const g = canvas.getContext("2d");
+
+      let ctx = null;
+      let analyser = null;
+      let tap = null;
+
+      function ensureCtx() {
+        if (!ctx) {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          analyser = ctx.createAnalyser();
+          analyser.fftSize = 2048;
+          // 音频先进 tap，再分别去扬声器和分析器，这样波形图能画出来
+          tap = ctx.createGain();
+          tap.connect(ctx.destination);
+          tap.connect(analyser);
+        }
+        if (ctx.state === "suspended") ctx.resume();
+        return ctx;
+      }
+
+      volEl.addEventListener("input", () => {
+        volVal.textContent = Number(volEl.value).toFixed(2);
+      });
+
+      boomBtn.addEventListener("click", () => {
+        const audioCtx = ensureCtx();
+        playHugeExplosion(audioCtx, {
+          volume: Number(volEl.value),
+          destination: tap,
+        });
+        flash();
+      });
+
+      let flashUntil = 0;
+      function flash() {
+        flashUntil = performance.now() + 220;
+      }
+
+      const data = new Uint8Array(2048);
+      function draw() {
+        requestAnimationFrame(draw);
+        const w = canvas.width;
+        const h = canvas.height;
+        g.fillStyle = performance.now() < flashUntil ? "#3a1d05" : "#0c0906";
+        g.fillRect(0, 0, w, h);
+
+        g.strokeStyle = "#2a1d12";
+        g.beginPath();
+        g.moveTo(0, h / 2);
+        g.lineTo(w, h / 2);
+        g.stroke();
+
+        if (!analyser) return;
+        analyser.getByteTimeDomainData(data);
+        g.lineWidth = 2;
+        g.strokeStyle = "#ff8a3d";
+        g.beginPath();
+        for (let i = 0; i < data.length; i++) {
+          const x = (i / data.length) * w;
+          const y = (data[i] / 255) * h;
+          i === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+        }
+        g.stroke();
+      }
+      draw();
+
+      downloadBtn.addEventListener("click", async () => {
+        downloadBtn.textContent = "渲染中…";
+        const sr = 48000;
+        const seconds = 5;
+        const offline = new OfflineAudioContext(1, sr * seconds, sr);
+        playHugeExplosion(offline, { volume: Number(volEl.value) });
+        const rendered = await offline.startRendering();
+        const blob = new Blob([encodeWav(rendered)], { type: "audio/wav" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "manhole-explosion.wav";
+        a.click();
+        URL.revokeObjectURL(url);
+        downloadBtn.textContent = "导出为 WAV 文件";
+      });
+
+      function encodeWav(buffer) {
+        const samples = buffer.getChannelData(0);
+        const out = new DataView(new ArrayBuffer(44 + samples.length * 2));
+        const write = (offset, str) => {
+          for (let i = 0; i < str.length; i++) out.setUint8(offset + i, str.charCodeAt(i));
+        };
+        write(0, "RIFF");
+        out.setUint32(4, 36 + samples.length * 2, true);
+        write(8, "WAVEfmt ");
+        out.setUint32(16, 16, true);
+        out.setUint16(20, 1, true);
+        out.setUint16(22, 1, true);
+        out.setUint32(24, buffer.sampleRate, true);
+        out.setUint32(28, buffer.sampleRate * 2, true);
+        out.setUint16(32, 2, true);
+        out.setUint16(34, 16, true);
+        write(36, "data");
+        out.setUint32(40, samples.length * 2, true);
+        for (let i = 0; i < samples.length; i++) {
+          const s = Math.max(-1, Math.min(1, samples[i]));
+          out.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        }
+        return out.buffer;
+      }
+    </script>
+  </body>
+</html>
