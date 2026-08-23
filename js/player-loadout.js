@@ -42,7 +42,8 @@
     return null;
   }
 
-  function getKeycardImage() {
+  function getKeycardImage(item) {
+    if (item && item.image) return item.image;
     var kc =
       window.ItemCatalog && window.ItemCatalog.getItem("keycard");
     return (kc && kc.image) || "img/market/keycard-side-entrance.png";
@@ -52,27 +53,26 @@
     if (!item) return null;
     opts = opts || {};
     var c = Object.assign({}, item);
-    if (c.id === "keycard") {
+    if (isKeycard(c)) {
       if (c.maxDurability == null) c.maxDurability = 10;
       if (opts.fresh) {
         c.durability = c.maxDurability;
       } else if (c.durability == null) {
         c.durability = c.maxDurability;
       }
-      c.image = c.image || getKeycardImage();
+      c.image = c.image || getKeycardImage(c);
     }
     return c;
   }
 
   function isKeycard(item) {
-    return item && item.id === "keycard";
+    return !!(item && (item.type === "keycard" || item.id === "keycard"));
   }
 
-  function isUsableKeycard(item) {
-    return (
-      isKeycard(item) &&
-      (item.durability == null || item.durability > 0)
-    );
+  function isUsableKeycard(item, requiredId) {
+    if (!isKeycard(item)) return false;
+    if (requiredId && item.id !== requiredId) return false;
+    return item.durability == null || item.durability > 0;
   }
 
   function mergeItemForEquip(itemOrData) {
@@ -110,7 +110,7 @@
         var inst = secure.items[i];
         if (
           inst.itemData &&
-          inst.itemData.id === "keycard" &&
+          isKeycard(inst.itemData) &&
           inst.itemData.durability != null &&
           inst.itemData.durability <= 0
         ) {
@@ -128,11 +128,11 @@
     return changed;
   }
 
-  function findKeycard() {
+  function findKeycard(requiredId) {
     purgeDepletedKeycards();
     var i;
     for (i = 0; i < CARD_SLOTS; i++) {
-      if (isUsableKeycard(loadout.cards[i])) {
+      if (isUsableKeycard(loadout.cards[i], requiredId)) {
         return { source: "card", index: i, item: loadout.cards[i] };
       }
     }
@@ -140,11 +140,7 @@
     if (secure) {
       for (i = 0; i < secure.items.length; i++) {
         var inst = secure.items[i];
-        if (
-          inst.itemData &&
-          inst.itemData.id === "keycard" &&
-          (inst.itemData.durability == null || inst.itemData.durability > 0)
-        ) {
+        if (inst.itemData && isUsableKeycard(inst.itemData, requiredId)) {
           return {
             source: "secure",
             index: i,
@@ -157,9 +153,9 @@
     return null;
   }
 
-  function consumeKeycardDurability(amount) {
+  function consumeKeycardDurability(amount, requiredId) {
     amount = amount || 1;
-    var found = findKeycard();
+    var found = findKeycard(requiredId);
     if (!found || !found.item) return null;
 
     var max = found.item.maxDurability || 10;
@@ -199,7 +195,7 @@
   }
 
   function equipKeycardFromItemData(itemData) {
-    if (!itemData || itemData.id !== "keycard") return false;
+    if (!itemData || !isKeycard(itemData)) return false;
     if (itemData.durability != null && itemData.durability <= 0) {
       return false;
     }
@@ -584,7 +580,7 @@
     if (item.type === "rig") return equipToSlot("rig", item);
     if (item.type === "backpack") return equipToSlot("backpack", item);
     if (item.type === "weapon_primary") return equipToSlot("primary", item);
-    if (item.id === "keycard") {
+    if (isKeycard(item)) {
       var i;
       for (i = 0; i < CARD_SLOTS; i++) {
         if (!loadout.cards[i]) return equipToSlot("card", item, i);
@@ -601,7 +597,7 @@
     if (item.type === "rig") return equipToSlot("rig", item);
     if (item.type === "backpack") return equipToSlot("backpack", item);
     if (item.type === "weapon_primary") return equipToSlot("primary", item);
-    if (item.id === "keycard") {
+    if (isKeycard(item)) {
       var i;
       for (i = 0; i < CARD_SLOTS; i++) {
         if (!loadout.cards[i]) return equipToSlot("card", item, i);

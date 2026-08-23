@@ -5,6 +5,28 @@
   "use strict";
 
   var ITEMS = {
+    keycard: {
+      id: "keycard",
+      name: "钥匙卡",
+      type: "keycard",
+      w: 1,
+      h: 1,
+      maxDurability: 10,
+      image: "img/market/keycard-side-entrance.png",
+    },
+    keycard_president_office: {
+      id: "keycard_president_office",
+      name: "总统办公室",
+      type: "keycard",
+      w: 1,
+      h: 1,
+      maxDurability: 10,
+      access: "president_office",
+      minMarketPrice: 4000000,
+      maxMarketPrice: 4000000,
+      reclaimMin: 3600000,
+      image: "img/market/keycard-side-entrance.png",
+    },
     medkit: {
       id: "medkit",
       name: "野战医疗包",
@@ -485,6 +507,7 @@
     c3006: "collectible_3006",
     c3007: "collectible_3007",
     c3008: "collectible_3008",
+    kpoff: "keycard_president_office",
   };
 
   var SLOT_TYPES = {

@@ -16,3 +16,6 @@ img/js/
 # 系统与备份文件
 .DS_Store
 *.bak
+
+# 编辑器/助手本地产物
+.cursor/

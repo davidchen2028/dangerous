@@ -40,6 +40,7 @@ import {
   queueEnterLevelBanner,
 } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import { aiChoiceHtml, isAiChatOpen, closeAiChat } from "./backrooms-ai-chat.js?v=2";
 import { startGuardedRafLoop } from "./backrooms-frame-guard.js";
 import { refreshLevel1_1OutpostChestsOnFirstL4Visit } from "./backrooms-level1-1-chests.js";
 import {
@@ -394,6 +395,7 @@ function updateInteractHint() {
 function closeBntgDialogue() {
   dialogueOpen = false;
   dialogueKind = "";
+  closeAiChat();
   document.body.classList.remove("backrooms-dialogue-open");
   if (dialogueEl) dialogueEl.hidden = true;
 }
@@ -418,7 +420,8 @@ function openBntgDialogue() {
     "bntg",
     "你要不要去 Level 1 的 B.N.T.G. 基地？那里与 Level 1 主区域不相通。",
     '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="a"><kbd>A</kbd> 前往基地</button>' +
-      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 暂时不去</button>'
+      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 暂时不去</button>' +
+      aiChoiceHtml("l4_bntg")
   );
 }
 
@@ -438,7 +441,8 @@ function openMegDialogue() {
     openDialogue(
       "meg",
       "任务板就在墙上，自己挑吧。",
-      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 知道了</button>'
+      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 知道了</button>' +
+        aiChoiceHtml("l4_meg")
     );
     return;
   }
@@ -446,7 +450,8 @@ function openMegDialogue() {
     "meg",
     "你想做任务吗？",
     '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="a"><kbd>A</kbd> 想</button>' +
-      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 不想</button>'
+      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 不想</button>' +
+      aiChoiceHtml("l4_meg")
   );
 }
 
@@ -495,7 +500,7 @@ function exitToL1BntgBase() {
 }
 
 function handleBntgChoice(choice) {
-  if (!dialogueOpen) return;
+  if (!dialogueOpen || isAiChatOpen()) return;
   var kind = dialogueKind;
   // 先关闭对话再执行后续逻辑：任何一步抛错都不会把玩家永久锁在
   // dialogueOpen 状态里（那会同时吞掉所有按键并冻结移动）。

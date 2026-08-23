@@ -29,6 +29,7 @@ import {
   wrapInventoryOpenHandler,
 } from "./backrooms-base-storage.js?v=4";
 import { getSellPrice } from "./backrooms-shop-prices.js";
+import { aiChoiceHtml, isAiChatOpen, closeAiChat } from "./backrooms-ai-chat.js?v=3";
 import {
   tryBeginMerchantTrade,
   shouldGiveLuckyMerchantGift,
@@ -114,6 +115,7 @@ import {
   refreshLevel1_1_3OutpostChestsOnFirstL11Visit,
 } from "./backrooms-level1-1-chests.js";
 import { LEVEL1_1_WALL_H } from "./backrooms-level1-1-world.js";
+import { consumeC101Result } from "./backrooms-c101-state.js";
 
 const CHEST_LOOT_DISTANCE = 2.6;
 const AIM_INTERACT_MAX = 4.5;
@@ -187,6 +189,7 @@ let firesalt = null;
 let level1World = null;
 /** @type {ReturnType<createLevel1_1ZoneManager> | null} */
 let level1_1Zones = null;
+let c101Return = null;
 /** @type {THREE.Group | null} */
 let level1Root = null;
 /** @type {ReturnType<createHubRoute> | null} */
@@ -458,6 +461,7 @@ function isAimKind(kind, role) {
   if (kind === "chest" && currentAimPick.distance > CHEST_LOOT_DISTANCE) return false;
   if (kind === "meg_npc" && currentAimPick.distance > AIM_NPC_MAX) return false;
   if (kind === "meg_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
+  if (kind === "l1_c101_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "level1_1_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "level1_1_2_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "level1_1_12_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
@@ -593,7 +597,8 @@ function setDialogueChoicesLevel11() {
   dialogueChoicesEl.innerHTML =
     renderDialogueChoice("a", "想") +
     renderDialogueChoice("b", "不想") +
-    renderDialogueChoice("c", "请介绍一下");
+    renderDialogueChoice("c", "请介绍一下") +
+    aiChoiceHtml("l1_level11");
 }
 
 function openLevel11Dialogue() {
@@ -739,7 +744,7 @@ function megDialogueChooseLevel11(choice) {
 }
 
 function handleMegDialogueChoice(choice) {
-  if (!megDialogueOpen || !choice) return;
+  if (!megDialogueOpen || !choice || isAiChatOpen()) return;
   if (megDialogueKind === "level11" || megDialogueKind === "level11_tour") {
     megDialogueChooseLevel11(choice);
     return;
@@ -752,13 +757,16 @@ function setDialogueChoicesGuide() {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
   dialogueChoicesEl.innerHTML =
-    renderDialogueChoice("a", "想") + renderDialogueChoice("b", "算了");
+    renderDialogueChoice("a", "想") +
+    renderDialogueChoice("b", "算了") +
+    aiChoiceHtml("l1_guide");
 }
 
-function setDialogueChoicesDismiss() {
+function setDialogueChoicesDismiss(npcId) {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
-  dialogueChoicesEl.innerHTML = renderDialogueChoice("b", "知道了");
+  dialogueChoicesEl.innerHTML =
+    renderDialogueChoice("b", "知道了") + aiChoiceHtml(npcId || "l1_guide");
 }
 
 function openMegGuideDialogue() {
@@ -792,7 +800,7 @@ function openPackageReceiverDialogue() {
   dialogueEl.hidden = false;
   if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "M.E.G 收件员";
   dialogueTextEl.textContent = "把包裹给我吧。";
-  setDialogueChoicesDismiss();
+  setDialogueChoicesDismiss("l1_package");
   if (interiorTalkHintEl) interiorTalkHintEl.hidden = true;
   if (document.pointerLockElement && document.exitPointerLock) {
     document.exitPointerLock();
@@ -858,7 +866,8 @@ function showBulkSellPrompt(itemId, itemName, unitPrice) {
 function setDialogueChoicesSellIdle() {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
-  dialogueChoicesEl.innerHTML = renderDialogueChoice("b", "离开");
+  dialogueChoicesEl.innerHTML =
+    renderDialogueChoice("b", "离开") + aiChoiceHtml("l1_trade");
 }
 
 function setDialogueChoicesSellConfirm() {
@@ -980,15 +989,15 @@ function openMegBackDoorStaffDialogue() {
   if (gavePotion) {
     tryGiveMegBackDoorAlmondWater();
     dialogueTextEl.textContent =
-      "可以打开后门然后进去。这瓶夜视药水你拿着，在背包里双击使用，大约 5 分钟内能看清暗处。";
+      "不用证件，可以直接打开后门进去。这瓶夜视药水你拿着，在背包里双击使用，大约 5 分钟内能看清暗处。";
   } else if (alreadyGave) {
     tryGiveMegBackDoorAlmondWater();
     dialogueTextEl.textContent =
-      "可以打开后门然后进去。夜视药水在背包里，双击即可使用。";
+      "不用证件，可以直接打开后门进去。夜视药水在背包里，双击即可使用。";
   } else {
-    dialogueTextEl.textContent = "可以打开后门然后进去。";
+    dialogueTextEl.textContent = "不用证件，可以直接打开后门进去。";
   }
-  setDialogueChoicesDismiss();
+  setDialogueChoicesDismiss("l1_backdoor");
   if (interiorTalkHintEl) interiorTalkHintEl.hidden = true;
   if (doorHintEl) doorHintEl.hidden = true;
   if (document.pointerLockElement && document.exitPointerLock) {
@@ -1043,6 +1052,7 @@ function tryGiveMegBackDoorAlmondWater() {
 }
 
 function closeMegDialogue() {
+  closeAiChat();
   var wasSelling = megDialogueKind === "trade";
   megDialogueOpen = false;
   megDialogueKind = null;
@@ -1123,6 +1133,10 @@ function isAimingLevel1_1WallForCut() {
 function tryMegQAction() {
   if (megDialogueOpen || isInventoryOpen() || isBaseStorageOpen() || isHomeEndingActive()) return;
   if (!survival || survival.dead) return;
+  if (isAimKind("l1_c101_door")) {
+    enterLevelC101();
+    return;
+  }
   if (hubRoute && hubRoute.isActive()) {
     if (hubRoute.handleDoor(getAimInteractData())) return;
   }
@@ -1425,6 +1439,11 @@ function updateMegDoorHint() {
     doorHintEl.hidden = true;
     return;
   }
+  if (isAimKind("l1_c101_door")) {
+    doorHintEl.innerHTML = '柱子上的木门 · 按 <kbd>Q</kbd> 打开';
+    doorHintEl.hidden = false;
+    return;
+  }
   if (
     isNearMegGuide() ||
     isNearMegInteriorStaff() ||
@@ -1664,6 +1683,25 @@ function placePlayerAtSpawn() {
   if (level1World) level1World.update(player.x, player.z);
 }
 
+function placePlayerAtC101Return() {
+  if (!c101Return || !c101Return.ok || !level1World || !level1World.getC101ReturnSpawn) {
+    return;
+  }
+  var pos = level1World.getC101ReturnSpawn();
+  if (!pos) return;
+  player.x = pos.x;
+  player.z = pos.z;
+  spawnPoint.x = pos.x;
+  spawnPoint.z = pos.z;
+  feetY = 0;
+  velY = 0;
+  grounded = true;
+  yaw = Number.isFinite(pos.yaw) ? pos.yaw : -Math.PI * 0.5;
+  pitch = 0.08;
+  depenetratePlayer(20);
+  level1World.update(player.x, player.z);
+}
+
 function applyHubRouteTeleport(pos) {
   if (!pos) return;
   player.x = pos.x;
@@ -1711,6 +1749,18 @@ function enterCanteenFromMessHall() {
   window.setTimeout(function () {
     window.location.href = "backrooms-level-c1299-1.html";
   }, 700);
+}
+
+function enterLevelC101() {
+  if (hubEntering || !survival || survival.dead) return;
+  hubEntering = true;
+  saveBackroomsSurvival(survival);
+  grantLevelPass("c101", yaw);
+  queueEnterLevelBanner("Level C-101 · 代码服务器");
+  showLootToast("木门后的冷气裹着服务器风扇的低鸣。");
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level-c101.html";
+  }, 450);
 }
 
 function movePlayer(dt, speedMul) {
@@ -2034,12 +2084,23 @@ function enforceLevel1EntryOrRedirect() {
 
 function init() {
   if (!enforceLevel1EntryOrRedirect()) return;
+  c101Return = consumeC101Result();
+  if (c101Return && !c101Return.ok) {
+    window.location.replace("backrooms-level-c101-glitch.html");
+    return;
+  }
   showEnterLevelBannerIfQueued();
   markLevelEntered("l1", showLootToast);
   validateMatrix();
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(FOG_COLOR);
-  scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);
+  var fogConfig = c101Return && c101Return.ok ? c101Return.config.fog : null;
+  var fogColor = fogConfig ? fogConfig.color : FOG_COLOR;
+  scene.background = new THREE.Color(fogColor);
+  scene.fog = new THREE.Fog(
+    fogColor,
+    fogConfig ? fogConfig.near : FOG_NEAR,
+    fogConfig ? fogConfig.far : FOG_FAR
+  );
   camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 90);
   var gfx = resolveBackroomsGfxProfile();
   renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
@@ -2060,6 +2121,7 @@ function init() {
   wallColliders.length = 0;
   level1World = buildBackroomsLevel1World(root, {
     horror: horror,
+    modConfig: c101Return && c101Return.ok ? c101Return.config : null,
     onWallCollider: function (c) {
       if (wallColliders.indexOf(c) < 0) wallColliders.push(c);
     },
@@ -2157,6 +2219,7 @@ function init() {
   });
 
   placePlayerAtSpawn();
+  placePlayerAtC101Return();
 
   horror.resetSchedule(performance.now());
   nextFlickerAt = performance.now() + 8000;

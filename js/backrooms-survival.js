@@ -1,6 +1,6 @@
 /**
  * 后室 — 核心生存状态（血量 / 理智 / 体力）
- * 背包见 backrooms-inventory.js（4×5，按 B 打开）
+ * 背包见 backrooms-inventory.js（7×5，按 B 打开）
  */
 import {
   countItem,

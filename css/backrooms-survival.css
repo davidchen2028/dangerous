@@ -144,7 +144,7 @@ body.backrooms-dead #backroomsCanvas {
   letter-spacing: 0.04em;
 }
 
-/* 后室独立背包 — 4×5 格，无胸挂 */
+/* 后室独立背包 — 7×5 格，无胸挂 */
 
 .br-pack {
   position: fixed;
@@ -163,7 +163,7 @@ body.backrooms-dead #backroomsCanvas {
 
 .br-pack__panel {
   pointer-events: auto;
-  width: min(228px, 78vw);
+  width: min(420px, 92vw);
   padding: 14px 16px 12px;
   border-radius: 10px;
   background: rgba(8, 10, 14, 0.9);
@@ -183,7 +183,7 @@ body.backrooms-dead #backroomsCanvas {
 
 .br-pack__grid {
   display: grid;
-  grid-template-columns: repeat(var(--br-cols, 4), 1fr);
+  grid-template-columns: repeat(var(--br-cols, 7), 1fr);
   gap: 6px;
   margin: 10px 0 12px;
 }

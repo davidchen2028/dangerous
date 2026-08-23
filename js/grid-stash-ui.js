@@ -797,7 +797,10 @@
   function tryEquipFromGrid(inst, board) {
     if (!window.PlayerLoadout || !inst.itemData) return;
 
-    if (inst.itemData.id === "keycard") {
+    if (
+      inst.itemData.type === "keycard" ||
+      inst.itemData.id === "keycard"
+    ) {
       if (
         inst.itemData.durability != null &&
         inst.itemData.durability <= 0
@@ -1153,7 +1156,8 @@
     if (!window.ItemCatalog) return false;
     var cat = window.ItemCatalog.fromStashId(stashId);
     if (!cat) return false;
-    var opts = cat.id === "keycard" ? { fresh: true } : {};
+    var opts =
+      cat.type === "keycard" || cat.id === "keycard" ? { fresh: true } : {};
     if (!tryAddToManager(stashManager, cat, opts)) return false;
     renderAll();
     return true;

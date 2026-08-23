@@ -27,6 +27,7 @@ export const SURVIVAL_DIFFICULTY = {
   121: 2,
   149: "宜居",
   283: 3,
+  c370: 0,
 };
 
 /**

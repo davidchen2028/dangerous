@@ -1,0 +1,88 @@
+.c101-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  padding: 18px;
+  background: rgba(2, 7, 10, 0.96);
+  color: #b9ffd4;
+  pointer-events: auto;
+}
+
+.c101-editor[hidden] {
+  display: none;
+}
+
+.c101-editor__panel {
+  width: min(980px, 100%);
+  height: min(760px, 100%);
+  margin: 0 auto;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #2b8052;
+  border-radius: 6px;
+  background: #07100c;
+  box-shadow: 0 0 38px rgba(31, 255, 133, 0.12);
+}
+
+.c101-editor__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.c101-editor__ok {
+  min-width: 72px;
+  padding: 8px 16px;
+  border: 1px solid #71f5a8;
+  border-radius: 4px;
+  background: #123c27;
+  color: #d9ffe8;
+  font: 700 14px/1 monospace;
+  cursor: pointer;
+}
+
+.c101-editor__ok:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.c101-editor__title {
+  margin: 0;
+  font: 600 14px/1.4 monospace;
+  letter-spacing: 0.04em;
+}
+
+.c101-editor__source {
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  padding: 14px;
+  border: 1px solid #1d5839;
+  outline: none;
+  background: #020805;
+  color: #b9ffd4;
+  caret-color: #fff;
+  font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  tab-size: 2;
+}
+
+.c101-editor__status {
+  min-height: 1.5em;
+  margin: 0;
+  font: 13px/1.5 monospace;
+  color: #8acda7;
+}
+
+.c101-editor__status--error {
+  color: #ff7b7b;
+}
+
+body.c101-glitch {
+  background: #000;
+}
+
+body.c101-glitch #backroomsCanvas {
+  filter: saturate(1.7) contrast(1.15);
+}

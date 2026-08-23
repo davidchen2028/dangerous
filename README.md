@@ -32,7 +32,7 @@ export JIWEI_ADMIN_KEY='你的长随机密码'
 
 **http://127.0.0.1:8080/admin/online-stats?key=你的长随机密码**
 
-也可另开终端运行 `./run-admin.sh`，使用 **8082** 端口。
+也可另开终端运行 ` `，使用 **8082** 端口。
 
 若页面提示「无法连接服务器」或加载失败：确认 `./run.sh` 终端未关闭；地址为 `http://` 而非本地文件；URL 中 `key=` 与 `JIWEI_ADMIN_KEY` 一致。
 

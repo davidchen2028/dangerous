@@ -1,9 +1,9 @@
 /**
- * 后室独立背包 — 4×5（20 格）+ 底部 6 格快捷栏
+ * 后室独立背包 — 7×5（35 格）+ 底部 6 格快捷栏
  * 获得物品优先进快捷栏；可从背包拖到快捷栏；←/→ 选中，R 使用选中格
  */
 
-export const BACKPACK_COLS = 4;
+export const BACKPACK_COLS = 7;
 export const BACKPACK_ROWS = 5;
 export const BACKPACK_CAPACITY = BACKPACK_COLS * BACKPACK_ROWS;
 export const HOTBAR_CAPACITY = 6;
@@ -33,6 +33,8 @@ const ITEM_ICONS = {
   scrap_page_c1299: "img/backrooms/archive-viewer.png",
   level_key_l14: "img/backrooms/archive-viewer.png",
   meg_recorder: "img/backrooms/archive-viewer.png",
+  mechanism_room_pass: "img/backrooms/archive-viewer.png",
+  stasis_room_pass: "img/backrooms/archive-viewer.png",
 };
 
 /** @type {(null | { id: string, name: string })[]} */
@@ -97,7 +99,7 @@ function persistAll() {
 function loadSlotsArray(raw, target, capacity) {
   if (!raw) return;
   var parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed) || parsed.length !== capacity) return;
+  if (!Array.isArray(parsed)) return;
   var i;
   for (i = 0; i < capacity; i++) {
     var slot = parsed[i];
@@ -296,6 +298,19 @@ export function addItem(item) {
   }
   var packIdx = findEmptyBackpackIndex();
   if (packIdx < 0) return false;
+  backpackSlots[packIdx] = packed;
+  persistBackpack();
+  renderGrid();
+  notifyItemAdded(packed);
+  return true;
+}
+
+/** 任务奖励直接放入背包区，不占用快捷栏。 */
+export function addItemToBackpack(item) {
+  if (!item || !item.id) return false;
+  var packIdx = findEmptyBackpackIndex();
+  if (packIdx < 0) return false;
+  var packed = cloneItem(item);
   backpackSlots[packIdx] = packed;
   persistBackpack();
   renderGrid();
@@ -1031,6 +1046,7 @@ if (typeof window !== "undefined") {
     addFireSalt: addFireSalt,
     removeRandomItems: removeRandomItems,
     addItem: addItem,
+    addItemToBackpack: addItemToBackpack,
     removeFirstItem: removeFirstItem,
     countItem: countItem,
     resetBackpack: resetBackpack,

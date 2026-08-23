@@ -17,6 +17,7 @@ import {
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
 import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
+import { aiChoiceHtml, isAiChatOpen, closeAiChat } from "./backrooms-ai-chat.js?v=2";
 import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
@@ -858,11 +859,12 @@ function openFriendlyDialogue(index) {
   dialogueTextEl.textContent =
     FRIENDLY_LINES[index % FRIENDLY_LINES.length] + " 要不要在这里住一晚？";
   dialogueChoicesEl.innerHTML =
-    "<kbd>A</kbd> 要　　<kbd>B</kbd> 不要";
+    "<kbd>A</kbd> 要　　<kbd>B</kbd> 不要　" + aiChoiceHtml("c144_clump");
   if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
 }
 
 function closeDialogue() {
+  closeAiChat();
   dialogueOpen = false;
   dialogueEl.hidden = true;
   currentAimPick = null;
@@ -952,7 +954,7 @@ function tryQAction() {
 }
 
 function handleDialogueChoice(code) {
-  if (!dialogueOpen) return false;
+  if (!dialogueOpen || isAiChatOpen()) return false;
   if (code === "KeyA") {
     beginNightSequence();
     return true;

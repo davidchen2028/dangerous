@@ -26,4 +26,5 @@ MARKET_PRODUCT_IDS = [
     "heavy_industrial_drill",
     "uzi_smg",
     "brass_bullet",
+    "keycard_president_office",
 ]

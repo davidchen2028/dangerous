@@ -1,6 +1,6 @@
 /**
  * Backrooms Level C-1289 — 7×7 房间 + 走廊。
- * 死亡时 90% 概率进入本层（见 backrooms-c1289-death.js）。
+ * 死亡时 9% 概率进入本层（见 backrooms-c1289-death.js）。
  *
  * 出口：
  * - 切出有字样的房间墙 → C-1290

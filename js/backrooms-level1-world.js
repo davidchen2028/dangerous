@@ -1235,6 +1235,67 @@ function buildClipEntryHall(root) {
   root.add(hall);
 }
 
+/** 木门所在的柱格 — 矩阵里真实存在的柱子，且远离 M.E.G 引导员 */
+const C101_DOOR_CELL = { col: 3, row: 1 };
+
+/**
+ * 把木门嵌进出生点附近的既有柱子西侧面。
+ * 柱体与碰撞都由流式区块生成，这里只贴门板与拾取面。
+ */
+function buildC101Entrance(root, wallScale) {
+  var group = new THREE.Group();
+  group.name = "LevelC101Entrance";
+  var center = cellWorldCenter(C101_DOOR_CELL.col, C101_DOOR_CELL.row);
+  // 柱子西面：门与柱面齐平，看起来是嵌进混凝土里的
+  var faceX = center.x - BLOCK_SIZE * 0.5 * wallScale;
+  var wood = new THREE.MeshLambertMaterial({ color: 0x6b4020 });
+  var darkWood = new THREE.MeshLambertMaterial({ color: 0x2f1c11 });
+  var doorH = 2.2;
+  var doorHalfW = 0.8;
+
+  var door = new THREE.Mesh(new THREE.BoxGeometry(0.12, doorH, doorHalfW * 2), wood);
+  door.position.set(faceX - 0.03, doorH * 0.5, center.z);
+  group.add(door);
+
+  var lintel = new THREE.Mesh(
+    new THREE.BoxGeometry(0.2, 0.16, doorHalfW * 2 + 0.3),
+    darkWood
+  );
+  lintel.position.set(faceX - 0.05, doorH + 0.08, center.z);
+  group.add(lintel);
+  [-1, 1].forEach(function (side) {
+    var jamb = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, doorH + 0.16, 0.15),
+      darkWood
+    );
+    jamb.position.set(faceX - 0.05, (doorH + 0.16) * 0.5, center.z + side * (doorHalfW + 0.075));
+    group.add(jamb);
+  });
+
+  var handle = new THREE.Mesh(
+    new THREE.SphereGeometry(0.075, 10, 8),
+    new THREE.MeshStandardMaterial({ color: 0xcaa85e, metalness: 0.7, roughness: 0.3 })
+  );
+  handle.position.set(faceX - 0.12, 1.05, center.z + doorHalfW - 0.22);
+  group.add(handle);
+
+  var pick = new THREE.Mesh(
+    new THREE.BoxGeometry(0.3, doorH + 0.2, doorHalfW * 2 + 0.3),
+    sharedChestPickMat()
+  );
+  pick.position.set(faceX - 0.22, doorH * 0.5, center.z);
+  pick.userData.brInteract = { kind: "l1_c101_door" };
+  group.add(pick);
+  root.add(group);
+
+  return {
+    group: group,
+    pickMesh: pick,
+    // 面朝东（+X），正对嵌在柱子里的木门
+    returnSpawn: { x: faceX - 1.5, z: center.z, yaw: -Math.PI * 0.5 },
+  };
+}
+
 var _chestPickGeo = null;
 var _chestPickMat = null;
 
@@ -1392,7 +1453,7 @@ function loadChunk(cx, cz, ctx) {
     chests: [],
   };
 
-  var wallScale = 0.88;
+  var wallScale = 0.88 * ctx.pillarScale;
   var wallPositions = [];
   var lr;
   var lc;
@@ -1403,7 +1464,11 @@ function loadChunk(cx, cz, ctx) {
       var center = cellWorldCenter(gCol, gRow);
 
       if (isWallCell(gCol, gRow)) {
-        wallPositions.push(center.x, WAREHOUSE_HEIGHT * 0.5, center.z);
+        wallPositions.push(
+          center.x,
+          WAREHOUSE_HEIGHT * ctx.pillarHeight * 0.5,
+          center.z
+        );
         registerChunkCollider(ctx, record, createWallCollider(center, wallScale));
         continue;
       }
@@ -1459,7 +1524,7 @@ function loadChunk(cx, cz, ctx) {
         wallPositions[wi * 3 + 1],
         wallPositions[wi * 3 + 2]
       );
-      dummy.scale.set(wallScale, 1, wallScale);
+      dummy.scale.set(wallScale, ctx.pillarHeight, wallScale);
       dummy.rotation.set(0, 0, 0);
       dummy.updateMatrix();
       walls.setMatrixAt(wi, dummy.matrix);
@@ -1540,6 +1605,19 @@ export function spawnQuantumPirateChests() {
 export function buildBackroomsLevel1World(root, opts) {
   opts = opts || {};
   var horror = opts.horror;
+  var modConfig = opts.modConfig || null;
+  var pillarScale =
+    modConfig && modConfig.pillars ? modConfig.pillars.scale : 1;
+  var pillarHeight =
+    modConfig && modConfig.pillars ? modConfig.pillars.height : 1;
+  if (modConfig && modConfig.pillars) {
+    sharedWallMat().map = null;
+    sharedWallMat().color.set(modConfig.pillars.color);
+    sharedWallMat().needsUpdate = true;
+  }
+  if (modConfig && modConfig.lights) {
+    sharedPanelMat().color.set(modConfig.lights.color);
+  }
   var chunksRoot = new THREE.Group();
   chunksRoot.name = "Level1InfiniteChunks";
   root.add(chunksRoot);
@@ -1547,7 +1625,11 @@ export function buildBackroomsLevel1World(root, opts) {
   buildClipEntryHall(root);
   var megGuideNpc = buildMegGuideNpc(root);
 
-  var ambient = new THREE.AmbientLight(0xd0dce6, 1.05);
+  var lightColor =
+    modConfig && modConfig.lights ? modConfig.lights.color : 0xd0dce6;
+  var lightIntensity =
+    modConfig && modConfig.lights ? modConfig.lights.intensity : 1;
+  var ambient = new THREE.AmbientLight(lightColor, 1.05 * lightIntensity);
   root.add(ambient);
   if (horror) horror.registerAmbient(ambient, 1.05);
 
@@ -1558,6 +1640,7 @@ export function buildBackroomsLevel1World(root, opts) {
   var industrialLights = [];
   var colliders = [];
   var chunks = new Map();
+  var c101Entrance = buildC101Entrance(root, 0.88 * pillarScale);
 
   var ctx = {
     horror: horror,
@@ -1566,6 +1649,8 @@ export function buildBackroomsLevel1World(root, opts) {
     chunks: chunks,
     colliders: colliders,
     industrialLights: industrialLights,
+    pillarScale: pillarScale,
+    pillarHeight: pillarHeight,
     onWallCollider: opts.onWallCollider || null,
     onWallColliderRemove: opts.onWallColliderRemove || null,
   };
@@ -1703,7 +1788,13 @@ export function buildBackroomsLevel1World(root, opts) {
       ) {
         roots.push(_megBackDoorState.pickMesh);
       }
+      if (c101Entrance && c101Entrance.pickMesh) {
+        roots.push(c101Entrance.pickMesh);
+      }
       return roots;
+    },
+    getC101ReturnSpawn: function () {
+      return c101Entrance ? c101Entrance.returnSpawn : null;
     },
     tryOpenMegFrontDoorAim: function () {
       return tryOpenMegFrontDoorAim();

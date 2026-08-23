@@ -18,6 +18,7 @@ import {
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
 import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
+import { aiChoiceHtml, isAiChatOpen, closeAiChat } from "./backrooms-ai-chat.js?v=2";
 import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import {
@@ -357,12 +358,13 @@ function openFacelingDialogue() {
   dialogueTextEl.textContent = "你的房间是 303。绕过柜台，沿后面的走廊走到尽头。";
   if (dialogueChoicesEl) {
     dialogueChoicesEl.hidden = false;
-    dialogueChoicesEl.innerHTML = "按 <kbd>Q</kbd> 知道了";
+    dialogueChoicesEl.innerHTML = "按 <kbd>Q</kbd> 知道了" + aiChoiceHtml("l13_faceling");
   }
   if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
 }
 
 function closeDialogue() {
+  closeAiChat();
   dialogueOpen = false;
   document.body.classList.remove("backrooms-dialogue-open");
   if (dialogueEl) dialogueEl.hidden = true;

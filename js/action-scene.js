@@ -152,6 +152,14 @@ if (typeof window !== "undefined") {
     if (window.CollectionRoomChest && window.CollectionRoomChest.CHEST_GLB_URL) {
       urls.push(window.CollectionRoomChest.CHEST_GLB_URL);
     }
+    if (window.PresidentOfficeChests) {
+      if (window.PresidentOfficeChests.CHEST_GLB_URL) {
+        urls.push(window.PresidentOfficeChests.CHEST_GLB_URL);
+      }
+      if (window.PresidentOfficeChests.LOCKBOX_GLB_URL) {
+        urls.push(window.PresidentOfficeChests.LOCKBOX_GLB_URL);
+      }
+    }
     if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.getPreloadUrls) {
       urls = urls.concat(window.CollectionRoomFloorLoot.getPreloadUrls());
     }
@@ -426,9 +434,15 @@ if (typeof window !== "undefined") {
   var TEST_NORTH_REAR_HOUSE_WING_W = 11;
   var TEST_NORTH_REAR_HOUSE_WALL_H = 2;
   var TEST_NORTH_REAR_HOUSE_DOOR_H = 1.85;
+  var TEST_PALACE_REAR_EVAC_WIDTH = 6;
+  var TEST_PALACE_REAR_EVAC_DEPTH = 4;
+  var PRESIDENT_OFFICE_KEYCARD_ID = "keycard_president_office";
+  var PRESIDENT_OFFICE_DOOR_OPEN_Z = 1.15;
   var testWaitingHall = null;
   var testCollectionRoom = null;
   var testNorthRearHouse = null;
+  var testPresidentOfficeDoor = null;
+  var testPalaceRearEvacRoom = null;
   var MISSILE_GLB_URL = "models/missile.glb";
   var ARMS_GLB_URL = "models/soldier-arms.glb";
   /** 第一人称视野内双臂占位（宽 × 高 × 纵深） */
@@ -1851,6 +1865,7 @@ if (typeof window !== "undefined") {
     var floorY = TEST_ROAD_SURFACE_Y - floorThick * 0.5;
     var topCenterZ = (splitZ + northZ) * 0.5;
     var stemCenterZ = (southZ + splitZ) * 0.5;
+    var westWingCx = cx - topHalfW + wingW * 0.5;
     var floorMat = new THREE.MeshLambertMaterial({
       color: floorColor,
       polygonOffset: true,
@@ -1879,16 +1894,43 @@ if (typeof window !== "undefined") {
       floorMat
     );
 
+    /* 北墙中央留后门，连接撤离房 */
+    var rearDoorW = TEST_WAITING_HALL_DOOR_W;
+    var northWallSeg = (house.width - rearDoorW) * 0.5;
     addBox(
       parent,
-      house.width,
+      northWallSeg,
       wallH,
       thick,
-      cx,
+      cx - rearDoorW * 0.5 - northWallSeg * 0.5,
       wallY,
       northZ - thick * 0.5,
       wallColor
     );
+    addBox(
+      parent,
+      northWallSeg,
+      wallH,
+      thick,
+      cx + rearDoorW * 0.5 + northWallSeg * 0.5,
+      wallY,
+      northZ - thick * 0.5,
+      wallColor
+    );
+    var rearLintelH = wallH - TEST_NORTH_REAR_HOUSE_DOOR_H;
+    if (rearLintelH > 0.08) {
+      addBox(
+        parent,
+        rearDoorW,
+        rearLintelH,
+        thick,
+        cx,
+        TEST_NORTH_REAR_HOUSE_DOOR_H + rearLintelH * 0.5,
+        northZ - thick * 0.5,
+        wallColor,
+        false
+      );
+    }
     addBox(
       parent,
       thick,
@@ -1914,7 +1956,7 @@ if (typeof window !== "undefined") {
       wingW,
       wallH,
       thick,
-      cx - topHalfW + wingW * 0.5,
+      westWingCx,
       wallY,
       splitZ + thick * 0.5,
       wallColor
@@ -2007,12 +2049,291 @@ if (typeof window !== "undefined") {
       roofColor,
       false
     );
+
+    /* 红圈：横厅西段用隔墙封成总统办公室，绿点为东侧门 */
+    buildPresidentOfficeDoor(parent, house, wallColor);
+    buildTestPalaceRearEvacRoom(
+      parent,
+      house,
+      floorMat,
+      floorY,
+      floorThick,
+      wallColor,
+      roofColor
+    );
+  }
+
+  function buildTestPalaceRearEvacRoom(
+    parent,
+    house,
+    floorMat,
+    floorY,
+    floorThick,
+    wallColor,
+    roofColor
+  ) {
+    var thick = TEST_WAITING_HALL_WALL_THICK;
+    var wallH = house.wallH;
+    var wallY = wallH * 0.5;
+    var width = TEST_PALACE_REAR_EVAC_WIDTH;
+    var depth = TEST_PALACE_REAR_EVAC_DEPTH;
+    var southZ = house.northZ;
+    var northZ = southZ + depth;
+    var centerZ = (southZ + northZ) * 0.5;
+    var halfW = width * 0.5;
+
+    addRearHouseFloor(
+      parent,
+      width,
+      depth,
+      house.centerX,
+      centerZ,
+      floorY,
+      floorThick,
+      floorMat
+    );
+    addBox(
+      parent,
+      thick,
+      wallH,
+      depth,
+      house.centerX - halfW + thick * 0.5,
+      wallY,
+      centerZ,
+      wallColor
+    );
+    addBox(
+      parent,
+      thick,
+      wallH,
+      depth,
+      house.centerX + halfW - thick * 0.5,
+      wallY,
+      centerZ,
+      wallColor
+    );
+    addBox(
+      parent,
+      width,
+      wallH,
+      thick,
+      house.centerX,
+      wallY,
+      northZ - thick * 0.5,
+      wallColor
+    );
+    addBox(
+      parent,
+      width,
+      TEST_WAITING_HALL_CEILING_THICK,
+      depth,
+      house.centerX,
+      wallH + TEST_WAITING_HALL_CEILING_THICK * 0.5,
+      centerZ,
+      roofColor,
+      false
+    );
+
+    /* 后门上方的绿色撤离标识 */
+    var sign = new THREE.Mesh(
+      new THREE.BoxGeometry(1.35, 0.28, 0.08),
+      new THREE.MeshLambertMaterial({
+        color: 0x42b84a,
+        emissive: 0x153d18,
+        emissiveIntensity: 0.65,
+      })
+    );
+    sign.position.set(
+      house.centerX,
+      TEST_NORTH_REAR_HOUSE_DOOR_H - 0.2,
+      southZ + 0.06
+    );
+    parent.add(sign);
+
+    testPalaceRearEvacRoom = {
+      minX: house.centerX - halfW + thick,
+      maxX: house.centerX + halfW - thick,
+      minZ: southZ + 0.45,
+      maxZ: northZ - thick,
+    };
+  }
+
+  function buildPresidentOfficeDoor(parent, house, wallColor) {
+    var thick = TEST_WAITING_HALL_WALL_THICK;
+    var wallH = house.wallH;
+    var wallY = wallH * 0.5;
+    var doorW = TEST_WAITING_HALL_DOOR_W;
+    var doorH = TEST_NORTH_REAR_HOUSE_DOOR_H;
+    var topDepth = house.topDepth;
+    var splitZ = house.splitZ;
+    var northZ = house.northZ;
+    var topCenterZ = (splitZ + northZ) * 0.5;
+    var doorX = house.centerX - house.stemHalfW + thick * 0.5;
+    var doorZ = topCenterZ;
+    var sideSeg = (topDepth - doorW) * 0.5;
+
+    if (sideSeg > 0.12) {
+      addBox(
+        parent,
+        thick,
+        wallH,
+        sideSeg,
+        doorX,
+        wallY,
+        splitZ + sideSeg * 0.5,
+        wallColor
+      );
+      addBox(
+        parent,
+        thick,
+        wallH,
+        sideSeg,
+        doorX,
+        wallY,
+        northZ - sideSeg * 0.5,
+        wallColor
+      );
+    }
+    var lintelH = wallH - doorH;
+    if (lintelH > 0.08) {
+      addBox(
+        parent,
+        thick,
+        lintelH,
+        doorW,
+        doorX,
+        doorH + lintelH * 0.5,
+        doorZ,
+        wallColor,
+        false
+      );
+    }
+
+    var doorMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(thick * 0.55, doorH * 0.96, doorW * 0.92),
+      new THREE.MeshLambertMaterial({ color: 0x3a4550 })
+    );
+    doorMesh.name = "PresidentOfficeDoor";
+    doorMesh.position.set(doorX, doorH * 0.48, doorZ);
+    parent.add(doorMesh);
+
+    var closedColliders = [];
+    registerCollider(
+      thick + 0.08,
+      doorH,
+      doorW * 0.95,
+      doorX,
+      doorH * 0.5,
+      doorZ
+    );
+    closedColliders.push(colliders[colliders.length - 1]);
+
+    testPresidentOfficeDoor = {
+      open: false,
+      animating: false,
+      t: 0,
+      mesh: doorMesh,
+      homeZ: doorZ,
+      doorX: doorX,
+      doorZ: doorZ,
+      doorW: doorW,
+      closedColliders: closedColliders,
+      openCollider: null,
+      playerInsideOffice: false,
+    };
+  }
+
+  function isNearPresidentOfficeDoor() {
+    if (!testPresidentOfficeDoor || testPresidentOfficeDoor.open) return false;
+    var d = testPresidentOfficeDoor;
+    return (
+      Math.abs(pos.x - d.doorX) < 1.65 &&
+      Math.abs(pos.z - d.doorZ) < d.doorW * 0.75 + 0.85
+    );
+  }
+
+  function isInsidePresidentOffice() {
+    if (!testNorthRearHouse || currentMapId !== "test") return false;
+    var h = testNorthRearHouse.layout;
+    var inset = 0.35;
+    return (
+      pos.x >= -h.topHalfW + inset &&
+      pos.x <= -h.stemHalfW - inset &&
+      pos.z >= h.splitZ + inset &&
+      pos.z <= h.northZ - inset
+    );
+  }
+
+  function tryOpenPresidentOfficeDoor() {
+    if (!testPresidentOfficeDoor || testPresidentOfficeDoor.open) return false;
+    if (!isNearPresidentOfficeDoor()) return false;
+    if (
+      !window.PlayerLoadout ||
+      !window.PlayerLoadout.findKeycard ||
+      !window.PlayerLoadout.findKeycard(PRESIDENT_OFFICE_KEYCARD_ID)
+    ) {
+      showActionTopBanner("需要钥匙卡「总统办公室」", 2400);
+      return true;
+    }
+    var used = window.PlayerLoadout.consumeKeycardDurability(
+      1,
+      PRESIDENT_OFFICE_KEYCARD_ID
+    );
+    testPresidentOfficeDoor.open = true;
+    testPresidentOfficeDoor.animating = true;
+    testPresidentOfficeDoor.t = 0;
+    removeCollidersFromList(testPresidentOfficeDoor.closedColliders);
+    if (testPresidentOfficeDoor.mesh) {
+      testPresidentOfficeDoor.openCollider = addColliderFromObject(
+        testPresidentOfficeDoor.mesh,
+        0.05
+      );
+    }
+    if (used) {
+      showDurabilityBanner(used.remaining, used.max);
+    } else {
+      showActionTopBanner("总统办公室已解锁", 2000);
+    }
+    setInteractHintVisible(false);
+    return true;
+  }
+
+  function updatePresidentOfficeDoor(dt) {
+    if (!testPresidentOfficeDoor) return;
+    var d = testPresidentOfficeDoor;
+    if (d.animating && d.mesh) {
+      d.t += dt;
+      var u = Math.min(1, d.t / 0.55);
+      var ease = u * u * (3 - 2 * u);
+      d.mesh.position.z = d.homeZ + PRESIDENT_OFFICE_DOOR_OPEN_Z * ease;
+      if (d.openCollider) {
+        syncColliderFromObject(d.openCollider, d.mesh, 0.05);
+      }
+      if (u >= 1) {
+        d.animating = false;
+      }
+    } else if (d.open && d.openCollider && d.mesh) {
+      syncColliderFromObject(d.openCollider, d.mesh, 0.05);
+    }
+
+    var inside = isInsidePresidentOffice();
+    if (inside && !d.playerInsideOffice) {
+      showActionTopBanner("总统办公室", 2000);
+    }
+    d.playerInsideOffice = inside;
   }
 
   function buildTestMapNorthRearHouse(parent) {
     var house = getTestNorthRearHouseLayout();
     testNorthRearHouse = { layout: house, playerInside: false };
     buildTestNorthRearHouseShell(parent, house);
+    if (window.PresidentOfficeChests && window.PresidentOfficeChests.build) {
+      window.PresidentOfficeChests.build(
+        parent,
+        getWaitingHallGltfHelpers(),
+        house
+      );
+    }
   }
 
   function buildTestMapNorthCollectionRoom(parent) {
@@ -3919,6 +4240,9 @@ if (typeof window !== "undefined") {
     if (window.CollectionRoomChest && window.CollectionRoomChest.closeChestPanel) {
       window.CollectionRoomChest.closeChestPanel();
     }
+    if (window.PresidentOfficeChests && window.PresidentOfficeChests.closePanel) {
+      window.PresidentOfficeChests.closePanel();
+    }
     if (window.LockpickingQTE && window.LockpickingQTE.close) {
       window.LockpickingQTE.close();
     }
@@ -3968,6 +4292,15 @@ if (typeof window !== "undefined") {
   }
 
   function isInEvacZone() {
+    if (currentMapId === "test") {
+      if (!testPalaceRearEvacRoom) return false;
+      return (
+        pos.x >= testPalaceRearEvacRoom.minX &&
+        pos.x <= testPalaceRearEvacRoom.maxX &&
+        pos.z >= testPalaceRearEvacRoom.minZ &&
+        pos.z <= testPalaceRearEvacRoom.maxZ
+      );
+    }
     var half = EVAC_ROOM_SIZE * 0.5;
     var minX = -half;
     var maxX = half;
@@ -4733,6 +5066,9 @@ if (typeof window !== "undefined") {
     if (window.CollectionRoomChest && window.CollectionRoomChest.updateAim) {
       window.CollectionRoomChest.updateAim(pos.x, pos.z, camera);
     }
+    if (window.PresidentOfficeChests && window.PresidentOfficeChests.updateAim) {
+      window.PresidentOfficeChests.updateAim(pos.x, pos.z, camera);
+    }
     if (window.WorldLootBox && window.WorldLootBox.updateAim) {
       window.WorldLootBox.updateAim(pos.x, pos.z, camera);
     }
@@ -4752,6 +5088,9 @@ if (typeof window !== "undefined") {
     var relaxAim = !!(opts && opts.fromHint && shouldUseDragLook());
     if (currentMapId === "test") {
       if (tryOpenTestNorthIronGates()) {
+        return true;
+      }
+      if (tryOpenPresidentOfficeDoor()) {
         return true;
       }
       if (window.ActionDropLoot && window.ActionDropLoot.tryPickup(pos.x, pos.z)) {
@@ -4800,6 +5139,20 @@ if (typeof window !== "undefined") {
           window.CollectionRoomChest.updateAim(pos.x, pos.z, camera);
         }
         if (window.CollectionRoomChest.tryStartLockpick()) {
+          releasePointerForUi();
+          return true;
+        }
+      }
+      if (window.PresidentOfficeChests) {
+        if (camera && window.PresidentOfficeChests.updateAim) {
+          window.PresidentOfficeChests.updateAim(pos.x, pos.z, camera);
+        }
+        if (
+          window.PresidentOfficeChests.tryInteract() ||
+          (relaxAim &&
+            window.PresidentOfficeChests.tryInteractNear &&
+            window.PresidentOfficeChests.tryInteractNear(pos.x, pos.z))
+        ) {
           releasePointerForUi();
           return true;
         }
@@ -4959,11 +5312,32 @@ if (typeof window !== "undefined") {
           return;
         }
       }
+      if (camera && window.PresidentOfficeChests) {
+        window.PresidentOfficeChests.updateAim(pos.x, pos.z, camera);
+        if (window.PresidentOfficeChests.isAimed()) {
+          setInteractHintVisible(true);
+          if (interactHintEl) {
+            interactHintEl.textContent = formatInteractHint(
+              window.PresidentOfficeChests.getAimedLabel()
+            );
+          }
+          return;
+        }
+      }
       if (isNearTestNorthIronGates()) {
         setInteractHintVisible(true);
         if (interactHintEl) {
           interactHintEl.textContent = formatInteractHint(
             "靠近铁门 · 按 E 向内打开"
+          );
+        }
+        return;
+      }
+      if (isNearPresidentOfficeDoor()) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = formatInteractHint(
+            "总统办公室门 · 按 E 刷卡开门"
           );
         }
         return;
@@ -5120,6 +5494,8 @@ if (typeof window !== "undefined") {
     testWaitingHall = null;
     testCollectionRoom = null;
     testNorthRearHouse = null;
+    testPresidentOfficeDoor = null;
+    testPalaceRearEvacRoom = null;
     testNorthCatColliders = [];
     securityDoorOpenCollider = null;
     loadedMapId = null;
@@ -5131,7 +5507,11 @@ if (typeof window !== "undefined") {
       BOUNDS_X = 55;
       BOUNDS_Z_MIN = -55;
       var rearHouseBounds = getTestNorthRearHouseLayout();
-      BOUNDS_Z_MAX = rearHouseBounds.centerZ + rearHouseBounds.halfD + 2.5;
+      BOUNDS_Z_MAX =
+        rearHouseBounds.centerZ +
+        rearHouseBounds.halfD +
+        TEST_PALACE_REAR_EVAC_DEPTH +
+        2.5;
       if (scene) {
         scene.fog = new THREE.Fog(0x8ecfff, 50, 245);
       }
@@ -6044,6 +6424,8 @@ if (typeof window !== "undefined") {
       (window.HiddenLootBox && window.HiddenLootBox.isPanelOpen()) ||
       (window.WaitingHallLockbox && window.WaitingHallLockbox.isPanelOpen()) ||
       (window.CollectionRoomChest && window.CollectionRoomChest.isPanelOpen()) ||
+      (window.PresidentOfficeChests &&
+        window.PresidentOfficeChests.isPanelOpen()) ||
       (window.ActionWasteBin && window.ActionWasteBin.isOpen())
     );
   }
@@ -6099,10 +6481,11 @@ if (typeof window !== "undefined") {
     if (typeof document !== "undefined" && document.hidden) return;
 
     updateTestNorthIronGates(dt);
+    updatePresidentOfficeDoor(dt);
     updateTestNorthSideRooms();
     updateSecurityDoorOpenCollider();
 
-    if (doorUnlocked) {
+    if (doorUnlocked || currentMapId === "test") {
       updateEvacZone(dt);
     }
 
@@ -6492,6 +6875,12 @@ if (typeof window !== "undefined") {
     if (window.CollectionRoomChest && window.CollectionRoomChest.resetForNewRun) {
       window.CollectionRoomChest.resetForNewRun();
     }
+    if (
+      window.PresidentOfficeChests &&
+      window.PresidentOfficeChests.resetForNewRun
+    ) {
+      window.PresidentOfficeChests.resetForNewRun();
+    }
     if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.resetForNewRun) {
       window.CollectionRoomFloorLoot.resetForNewRun();
     }
@@ -6599,6 +6988,12 @@ if (typeof window !== "undefined") {
     if (window.CollectionRoomChest && window.CollectionRoomChest.resetForNewRun) {
       window.CollectionRoomChest.resetForNewRun();
     }
+    if (
+      window.PresidentOfficeChests &&
+      window.PresidentOfficeChests.resetForNewRun
+    ) {
+      window.PresidentOfficeChests.resetForNewRun();
+    }
     if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.resetForNewRun) {
       window.CollectionRoomFloorLoot.resetForNewRun();
     }
@@ -6663,6 +7058,13 @@ if (typeof window !== "undefined") {
     }
     if (window.CollectionRoomChest && window.CollectionRoomChest.isPanelOpen()) {
       window.CollectionRoomChest.closeChestPanel();
+      return true;
+    }
+    if (
+      window.PresidentOfficeChests &&
+      window.PresidentOfficeChests.isPanelOpen()
+    ) {
+      window.PresidentOfficeChests.closePanel();
       return true;
     }
     if (window.WorldLootBox && window.WorldLootBox.isPanelOpen()) {

@@ -9,6 +9,7 @@ import {
   registerBackroomsSurvivalPersist,
 } from "./backrooms-survival-persist.js";
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
+import { aiChoiceHtml, isAiChatOpen, closeAiChat } from "./backrooms-ai-chat.js?v=2";
 import {
   toggleBackpack,
   openBackpack,
@@ -536,6 +537,7 @@ function updateInteractUi() {
 }
 
 function closeDialogue() {
+  closeAiChat();
   var wasBuying = buyerMode;
   dialogueOpen = false;
   vendorMode = false;
@@ -618,7 +620,8 @@ function renderVendorMenu(note) {
         " 积分点</button>";
     }
     html +=
-      '<button type="button" class="backrooms-dialogue__choice" data-vendor="close"><kbd>Esc</kbd> 离开</button>';
+      '<button type="button" class="backrooms-dialogue__choice" data-vendor="close"><kbd>Esc</kbd> 离开</button>' +
+      aiChoiceHtml("l11_vendor");
     dialogueChoicesEl.innerHTML = html;
   }
 }
@@ -801,7 +804,8 @@ function setSellChoicesIdle() {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
   dialogueChoicesEl.innerHTML =
-    '<button type="button" class="backrooms-dialogue__choice" data-sell="close"><kbd>Esc</kbd> 离开</button>';
+    '<button type="button" class="backrooms-dialogue__choice" data-sell="close"><kbd>Esc</kbd> 离开</button>' +
+    aiChoiceHtml("l11_buyer");
 }
 
 function setSellChoicesConfirm() {
@@ -937,6 +941,7 @@ function bindControls() {
         return true;
       }
       if (dialogueOpen) {
+        if (isAiChatOpen()) return true;
         if (buyerMode) {
           if (e.code === "Escape" && !e.repeat) {
             e.preventDefault();

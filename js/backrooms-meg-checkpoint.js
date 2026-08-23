@@ -111,7 +111,8 @@ export function restoreBackpackSnapshot(slots) {
   // 兼容旧快照：纯数组 = 仅背包
   var backpack = Array.isArray(slots) ? slots : slots && slots.backpack;
   var hotbar = slots && !Array.isArray(slots) ? slots.hotbar : null;
-  if (!Array.isArray(backpack) || backpack.length !== BACKPACK_CAPACITY) return;
+  // 兼容旧版 4×5（20 格）快照；扩容后的空位自动补 null。
+  if (!Array.isArray(backpack)) return;
   var i;
   for (i = 0; i < BACKPACK_CAPACITY; i++) {
     var slot = backpack[i];

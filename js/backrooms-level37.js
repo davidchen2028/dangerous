@@ -222,7 +222,7 @@ function exitToC370() {
   showToast("你顺着白色楼梯走进水池深处…");
   if (survival) saveBackroomsSurvival(survival);
   grantLevelPass("c370", fps.yaw);
-  queueEnterLevelBanner("Level C-370");
+  queueEnterLevelBanner("Level C-370 · 倾向 · 生存难度 0");
   window.setTimeout(function () {
     window.location.href = "backrooms-level-c370.html";
   }, 650);

@@ -114,7 +114,7 @@
       ],
     },
     { id: "medical", label: "医疗消耗品", empty: true },
-    { id: "keycard", label: "钥匙卡", empty: true },
+    { id: "keycard", label: "钥匙卡", empty: false },
   ];
 
   var PRODUCTS = [
@@ -498,6 +498,21 @@
       reclaimMin: 12000,
       price: 30000,
       image: "img/market/brass-bullet.svg",
+    },
+    {
+      id: "keycard_president_office",
+      stashId: "kpoff",
+      cat: "keycard",
+      name: "总统办公室",
+      desc: "总统主楼办公室门禁卡 · 1×1 · 黑市 4000000",
+      w: 1,
+      h: 1,
+      maxDurability: 10,
+      minMarketPrice: 4000000,
+      maxMarketPrice: 4000000,
+      reclaimMin: 3600000,
+      price: 4000000,
+      image: "img/market/keycard-side-entrance.png",
     },
   ];
 

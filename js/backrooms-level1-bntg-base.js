@@ -10,6 +10,7 @@ import {
   saveBackroomsSurvival,
 } from "./backrooms-survival-persist.js";
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
+import { aiChoiceHtml, isAiChatOpen, closeAiChat } from "./backrooms-ai-chat.js?v=2";
 import {
   toggleBackpack,
   isInventoryOpen,
@@ -416,7 +417,8 @@ function openVaultPrompt() {
   setDialogue(
     "要体验交易保险库吗？",
     '<button type="button" class="backrooms-dialogue__choice" data-vault-choice="a"><kbd>A</kbd> 确认</button>' +
-      '<button type="button" class="backrooms-dialogue__choice" data-vault-choice="b"><kbd>B</kbd> 不行</button>'
+      '<button type="button" class="backrooms-dialogue__choice" data-vault-choice="b"><kbd>B</kbd> 不行</button>' +
+      aiChoiceHtml("bntg_bank")
   );
   if (document.pointerLockElement && document.exitPointerLock) {
     document.exitPointerLock();
@@ -437,11 +439,13 @@ function showVaultMenu(message) {
       "/25",
     '<button type="button" class="backrooms-dialogue__choice" data-vault-choice="a"><kbd>A</kbd> 单抽</button>' +
       '<button type="button" class="backrooms-dialogue__choice" data-vault-choice="b"><kbd>B</kbd> 十连</button>' +
-      '<button type="button" class="backrooms-dialogue__choice" data-vault-choice="c"><kbd>C</kbd> 离开</button>'
+      '<button type="button" class="backrooms-dialogue__choice" data-vault-choice="c"><kbd>C</kbd> 离开</button>' +
+      aiChoiceHtml("bntg_bank")
   );
 }
 
 function closeVaultDialogue() {
+  closeAiChat();
   dialogueOpen = false;
   dialogueMode = "";
   if (dialogueEl) dialogueEl.hidden = true;
@@ -449,7 +453,7 @@ function closeVaultDialogue() {
 }
 
 function handleVaultChoice(choice) {
-  if (!dialogueOpen) return;
+  if (!dialogueOpen || isAiChatOpen()) return;
   if (dialogueMode === "prompt") {
     if (choice === "a") showVaultMenu("");
     else if (choice === "b") closeVaultDialogue();

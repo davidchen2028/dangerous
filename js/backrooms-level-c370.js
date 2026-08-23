@@ -1,5 +1,5 @@
 /**
- * Backrooms Level C-370 — 水池深处的沉静空间
+ * Backrooms Level C-370「倾向」— 生存难度 0 · 水池深处的沉静空间
  * 北侧白光楼梯 → Level 363（速通终段续接，而非「回家了」）
  */
 import * as THREE from "three";
@@ -251,7 +251,7 @@ function init() {
   });
   updateMegPointsDisplay(megPointsEl);
   hintEl.innerHTML =
-    "Level C-370 · 寻找柱林深处的白光 · <kbd>WASD</kbd> · <kbd>Q</kbd> 交互 · <kbd>B</kbd>";
+    "Level C-370 · 倾向 · 生存难度 0 · 寻找柱林深处的白光 · <kbd>WASD</kbd> · <kbd>Q</kbd> 交互 · <kbd>B</kbd>";
   bindControls();
   showToast("水声消失了，只剩下柱林间的回响");
 

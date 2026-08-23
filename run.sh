@@ -73,6 +73,11 @@ echo ""
 echo "  电脑：用浏览器打开上面「本机」地址"
 echo "  手机：同一 WiFi，打开「局域网」地址（不要用 localhost）"
 echo "  不要双击 index.html"
+if [ -z "$JIWEI_AI_KEY" ]; then
+  echo "  NPC 自由对话：未开启（要开就先 export JIWEI_AI_KEY=你的密钥 再运行）"
+else
+  echo "  NPC 自由对话：已开启"
+fi
 if [ -n "$JIWEI_ADMIN_KEY" ]; then
   echo "  在线统计(8082): http://127.0.0.1:8082/admin/online-stats?key=<你的密钥>"
   echo "               （另开终端运行 ./run-admin.sh）"

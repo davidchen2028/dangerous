@@ -9,9 +9,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import secrets
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -33,6 +37,21 @@ ADMIN_LOCAL_ONLY = os.environ.get("JIWEI_ADMIN_LOCAL_ONLY", "").strip().lower() 
     "true",
     "yes",
 )
+
+# NPC 自由对话：密钥只存在服务端环境变量里，绝不下发给浏览器。
+AI_API_BASE = os.environ.get("JIWEI_AI_BASE", "https://api.silra.cn/v1").strip().rstrip("/")
+AI_API_KEY = os.environ.get("JIWEI_AI_KEY", "").strip()
+AI_MODEL = os.environ.get("JIWEI_AI_MODEL", "deepseek-v3").strip()
+# 默认允许未登录聊天（后室可单机玩）；要强制登录时设 JIWEI_AI_REQUIRE_LOGIN=1
+AI_REQUIRE_LOGIN = os.environ.get("JIWEI_AI_REQUIRE_LOGIN", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+try:
+    AI_RATE_PER_MIN = max(1, int(os.environ.get("JIWEI_AI_RATE_PER_MIN", "20")))
+except ValueError:
+    AI_RATE_PER_MIN = 20
 
 app = Flask(__name__, static_folder=str(ROOT), static_url_path="")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "jiwei-lobby-dev")
@@ -515,6 +534,224 @@ def api_market_buy() -> Any:
         return jsonify({"ok": False, "message": msg, "stock": stock}), 400
     _broadcast_market_stock()
     return jsonify({"ok": True, "productId": product_id, "stock": stock})
+
+
+# --------------------------- NPC 自由对话代理 ---------------------------
+# 浏览器只发「找谁说话 + 说了什么」，密钥留在服务端。
+# 人设也放服务端，避免这个接口被当成通用大模型中转来白嫖。
+
+AI_WORLD = (
+    "这是《后室》(Backrooms) 世界观的游戏。玩家是误入后室的幸存者。"
+    "M.E.G.（探索者组织）负责建立基地、发布任务、收购物资；B.N.T.G. 是做买卖的商人组织。"
+    "回答必须很短，最多两三句，用口语化中文，保持角色语气。"
+    "不要提到自己是 AI、模型或程序，不要输出括号动作描写，不要使用 Markdown。"
+    "谈层级时必须以本游戏已知层级表为准，不要套用外站维基的别的设定。"
+    "表里没有的层级就说没确认过，不要编。"
+    "【绝对不能兑现的事，聊天里禁止说】"
+    "这次「聊聊」只是闲聊，不能真正给东西、收东西、改积分、开门、传送、发任务或成交。"
+    "禁止承诺交换、赠送、赊账、折扣、保价、拿某件具体物品来换；禁止编造气球、派对气球等不存在的交易物。"
+    "禁止在聊天里报出「XX积分换一瓶/一件」这类假价格；本局聊天改不了积分，也发不出杏仁水。"
+    "买卖、出售、收购只通过游戏界面的购买/出售按钮完成；聊天里若被问买卖，只说让玩家用旁边的选项或点背包里的物品，不要自己开条件。"
+    "不要假装已经成交、已经给过、已经开门；做不到就明说「聊天给不了，用界面操作」。"
+)
+
+# 本游戏已实现层级的简表（名称 + 生存难度 + 一句特征）。
+AI_LEVELS = (
+    "【已知层级】"
+    "枢纽 The Hub：隐秘层级，生存难度 0，无实体的地下公路隧道，门可反复出入。"
+    "Level 0：黄色迷宫走廊，生存难度 1。"
+    "Level 0.2：灰色镜像迷宫，进门会落顶、墙塌。"
+    "Level 1：工业仓库，生存难度 1，有 M.E.G 基地；B.N.T.G. 另有独立基地，与主区域不相通。"
+    "Level 1.1 腐败的走廊：五个区域，总体生存难度「变化」（洁白走廊 0 / 其后升高到死区）。"
+    "Level 2：蒸汽管道，生存难度 2，很暗，夜视药水有用。"
+    "Level 3：发电站砖墙迷宫，生存难度 4，中央电梯可去 Level 4。"
+    "Level 4：无限办公层，生存难度 1，有 M.E.G 前哨和 B.N.T.G 联络员。"
+    "Level 6：伸手不见五指的黑暗，生存难度等待分级。"
+    "Level 6.1：零食间。"
+    "Level 7：水上小平台，生存难度 4；跳进周围的水会沉没，约 10 秒后去 Level 8。会淹的是这里，不是 21。"
+    "Level 8：巨型洞穴，生存难度 5，有洞穴鸡。"
+    "Level 9：明亮无限郊区道路，生存难度 5。"
+    "Level 10：生存难度 1。"
+    "Level 11：无限城市街道，生存难度 1，有 B.N.T.G 商店；这里的效应会让部分实体变得友好。"
+    "Level 13：公寓旅馆，生存难度 2，无面灵前台会给 303 房间。"
+    "Level 14：红叶紫雾树林，生存难度「天堂」，待久了理智会崩。"
+    "Level 16：大片冰层，很滑很冷，生存难度等待分级；沙地冰面可去 Level 46。"
+    "Level 21：编号门。中央花园加十字走廊，生存难度 4。走廊有死亡飞蛾和肢团；有编号的门通向对应层级。不是水层。"
+    "Level 37：平静的水池，生存难度 0。"
+    "Level 46：变换的旷野，生存难度 2；走远重力降低可去 Level 149。"
+    "Level 48：日落沙滩，生存难度宜居。"
+    "Level 57：黄色小房间，生存难度 0，有画家，可去 Level 21。"
+    "Level 75：生存难度 5。"
+    "Level 119：水滑梯房，生存难度 4。"
+    "Level 121：湖底，生存难度 2。"
+    "Level 149：椰树岛屿，生存难度宜居，四面环海没有出口。"
+    "Level 283：派对房（休息区、管道、海洋球池），生存难度 3。"
+    "Level 363：淡黄色小房间。"
+    "C 层级多为死区或特殊区：C-144 和爱社区（友好肢团，受 Level 11 效应影响）；"
+    "C-192 森林；C-370「倾向」生存难度 0，是水池深处的沉静柱林空间；C-1289 生存难度 2；"
+    "C-1290 夕前石茧、C-1291 井盖迷阵、C-1292 衰退瘾、C-1293 故此悬置、C-1294 流萤死地、"
+    "C-1295 凝固、C-1296、C-1297 无界之痿、C-1298 人景、C-1299 浓汤煮沸均为死区；"
+    "C-1299.1 浓汤美味是食堂，生存难度「食堂」。"
+)
+
+AI_PERSONAS: Dict[str, str] = {
+    "l1_guide": "你是 Level 1 出生区的 M.E.G 引导员。聊天只闲聊；真正去 M.E.G 基地走界面选项，聊天不能传送。",
+    "l1_trade": "你是 M.E.G 基地里的收购员。聊天只闲聊，不要报任何积分数字或假价格；真正收购让玩家点背包物品用界面报价。",
+    "l1_backdoor": "你是守 Level 1 M.E.G 基地后门的工作人员。玩家进后门不需要任何证件。你警惕、话少。聊天给不了钥匙或物资，也不要谈买卖。",
+    "l1_level11": "你是 M.E.G 里负责 Level 1.1 向导的人员。讲解生存难度即可；去 1.1 让玩家点对话选项，聊天不能传送。",
+    "l1_package": "你是 M.E.G 基地的包裹收件员。聊天只闲聊；真正交包裹走界面选项。",
+    "l4_meg": (
+        "你是 Level 4 M.E.G 前哨成员，只负责任务板，不卖任何补给。"
+        "若被问买水、买瓶、换积分、多少钱：只回答「我不卖东西，看任务板」或「聊天给不了」。"
+        "绝对不要说出任何「XX积分一瓶」或类似价格数字。"
+    ),
+    "l4_bntg": "你是 B.N.T.G. 派驻 Level 4 的联络员。聊天只闲聊；去基地走界面选项，不要假装已送人过去。",
+    "l11_vendor": "你是 Level 11 的 B.N.T.G 售货员。聊天只闲聊，不要在聊天里报价格数字；真正购买点商店列表按钮。",
+    "l11_buyer": "你是 Level 11 的 B.N.T.G 收购员。聊天只闲聊，不要报收购价数字；出售让玩家点背包物品用界面报价。禁止编造气球换物。",
+    "l13_faceling": "你是 Level 13 旅馆前台的无面灵。说话平静简短。房间号已由界面安排，聊天不要改房间号。",
+    "l57_painter": "你是 Level 57 的画家。真正去 Level 21 走界面选项，聊天不能传送。",
+    "bntg_bank": "你是 B.N.T.G. 银行人员。聊天只闲聊；抽保险库用界面选项，不要承诺开箱结果。",
+    "c144_clump": "你是 C-144 友好肢团。住一晚走界面 A/B，聊天不能强制留下。",
+}
+
+# 聊天改不了游戏状态：回复里若再编价格/换物，直接换成安全台词。
+AI_SAFE_FALLBACK: Dict[str, str] = {
+    "l4_meg": "我不卖补给。要做事看墙上的任务板。",
+    "l1_trade": "收购价看界面。点背包里的东西，我再报价。",
+    "l11_vendor": "价格在商品列表里。想买就点那边的按钮。",
+    "l11_buyer": "收购价看界面。点背包里的东西，我再报价。",
+    "l1_guide": "聊天送不了你过去。用旁边的选项。",
+    "l4_bntg": "聊天送不了你过去。用旁边的选项。",
+    "bntg_bank": "抽奖用界面选项。聊天开不了箱。",
+}
+
+_AI_FAKE_DEAL_RE = re.compile(
+    r"("
+    r"\d+\s*积分|"
+    r"积分\s*(换|一瓶|一件|买|卖)|"
+    r"(换|卖|买).{0,6}(瓶|水|气球)|"
+    r"派对气球|"
+    r"送你一|"
+    r"给你一瓶|"
+    r"成交了|"
+    r"赊账|"
+    r"保价"
+    r")"
+)
+
+
+def _ai_sanitize_reply(npc: str, reply: str) -> str:
+    text = (reply or "").strip()
+    if not text:
+        return text
+    if _AI_FAKE_DEAL_RE.search(text):
+        return AI_SAFE_FALLBACK.get(npc, "聊天办不了买卖。用旁边的选项。")
+    return text
+
+
+def _ai_scrub_history(history: Any) -> List[dict]:
+    """丢掉会诱导模型继续报假价的旧助手回复。"""
+    cleaned: List[dict] = []
+    if not isinstance(history, list):
+        return cleaned
+    for item in history[-8:]:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        content = str(item.get("content") or "")[:500]
+        if role not in ("user", "assistant") or not content:
+            continue
+        if role == "assistant" and _AI_FAKE_DEAL_RE.search(content):
+            continue
+        cleaned.append({"role": role, "content": content})
+    return cleaned
+
+
+# 限流键 -> 最近一分钟内的请求时间戳
+_ai_hits: Dict[str, List[float]] = {}
+
+
+def _ai_rate_ok(limit_key: str) -> bool:
+    now = time.monotonic()
+    hits = [t for t in _ai_hits.get(limit_key, []) if now - t < 60.0]
+    if len(hits) >= AI_RATE_PER_MIN:
+        _ai_hits[limit_key] = hits
+        return False
+    hits.append(now)
+    _ai_hits[limit_key] = hits
+    return True
+
+
+def _ai_call(messages: List[dict]) -> str:
+    payload = json.dumps(
+        {
+            "model": AI_MODEL,
+            "messages": messages,
+            "max_tokens": 220,
+            "temperature": 0.85,
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        AI_API_BASE + "/chat/completions",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + AI_API_KEY,
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+    choices = body.get("choices") or []
+    if not choices:
+        return ""
+    message = choices[0].get("message") or {}
+    return str(message.get("content") or "").strip()
+
+
+@app.route("/api/ai/chat", methods=["POST"])
+def api_ai_chat() -> Any:
+    if not AI_API_KEY:
+        return (
+            jsonify({"ok": False, "message": "服务器没配 AI 密钥，NPC 只会说固定台词"}),
+            503,
+        )
+    data = request.get_json(silent=True) or {}
+    npc = (data.get("npc") or "").strip()
+    persona = AI_PERSONAS.get(npc)
+    if not persona:
+        return jsonify({"ok": False, "message": "不知道你在跟谁说话"}), 400
+    text = (data.get("text") or "").strip()[:500]
+    if not text:
+        return jsonify({"ok": False, "message": "说点什么吧"}), 400
+
+    token = (data.get("token") or "").strip()
+    user = db.get_user_by_token(token) if token else None
+    if AI_REQUIRE_LOGIN and not user:
+        return jsonify({"ok": False, "message": "登录后才能和这里的人聊天"}), 401
+
+    limit_key = f"u{int(user['id'])}" if user else f"ip{_client_ip()}"
+    if not _ai_rate_ok(limit_key):
+        return jsonify({"ok": False, "message": "说得太快了，缓一缓"}), 429
+
+    messages: List[dict] = [{"role": "system", "content": AI_WORLD + AI_LEVELS + persona}]
+    for item in _ai_scrub_history(data.get("history")):
+        messages.append(item)
+    messages.append({"role": "user", "content": text})
+
+    try:
+        reply = _ai_call(messages)
+    except urllib.error.HTTPError as exc:
+        status = 502 if exc.code >= 500 else 400
+        note = "上游拒绝了请求（密钥或额度问题）" if exc.code in (401, 402, 403) else "对方没有回应"
+        return jsonify({"ok": False, "message": note}), status
+    except Exception:
+        return jsonify({"ok": False, "message": "连不上对话服务"}), 502
+
+    if not reply:
+        return jsonify({"ok": False, "message": "对方沉默了"}), 502
+    reply = _ai_sanitize_reply(npc, reply)
+    return jsonify({"ok": True, "reply": reply})
 
 
 @app.route("/api/admin/market-restock", methods=["POST"])

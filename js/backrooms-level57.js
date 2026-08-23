@@ -23,6 +23,7 @@ import {
 } from "./backrooms-night-vision.js";
 import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import { aiChoiceHtml, isAiChatOpen, closeAiChat } from "./backrooms-ai-chat.js?v=2";
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
 import {
   resolveBackroomsGfxProfile,
@@ -170,7 +171,9 @@ function openPainterDialogue() {
   if (dialogueChoicesEl) {
     dialogueChoicesEl.hidden = false;
     dialogueChoicesEl.innerHTML =
-      renderDialogueChoice("a", "是") + renderDialogueChoice("b", "不是");
+      renderDialogueChoice("a", "是") +
+      renderDialogueChoice("b", "不是") +
+      aiChoiceHtml("l57_painter");
   }
   if (interactHintEl) interactHintEl.hidden = true;
   if (document.pointerLockElement && document.exitPointerLock) {
@@ -185,6 +188,7 @@ function openPainterDialogue() {
 }
 
 function closePainterDialogue() {
+  closeAiChat();
   painterDialogueOpen = false;
   document.body.classList.remove("backrooms-dialogue-open");
   if (dialogueEl) dialogueEl.hidden = true;
@@ -192,7 +196,7 @@ function closePainterDialogue() {
 }
 
 function handlePainterChoice(choice) {
-  if (!painterDialogueOpen) return;
+  if (!painterDialogueOpen || isAiChatOpen()) return;
   if (choice === "a") {
     closePainterDialogue();
     exitToLevel21();
