@@ -738,6 +738,44 @@ body.action-open .btn-hub--action {
   text-align: center;
 }
 
+.platform-settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.platform-settings__toggle {
+  min-width: 5.5rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #a8cce8;
+  font: inherit;
+  cursor: pointer;
+}
+
+.platform-settings__toggle.is-on {
+  border-color: rgba(105, 220, 145, 0.5);
+  background: rgba(60, 170, 100, 0.22);
+  color: #bff5cf;
+}
+
+.platform-settings__password {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.platform-settings__password[hidden] {
+  display: none;
+}
+
 .map-panel__body {
   padding: 0.75rem 1rem 1.25rem;
   display: flex;

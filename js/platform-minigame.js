@@ -9,6 +9,7 @@
 (function () {
   var STAGE_COUNT = 10;
   var STAGE_KEY = "jiwei_minigame2_stage";
+  var DOUBLE_JUMP_KEY = "jiwei_minigame2_double_jump";
   var viewEl = document.getElementById("platformGameView");
   var canvas = document.getElementById("platformGameCanvas");
   var dotsEl = document.getElementById("platformGameDots");
@@ -19,6 +20,10 @@
   var selectMenuEl = document.getElementById("platformSelectMenu");
   var selectInputEl = document.getElementById("platformSelectInput");
   var selectChoicesEl = document.getElementById("platformSelectChoices");
+  var settingsEl = document.getElementById("platformSettings");
+  var doubleJumpBtn = document.getElementById("platformDoubleJump");
+  var doubleJumpPassEl = document.getElementById("platformDoubleJumpPass");
+  var doubleJumpInputEl = document.getElementById("platformDoubleJumpInput");
   var padEl = document.getElementById("platformGamePad");
   if (!viewEl || !canvas) return;
 
@@ -29,6 +34,9 @@
   var stage = 1;
   var keys = { left: false, right: false, jump: false };
   var jumpQueued = false;
+  var airJumps = 0;
+  var doubleJumpEnabled = false;
+  var settingsOpen = false;
   var player = { x: 0, y: 0, w: 22, h: 34, vx: 0, vy: 0, onGround: false };
   var spike = { armed: false, maxH: 18 };
   var spikeStates = [];
@@ -169,6 +177,22 @@
     return 1;
   }
 
+  function readDoubleJump() {
+    try {
+      return window.localStorage.getItem(DOUBLE_JUMP_KEY) === "1";
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function saveDoubleJump() {
+    try {
+      window.localStorage.setItem(DOUBLE_JUMP_KEY, doubleJumpEnabled ? "1" : "0");
+    } catch (err) {
+      /* ignore */
+    }
+  }
+
   function placePlayer(L) {
     player.w = Math.max(16, Math.round(H * 0.045));
     player.h = Math.max(26, Math.round(H * 0.07));
@@ -177,6 +201,7 @@
     player.vx = 0;
     player.vy = 0;
     player.onGround = true;
+    airJumps = 0;
   }
 
   function resetHazards(L) {
@@ -326,13 +351,17 @@
     });
   }
 
-  function makeStage9Wave(wave) {
+  function stage9WaveSpec(wave) {
     var specs = [
-      { red: 2, green: 1 },
-      { red: 4, green: 2 },
-      { red: 8, green: 6 },
+      { red: 2, green: 1, interval: 0.75 },
+      { red: 4, green: 2, interval: 1.0 },
+      { red: 8, green: 6, interval: 1.25 },
     ];
-    var spec = specs[Math.max(0, Math.min(specs.length - 1, wave - 1))];
+    return specs[Math.max(0, Math.min(specs.length - 1, wave - 1))];
+  }
+
+  function makeStage9Wave(wave) {
+    var spec = stage9WaveSpec(wave);
     var queue = [];
     var redCount = spec.red;
     var greenCount = spec.green;
@@ -833,7 +862,9 @@
         var hazard = s9WaveQueue.shift();
         if (hazard === "red") spawnRed(L, s9WaveDirection);
         else spawnAirGreen(L);
-        s9WaveTimer = s9WaveQueue.length ? 0.75 : -1;
+        s9WaveTimer = s9WaveQueue.length
+          ? stage9WaveSpec(s9WoodWave).interval
+          : -1;
         if (s9WoodWave === 3 && s9WaveQueue.length === 0) {
           s9WaitLastRed = true;
         }
@@ -914,7 +945,7 @@
       if (fadeDir > 0) return;
     }
 
-    if (selectOpen) return;
+    if (selectOpen || settingsOpen) return;
     if (drag.on) {
       player.vx = 0;
       player.vy = 0;
@@ -941,8 +972,16 @@
     if ((jumpQueued || keys.jump) && player.onGround) {
       player.vy = -Math.round(H * 0.68);
       player.onGround = false;
+      airJumps = 0;
       jumpQueued = false;
       justJumped = true;
+    } else if (jumpQueued) {
+      if (doubleJumpEnabled && airJumps < 1) {
+        player.vy = -Math.round(H * 0.68);
+        airJumps += 1;
+        justJumped = true;
+      }
+      jumpQueued = false;
     }
 
     player.vy += Math.round(H * 3.8) * dt;
@@ -954,6 +993,7 @@
       player.y = L.pathY - player.h;
       player.vy = 0;
       player.onGround = true;
+      airJumps = 0;
     } else {
       player.onGround = false;
     }
@@ -1251,6 +1291,64 @@
     return true;
   }
 
+  function updateDoubleJumpSetting() {
+    if (!doubleJumpBtn) return;
+    doubleJumpBtn.textContent = doubleJumpEnabled ? "已开启" : "未解锁";
+    doubleJumpBtn.classList.toggle("is-on", doubleJumpEnabled);
+  }
+
+  function closeSettings() {
+    settingsOpen = false;
+    if (settingsEl) settingsEl.hidden = true;
+    if (doubleJumpPassEl) doubleJumpPassEl.hidden = true;
+    if (doubleJumpInputEl) doubleJumpInputEl.blur();
+    keys.left = keys.right = keys.jump = false;
+    jumpQueued = false;
+  }
+
+  function openSettings() {
+    if (!settingsEl) return;
+    if (selectOpen) closeSelect();
+    settingsOpen = true;
+    keys.left = keys.right = keys.jump = false;
+    jumpQueued = false;
+    settingsEl.hidden = false;
+    if (doubleJumpPassEl) doubleJumpPassEl.hidden = true;
+    updateDoubleJumpSetting();
+  }
+
+  function openDoubleJumpPassword() {
+    if (!settingsOpen || !doubleJumpPassEl || !doubleJumpInputEl) return;
+    if (doubleJumpEnabled) {
+      doubleJumpEnabled = false;
+      saveDoubleJump();
+      updateDoubleJumpSetting();
+      return;
+    }
+    doubleJumpPassEl.hidden = false;
+    doubleJumpInputEl.value = "";
+    doubleJumpInputEl.placeholder = "墙上的字…";
+    doubleJumpInputEl.focus();
+  }
+
+  function tryUnlockDoubleJump() {
+    var typed = doubleJumpInputEl
+      ? String(doubleJumpInputEl.value || "").trim().toLowerCase()
+      : "";
+    if (typed === "davidchen") {
+      doubleJumpEnabled = true;
+      saveDoubleJump();
+      updateDoubleJumpSetting();
+      if (doubleJumpPassEl) doubleJumpPassEl.hidden = true;
+      if (doubleJumpInputEl) doubleJumpInputEl.blur();
+      return;
+    }
+    if (doubleJumpInputEl) {
+      doubleJumpInputEl.value = "";
+      doubleJumpInputEl.placeholder = "密码不对，再看看 Level 4 的墙…";
+    }
+  }
+
   function closeSelect() {
     selectOpen = false;
     if (selectEl) selectEl.hidden = true;
@@ -1297,6 +1395,7 @@
 
   function openSelect() {
     if (!selectEl) return;
+    if (settingsOpen) closeSettings();
     selectOpen = true;
     keys.left = keys.right = keys.jump = false;
     jumpQueued = false;
@@ -1314,6 +1413,35 @@
 
   function onKeyDown(e) {
     if (!running) return;
+    if (settingsOpen) {
+      if (e.code === "KeyP") {
+        closeSettings();
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (e.code === "Escape") {
+        if (doubleJumpPassEl && !doubleJumpPassEl.hidden) {
+          doubleJumpPassEl.hidden = true;
+          if (doubleJumpInputEl) doubleJumpInputEl.blur();
+        } else {
+          closeSettings();
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (
+        e.code === "Enter" &&
+        doubleJumpPassEl &&
+        !doubleJumpPassEl.hidden
+      ) {
+        tryUnlockDoubleJump();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
     if (selectOpen) {
       if (e.code === "Escape") {
         closeSelect();
@@ -1328,8 +1456,19 @@
       }
       return;
     }
+    if (e.code === "KeyP") {
+      openSettings();
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (e.code === "KeyY") {
       openSelect();
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (e.code === "Space" && e.repeat) {
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -1342,7 +1481,7 @@
 
   function onKeyUp(e) {
     if (!running) return;
-    if (selectOpen) return;
+    if (selectOpen || settingsOpen) return;
     if (setKey(e.code, false)) {
       e.preventDefault();
       e.stopPropagation();
@@ -1399,6 +1538,8 @@
     pendingStage = 0;
     keys.left = keys.right = keys.jump = false;
     jumpQueued = false;
+    doubleJumpEnabled = readDoubleJump();
+    updateDoubleJumpSetting();
     setStage(readStage());
     if (!running) {
       running = true;
@@ -1426,7 +1567,14 @@
   }
 
   function onCanvasPointerDown(e) {
-    if (!running || stage !== 10 || dead || entering || selectOpen) return;
+    if (
+      !running ||
+      stage !== 10 ||
+      dead ||
+      entering ||
+      selectOpen ||
+      settingsOpen
+    ) return;
     var p = canvasPoint(e);
     if (!hitPlayer(p)) return;
     drag.on = true;
@@ -1460,6 +1608,7 @@
     keys.left = keys.right = keys.jump = false;
     endDrag();
     closeSelect();
+    closeSettings();
     hideViews();
   }
 
@@ -1489,6 +1638,12 @@
         closeSelect();
         setStage(n);
       }
+    });
+  }
+  if (doubleJumpBtn) {
+    doubleJumpBtn.addEventListener("dblclick", function (e) {
+      e.preventDefault();
+      openDoubleJumpPassword();
     });
   }
   canvas.addEventListener("pointerdown", onCanvasPointerDown);

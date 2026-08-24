@@ -171,7 +171,7 @@
             <button type="button" class="platform-game__icon platform-game__icon--first" id="platformGameFirst" aria-label="回到第一关">第一关</button>
             <div class="platform-game__dots" id="platformGameDots" aria-hidden="true"></div>
           </div>
-          <p class="platform-game__keys">A / D 移动 · 空格 跳</p>
+          <p class="platform-game__keys">A / D 移动 · 空格 跳 · P 设置</p>
           <div class="platform-game__pad" id="platformGamePad">
             <button type="button" data-dir="left">A</button>
             <button type="button" data-dir="jump">跳</button>
@@ -188,6 +188,23 @@
                 <p class="platform-select__title">选择关卡</p>
                 <div class="platform-select__choices" id="platformSelectChoices"></div>
                 <p class="platform-select__hint">点选进入 · Esc 关闭</p>
+              </div>
+            </div>
+          </div>
+          <div class="platform-select platform-settings" id="platformSettings" hidden>
+            <div class="platform-select__panel">
+              <p class="platform-select__title">设置</p>
+              <div class="platform-settings__row">
+                <span>二段跳</span>
+                <button type="button" class="platform-settings__toggle" id="platformDoubleJump">
+                  未解锁
+                </button>
+              </div>
+              <p class="platform-select__hint">双击“二段跳”设置 · P / Esc 关闭</p>
+              <div class="platform-settings__password" id="platformDoubleJumpPass" hidden>
+                <p class="platform-select__title">输入 Level 4 墙上的密码</p>
+                <input type="text" id="platformDoubleJumpInput" class="platform-select__input" maxlength="32" autocomplete="off" spellcheck="false" placeholder="墙上的字…">
+                <p class="platform-select__hint">Enter 确认 · Esc 返回设置</p>
               </div>
             </div>
           </div>
