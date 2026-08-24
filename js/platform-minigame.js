@@ -2,7 +2,7 @@
  * 大厅小游戏 2 — Level Devil 风格平台：天空 + 灰地板。
  * 1 空关 → 2 三刺挤一起 → 3 前中后三刺 → 4 中间裂开 → 5 裂开 + 木箱
  * → 6 门搬家 + 绿箱 → 7 前中后三缝 → 8 三缝（可见）+ 绿箱/木箱/按钮
- * → 9 中刺变三刺 → 过刺出灰箱瞬移回出生点，0.3 秒后出缝 + 绿箱/木箱/红箱
+ * → 9 中刺变三刺 → 过刺即出灰箱回城 → 单缝双向绿/木/红箱陷阱
  * → 10 巨大缝，鼠标拖到门边再走进去。
  * 死亡只重开当前关。刷新保留关卡进度，左上角可回第一关。
  */
@@ -42,10 +42,21 @@
   var greenFlags = [false, false, false];
   var floorGone = false;
   var s9SideOn = false;
+  var s9SpikesCleared = false;
   var s9BecameGap = false;
   var s9GapTimer = -1;
+  var s9Round = 0;
+  var s9WoodFired = false;
+  var s9WoodAtGap = 0;
+  var s9RoundUnlocked = false;
+  var s9WaitLastRed = false;
+  var s9WoodWave = 0;
+  var s9WaveQueue = [];
+  var s9WaveTimer = -1;
+  var s9WaveDirection = 1;
   var grey = { active: false, spawned: false, x: 0, y: 0, w: 28, h: 26, vx: 0 };
-  var red = { active: false, spawned: false, x: 0, y: 0, w: 28, h: 22, vx: 0 };
+  var redCrates = [];
+  var airGreenCrates = [];
   var selectOpen = false;
   var STAGE_LABELS = [
     "第 1 关 · 空关",
@@ -131,6 +142,7 @@
       return [{ t: 0.24, count: 1 }, { t: 0.5, count: 1 }, { t: 0.76, count: 1 }];
     }
     if (stage === 9 && !s9BecameGap) {
+      if (s9SpikesCleared) return [];
       if (s9SideOn) {
         return [{ t: 0.48, count: 1 }, { t: 0.5, count: 1 }, { t: 0.52, count: 1 }];
       }
@@ -174,8 +186,18 @@
       return { shown: false, h: 0 };
     });
     s9SideOn = false;
+    s9SpikesCleared = false;
     s9BecameGap = false;
     s9GapTimer = -1;
+    s9Round = 0;
+    s9WoodFired = false;
+    s9WoodAtGap = 0;
+    s9RoundUnlocked = false;
+    s9WaitLastRed = false;
+    s9WoodWave = 0;
+    s9WaveQueue = [];
+    s9WaveTimer = -1;
+    s9WaveDirection = 1;
     grey.active = false;
     grey.spawned = false;
     grey.vx = 0;
@@ -205,8 +227,8 @@
     woodArmed = false;
     greenFlags = [false, false, false];
     floorGone = false;
-    red.active = false;
-    red.spawned = false;
+    redCrates = [];
+    airGreenCrates = [];
     if (stage === 9) {
       spike.armed = true;
       spikeStates = [{ shown: true, h: spike.maxH }];
@@ -265,15 +287,66 @@
     grey.vx = -W * 0.68;
   }
 
-  function spawnRed(L) {
-    var door = portalBox(L);
-    red.active = true;
-    red.spawned = true;
-    red.w = Math.max(18, Math.round(player.h * 0.62));
-    red.h = Math.max(10, Math.round(player.h * 0.36));
-    red.x = door.x - red.w * 0.1;
+  function spawnRed(L, dir) {
+    var red = {
+      w: Math.max(18, Math.round(player.h * 0.62)),
+      h: Math.max(10, Math.round(player.h * 0.36)),
+      x: 0,
+      y: 0,
+      vx: 0,
+    };
+    var direction = dir < 0 ? -1 : 1;
+    red.x =
+      direction < 0
+        ? L.pathX + L.pathW - red.w
+        : L.pathX;
     red.y = L.pathY - red.h;
-    red.vx = -W * 0.5;
+    red.vx = direction * W * 0.5;
+    redCrates.push(red);
+  }
+
+  /** 第 9 关后两波会从门的另一边回来，因此木箱按飞行方向从场地边缘出现。 */
+  function spawnStage9Crate(L, dir) {
+    spawnCrate(L, dir);
+    crate.x =
+      crate.dir < 0
+        ? L.pathX + L.pathW - crate.w
+        : L.pathX;
+  }
+
+  /** 记录生成瞬间的玩家横坐标，之后只直线下落，不再追踪或拐弯。 */
+  function spawnAirGreen(L) {
+    var size = player.h;
+    airGreenCrates.push({
+      x: player.x + player.w * 0.5 - size * 0.5,
+      y: 6,
+      w: size,
+      h: size,
+      vy: H * 0.72,
+    });
+  }
+
+  function makeStage9Wave(wave) {
+    var specs = [
+      { red: 2, green: 1 },
+      { red: 4, green: 2 },
+      { red: 8, green: 6 },
+    ];
+    var spec = specs[Math.max(0, Math.min(specs.length - 1, wave - 1))];
+    var queue = [];
+    var redCount = spec.red;
+    var greenCount = spec.green;
+    while (redCount > 0 || greenCount > 0) {
+      if (redCount > 0) {
+        queue.push("red");
+        redCount -= 1;
+      }
+      if (greenCount > 0) {
+        queue.push("green");
+        greenCount -= 1;
+      }
+    }
+    return queue;
   }
 
   function setStage(next) {
@@ -420,6 +493,34 @@
 
   function enterPortal() {
     if (entering || dead || fadeDir) return;
+    if (stage === 9) {
+      if (!s9RoundUnlocked) return;
+      if (s9Round === 1 && portalSide === "right") {
+        portalSide = "left";
+        s9Round = 2;
+        s9RoundUnlocked = false;
+        s9WaitLastRed = false;
+        green.active = false;
+        green.started = false;
+        green.landed = false;
+        green.vy = 0;
+        crate.active = false;
+        crate.cancelled = false;
+        crate.vx = 0;
+        woodArmed = false;
+        waitAtGap = 0;
+        s9WoodFired = false;
+        s9WoodAtGap = 0;
+        redCrates = [];
+        airGreenCrates = [];
+        s9WoodWave = 0;
+        s9WaveQueue = [];
+        s9WaveTimer = -1;
+        s9WaveDirection = 1;
+        shake = 12;
+        return;
+      }
+    }
     if (stage === 6 && portalSide === "right") {
       portalSide = "left";
       crate.active = false;
@@ -543,7 +644,17 @@
   function becomeStage9Gap(L) {
     s9BecameGap = true;
     s9SideOn = false;
+    s9SpikesCleared = true;
     s9GapTimer = -1;
+    s9Round = 1;
+    s9WoodFired = false;
+    s9WoodAtGap = 0;
+    s9RoundUnlocked = false;
+    s9WaitLastRed = false;
+    s9WoodWave = 0;
+    s9WaveQueue = [];
+    s9WaveTimer = -1;
+    airGreenCrates = [];
     grey.active = false;
     spike.armed = false;
     spikeStates = [];
@@ -554,16 +665,47 @@
   }
 
   function updateRed(dt, L) {
-    if (!red.active) return;
-    red.x += red.vx * dt;
-    if (
-      overlaps(player, { x: red.x, y: red.y, w: red.w, h: red.h }) &&
-      player.y + player.h > red.y + 2
-    ) {
-      die();
-      return;
+    var kept = [];
+    for (var i = 0; i < redCrates.length; i++) {
+      var red = redCrates[i];
+      red.x += red.vx * dt;
+      if (
+        overlaps(player, { x: red.x, y: red.y, w: red.w, h: red.h }) &&
+        player.y + player.h > red.y + 2
+      ) {
+        die();
+        return;
+      }
+      var outsideLeft = red.x + red.w < L.pathX - 40;
+      var outsideRight = red.x > L.pathX + L.pathW + 40;
+      if (!outsideLeft && !outsideRight) kept.push(red);
     }
-    if (red.x + red.w < L.pathX - 40) red.active = false;
+    redCrates = kept;
+    // 门搬到左边后一直半透明，直到最后一个红箱飞出场地才恢复可用
+    if (
+      stage === 9 &&
+      s9WaitLastRed &&
+      redCrates.length === 0 &&
+      s9WaveQueue.length === 0
+    ) {
+      s9WaitLastRed = false;
+      s9RoundUnlocked = true;
+    }
+  }
+
+  function updateAirGreen(dt, L) {
+    var kept = [];
+    for (var i = 0; i < airGreenCrates.length; i++) {
+      var box = airGreenCrates[i];
+      box.vy += Math.round(H * 3.2) * dt;
+      box.y += box.vy * dt;
+      if (overlaps(player, box)) {
+        die();
+        return;
+      }
+      if (box.y + box.h < L.pathY) kept.push(box);
+    }
+    airGreenCrates = kept;
   }
 
   function updateGrey(dt, L) {
@@ -589,6 +731,7 @@
   function updateStage9(dt, L, justJumped) {
     if (!s9BecameGap) {
       var midX = L.pathX + L.pathW * 0.5;
+      var playerMid = player.x + player.w * 0.5;
       var overSpike =
         !player.onGround &&
         player.x + player.w > midX - player.w &&
@@ -603,8 +746,18 @@
         ];
         shake = 7;
       }
-      var rightX = L.pathX + L.pathW * 0.52;
-      if (s9SideOn && !grey.spawned && player.x >= rightX + 4) {
+      if (
+        s9SideOn &&
+        !s9SpikesCleared &&
+        player.onGround &&
+        playerMid < midX - player.w * 1.5
+      ) {
+        s9SpikesCleared = true;
+        spikeStates = [];
+        shake = 6;
+      }
+      // 跳过刺群和后退消刺后再走过去，都算「经过那三根刺」
+      if (!grey.spawned && playerMid > midX + player.w) {
         spawnGrey(L);
       }
       updateGrey(dt, L);
@@ -612,33 +765,83 @@
     }
 
     var g = gapBox(L);
-    if (!green.started && atGapFrontOf(L, g, "left")) {
+    // 第二轮每跨一次缝换一边：右→左、左→右、右→左，共三次。
+    var side =
+      s9Round === 2
+        ? s9WoodWave % 2 === 0
+          ? "right"
+          : "left"
+        : "left";
+    var woodDir = side === "right" ? 1 : -1;
+    if (!green.started && atGapFrontOf(L, g, side)) {
       spawnGreen(L, g);
     }
     updateGreen(dt, L, justJumped);
     if (dead) return;
-    if (green.landed && !red.spawned) spawnRed(L);
-    if (justJumped && green.landed && atGapFrontOf(L, g, "left")) woodArmed = true;
-    if (
-      woodArmed &&
-      player.x >= g.x + g.w * 0.55 &&
-      !crate.cancelled &&
-      !crate.active
-    ) {
-      spawnCrate(L, -1);
+
+    var frontDist =
+      side === "left"
+        ? g.x - (player.x + player.w)
+        : player.x - (g.x + g.w);
+    var jumpedFromFront =
+      justJumped && frontDist >= -10 && frontDist <= player.w * 3.8;
+    var canStartWood =
+      s9Round === 1
+        ? !s9WoodFired
+        : s9WoodWave < 3 &&
+          s9WaveQueue.length === 0 &&
+          s9WaveTimer < 0 &&
+          !crate.active;
+    if (green.landed && canStartWood && jumpedFromFront) {
+      woodArmed = true;
     }
-    var atFront = atGapFrontOf(L, g, "left");
-    if (!crate.cancelled && atFront && green.landed) {
-      waitAtGap += dt;
-      if (waitAtGap >= 1) {
-        crate.cancelled = true;
-        crate.active = false;
+    var crossedGap =
+      side === "right"
+        ? player.x + player.w <= g.x + g.w * 0.45
+        : player.x >= g.x + g.w * 0.55;
+    if (canStartWood && woodArmed && crossedGap) {
+      spawnStage9Crate(L, woodDir);
+      woodArmed = false;
+      s9WoodAtGap = 0;
+      if (s9Round === 1) {
+        s9WoodFired = true;
+      } else {
+        s9WoodWave += 1;
+        s9WaveDirection = woodDir;
+        s9WaveQueue = makeStage9Wave(s9WoodWave);
+        s9WaveTimer = 0;
       }
-    } else if (!crate.cancelled && !atFront) {
-      waitAtGap = 0;
     }
+
     moveCrate(dt, L, g);
+
+    if (crate.active && crate.vx === 0) {
+      s9WoodAtGap += dt;
+      if (s9WoodAtGap >= 1) {
+        crate.active = false;
+        s9WoodAtGap = 0;
+        if (s9Round === 1) {
+          spawnRed(L, -1);
+          s9RoundUnlocked = true;
+        }
+      }
+    }
+
+    if (s9Round === 2 && s9WaveQueue.length > 0) {
+      s9WaveTimer -= dt;
+      if (s9WaveTimer <= 0) {
+        var hazard = s9WaveQueue.shift();
+        if (hazard === "red") spawnRed(L, s9WaveDirection);
+        else spawnAirGreen(L);
+        s9WaveTimer = s9WaveQueue.length ? 0.75 : -1;
+        if (s9WoodWave === 3 && s9WaveQueue.length === 0) {
+          s9WaitLastRed = true;
+        }
+      }
+    }
     updateRed(dt, L);
+    if (dead) return;
+    updateAirGreen(dt, L);
   }
 
   function updateWaitAndCrate(dt, L, justJumped) {
@@ -894,17 +1097,34 @@
     );
   }
 
+  function drawAirGreens() {
+    for (var i = 0; i < airGreenCrates.length; i++) {
+      var box = airGreenCrates[i];
+      drawWoodBox(
+        Math.round(box.x),
+        Math.round(box.y),
+        box.w,
+        box.h,
+        "#3d9a4a",
+        "#2d7336",
+        "#1d4f24"
+      );
+    }
+  }
+
   function drawRed() {
-    if (!red.active) return;
-    drawWoodBox(
-      Math.round(red.x),
-      Math.round(red.y),
-      red.w,
-      red.h,
-      "#c43b32",
-      "#9a2a24",
-      "#6a1814"
-    );
+    for (var i = 0; i < redCrates.length; i++) {
+      var red = redCrates[i];
+      drawWoodBox(
+        Math.round(red.x),
+        Math.round(red.y),
+        red.w,
+        red.h,
+        "#c43b32",
+        "#9a2a24",
+        "#6a1814"
+      );
+    }
   }
 
   function drawGrey() {
@@ -976,14 +1196,20 @@
     drawFloor(L);
 
     var door = portalBox(L);
+    ctx.save();
+    if (stage === 9 && portalSide === "left" && !s9RoundUnlocked) {
+      ctx.globalAlpha = 0.18;
+    }
     ctx.fillStyle = "#6b6f74";
     ctx.fillRect(door.x, door.y, door.w, door.h);
     ctx.fillStyle = "#5a5e62";
     ctx.fillRect(door.x + 5, door.y + 8, door.w - 10, door.h - 8);
+    ctx.restore();
 
     drawSpike(L);
     drawCrate();
     drawGreen();
+    drawAirGreens();
     drawGrey();
     drawRed();
     drawButton(L);
