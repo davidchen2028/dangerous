@@ -2476,10 +2476,18 @@
       );
     }
     drawSky();
-    ctx.fillStyle = "#4a525a";
-    ctx.fillRect(0, L.pathY, W, H - L.pathY);
-    ctx.fillStyle = "#8d9196";
-    ctx.fillRect(L.pathX, L.pathY, L.pathW, L.pathH);
+    if (sceneSprites.allLoaded) {
+      drawTile(sceneSprites.brick, 0, L.pathY, W, H - L.pathY);
+    } else {
+      ctx.fillStyle = "#4a525a";
+      ctx.fillRect(0, L.pathY, W, H - L.pathY);
+    }
+    if (sceneSprites.allLoaded) {
+      drawTile(sceneSprites.brick, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile" });
+    } else {
+      ctx.fillStyle = "#8d9196";
+      ctx.fillRect(L.pathX, L.pathY, L.pathW, L.pathH);
+    }
     ctx.fillStyle = "#9aa0a6";
     ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
 
@@ -2487,6 +2495,7 @@
     for (i = 0; i < trapWoods.length; i++) {
       var wood = trapWoods[i];
       drawWoodBox(
+        sceneSprites.plank,
         wood.x,
         wood.y,
         wood.w,
@@ -2499,6 +2508,7 @@
     for (i = 0; i < trapGreens.length; i++) {
       var greenBox = trapGreens[i];
       drawWoodBox(
+        sceneSprites.green,
         greenBox.x,
         greenBox.y,
         greenBox.w,
@@ -2511,6 +2521,7 @@
     for (i = 0; i < trapReds.length; i++) {
       var redBox = trapReds[i];
       drawWoodBox(
+        sceneSprites.red,
         redBox.x,
         redBox.y,
         redBox.w,
@@ -2523,6 +2534,7 @@
     for (i = 0; i < trapBlues.length; i++) {
       var blueBox = trapBlues[i];
       drawWoodBox(
+        sceneSprites.blue,
         blueBox.x,
         blueBox.y,
         blueBox.w,
