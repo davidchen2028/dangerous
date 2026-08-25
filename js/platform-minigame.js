@@ -1908,6 +1908,8 @@
     if (keys.left) want -= 1;
     if (keys.right) want += 1;
     trapPlayer.vx = want * speed;
+    if (want < 0) trapPlayer.facing = -1;
+    else if (want > 0) trapPlayer.facing = 1;
     var prevFeet = trapPlayer.y + trapPlayer.h;
     trapPlayer.x += trapPlayer.vx * dt;
     trapPlayer.x = Math.max(
@@ -2588,8 +2590,13 @@
   }
 
   function setKey(code, down) {
-    if (code === "KeyA" || code === "ArrowLeft") keys.left = down;
-    else if (code === "KeyD" || code === "ArrowRight") keys.right = down;
+    if (code === "KeyA" || code === "ArrowLeft") {
+      keys.left = down;
+      if (down) player.facing = -1;
+    } else if (code === "KeyD" || code === "ArrowRight") {
+      keys.right = down;
+      if (down) player.facing = 1;
+    }
     else if (code === "Space") {
       keys.jump = down;
       if (down) jumpQueued = true;
@@ -2865,9 +2872,13 @@
         var dir = btn.getAttribute("data-dir");
         function press(e) {
           e.preventDefault();
-          if (dir === "left") keys.left = true;
-          else if (dir === "right") keys.right = true;
-          else if (dir === "jump") {
+          if (dir === "left") {
+            keys.left = true;
+            player.facing = -1;
+          } else if (dir === "right") {
+            keys.right = true;
+            player.facing = 1;
+          } else if (dir === "jump") {
             keys.jump = true;
             jumpQueued = true;
           }
