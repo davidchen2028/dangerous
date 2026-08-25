@@ -80,6 +80,39 @@
   playerSprites.walkA.src = "img/platform-player/character_beige_walk_a.png";
   playerSprites.walkB.src = "img/platform-player/character_beige_walk_b.png";
   playerSprites.jump.src = "img/platform-player/character_beige_jump.png";
+  var sceneSprites = {
+    sky: new Image(),
+    brick: new Image(),
+    spikes: new Image(),
+    plank: new Image(),
+    green: new Image(),
+    red: new Image(),
+    blue: new Image(),
+    loaded: 0,
+    allLoaded: false
+  };
+  function markSceneLoaded() {
+    sceneSprites.loaded += 1;
+    if (sceneSprites.loaded >= 7) sceneSprites.allLoaded = true;
+  }
+  function markSceneError() {
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn("[platform-minigame] scene sprite failed to load");
+    }
+  }
+  [sceneSprites.sky, sceneSprites.brick, sceneSprites.spikes,
+   sceneSprites.plank, sceneSprites.green, sceneSprites.red, sceneSprites.blue
+  ].forEach(function (img) {
+    img.onload = markSceneLoaded;
+    img.onerror = markSceneError;
+  });
+  sceneSprites.sky.src = "img/platform-scene/background_clouds.png";
+  sceneSprites.brick.src = "img/platform-scene/brick_grey.png";
+  sceneSprites.spikes.src = "img/platform-scene/block_spikes.png";
+  sceneSprites.plank.src = "img/platform-scene/block_plank.png";
+  sceneSprites.green.src = "img/platform-scene/block_green.png";
+  sceneSprites.red.src = "img/platform-scene/block_red.png";
+  sceneSprites.blue.src = "img/platform-scene/block_blue.png";
   var spike = { armed: false, maxH: 18 };
   var spikeStates = [];
   var crack = { armed: false, open: false };
@@ -2534,6 +2567,25 @@
     var sh = img.naturalHeight || 128;
     ctx.drawImage(img, 0, 0, sw, sh, dx, dy, dw, dh);
     ctx.restore();
+  }
+
+  function drawTile(img, x, y, w, h, opts) {
+    opts = opts || {};
+    var fit = opts.fit || "stretch";
+    var sw = img.naturalWidth || 64;
+    var sh = img.naturalHeight || 64;
+    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+    if (fit === "tile") {
+      for (var ty = y; ty < y + h; ty += 64) {
+        for (var tx = x; tx < x + w; tx += 64) {
+          var rw = Math.min(64, x + w - tx);
+          var rh = Math.min(64, y + h - ty);
+          ctx.drawImage(img, 0, 0, sw, sh, tx, ty, rw, rh);
+        }
+      }
+      return;
+    }
+    ctx.drawImage(img, 0, 0, sw, sh, x, y, w, h);
   }
 
   function draw() {
