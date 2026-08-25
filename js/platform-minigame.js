@@ -1,7 +1,7 @@
 /**
  * 大厅小游戏 2 — Level Devil 风格平台：天空 + 灰地板。
- * 1 空关 → 2 三刺挤一起 → 3 前中后三刺 → 4 中间裂开 → 5 裂开 + 木箱
- * → 6 门搬家 + 绿箱 → 7 前中后三缝 → 8 三缝（可见）+ 绿箱/木箱/按钮
+ * 1 蓝箱演示 → 2 三刺挤一起 → 3 前中后三刺 → 4 中间裂开 → 5 裂开 + 木箱
+ * → 6 门搬家 + 绿箱 → 7 前中后三缝 → 8 三缝 + 四波红/绿/蓝箱
  * → 9 中刺变三刺 → 过刺即出灰箱回城 → 单缝双向绿/木/红箱陷阱
  * → 10 巨大缝，鼠标拖到门边再走进去。
  * 死亡只重开当前关。刷新保留关卡进度，左上角可回第一关。
@@ -48,7 +48,22 @@
   var waitAtGap = 0;
   var woodArmed = false;
   var greenFlags = [false, false, false];
-  var floorGone = false;
+  var s8Wave = 0;
+  var s8Phase = 0;
+  var s8WaveQueue = [];
+  var s8WaveTimer = -1;
+  var s8VanishedPlatforms = [false, false, false, false];
+  var s8ButtonContacts = [false, false, false, false];
+  var s8SpikeRain = {
+    active: false,
+    done: false,
+    y: 0,
+    vy: 0,
+    h: 20,
+    gapX: 0,
+    gapW: 24,
+    landedFor: 0,
+  };
   var s9SideOn = false;
   var s9SpikesCleared = false;
   var s9BecameGap = false;
@@ -65,16 +80,17 @@
   var grey = { active: false, spawned: false, x: 0, y: 0, w: 28, h: 26, vx: 0 };
   var redCrates = [];
   var airGreenCrates = [];
+  var blueCrates = [];
   var selectOpen = false;
   var STAGE_LABELS = [
-    "第 1 关 · 空关",
+    "第 1 关 · 蓝箱演示",
     "第 2 关 · 三刺挤一起",
     "第 3 关 · 前中后刺",
     "第 4 关 · 中间裂开",
     "第 5 关 · 木箱",
     "第 6 关 · 门搬家",
     "第 7 关 · 三缝",
-    "第 8 关 · 三缝陷阱",
+    "第 8 关 · 三缝四波陷阱",
     "第 9 关 · 中刺变缝",
     "第 10 关 · 大缝",
   ];
@@ -251,9 +267,25 @@
     waitAtGap = 0;
     woodArmed = false;
     greenFlags = [false, false, false];
-    floorGone = false;
+    s8Wave = 0;
+    s8Phase = 0;
+    s8WaveQueue = [];
+    s8WaveTimer = -1;
+    s8VanishedPlatforms = [false, false, false, false];
+    s8ButtonContacts = [false, false, false, false];
+    s8SpikeRain.active = false;
+    s8SpikeRain.done = false;
+    s8SpikeRain.landedFor = 0;
     redCrates = [];
     airGreenCrates = [];
+    blueCrates = [];
+    if (stage === 1) spawnBlue(L, -1);
+    if (stage === 8) {
+      startStage8Wave(1);
+      s8ButtonContacts = stage8RedButtons(L).map(function (button) {
+        return overlaps(player, stage8ButtonHitBox(button));
+      });
+    }
     if (stage === 9) {
       spike.armed = true;
       spikeStates = [{ shown: true, h: spike.maxH }];
@@ -287,17 +319,76 @@
     green.vy = H * 0.85;
   }
 
-  function buttonBox(L) {
-    if (stage !== 8 || floorGone) return null;
+  function stage8Platforms(L) {
     var gaps = listGaps(L);
-    if (!gaps[2]) return null;
+    if (gaps.length < 3) return [];
+    var right = L.pathX + L.pathW;
+    return [
+      { x: L.pathX, w: gaps[0].x - L.pathX },
+      {
+        x: gaps[0].x + gaps[0].w,
+        w: gaps[1].x - (gaps[0].x + gaps[0].w),
+      },
+      {
+        x: gaps[1].x + gaps[1].w,
+        w: gaps[2].x - (gaps[1].x + gaps[1].w),
+      },
+      {
+        x: gaps[2].x + gaps[2].w,
+        w: right - (gaps[2].x + gaps[2].w),
+      },
+    ];
+  }
+
+  function stage8RedButtons(L) {
+    if (stage !== 8) return [];
+    var platforms = stage8Platforms(L);
     var bw = Math.max(22, Math.round(player.w * 1.2));
     var bh = Math.max(8, Math.round(player.h * 0.2));
+    return platforms.map(function (platform, index) {
+      return {
+        index: index,
+        x: platform.x + platform.w * 0.5 - bw * 0.5,
+        y: L.pathY - bh,
+        w: bw,
+        h: bh,
+      };
+    });
+  }
+
+  function stage8ButtonHitBox(button) {
+    var scale = 0.7;
+    var w = button.w * scale;
+    var h = button.h * scale;
     return {
-      x: gaps[2].x + gaps[2].w + Math.round(player.w * 1.7),
-      y: L.pathY - bh,
-      w: bw,
-      h: bh,
+      x: button.x + (button.w - w) * 0.5,
+      y: button.y + (button.h - h) * 0.5,
+      w: w,
+      h: h,
+    };
+  }
+
+  function stage8ProgressBox(L, kind) {
+    var platforms = stage8Platforms(L);
+    var index = kind === "fake1" ? 1 : kind === "green" ? 2 : 3;
+    var platform = platforms[index];
+    if (!platform) return null;
+    if (kind === "green") {
+      var bw = Math.max(24, Math.round(player.w * 1.25));
+      var bh = Math.max(8, Math.round(player.h * 0.22));
+      return {
+        x: platform.x + platform.w * 0.7 - bw * 0.5,
+        y: L.pathY - bh,
+        w: bw,
+        h: bh,
+      };
+    }
+    var door = portalBox(L);
+    return {
+      x: platform.x + platform.w * (kind === "fake1" ? 0.72 : 0.28) - door.w * 0.5,
+      y: L.pathY - door.h,
+      w: door.w,
+      h: door.h,
     };
   }
 
@@ -351,6 +442,120 @@
     });
   }
 
+  function spawnBlue(L, dir) {
+    var direction = dir < 0 ? -1 : 1;
+    var w = Math.max(22, Math.round(player.h * 0.78));
+    var h = Math.max(12, Math.round(player.h * 0.4));
+    blueCrates.push({
+      x: direction < 0 ? L.pathX + L.pathW - w : L.pathX,
+      y: L.pathY - player.h - Math.round(H * 0.035),
+      w: w,
+      h: h,
+      vx: direction * W * 0.52,
+    });
+  }
+
+  function stage8WaveSpec(wave) {
+    var specs = [
+      { red: 2, green: 1, blue: 0 },
+      { red: 4, green: 2, blue: 0 },
+      { red: 8, green: 6, blue: 5 },
+      { red: 7, green: 15, blue: 15 },
+    ];
+    return specs[Math.max(0, Math.min(specs.length - 1, wave - 1))];
+  }
+
+  function makeStage8Wave(wave) {
+    var spec = stage8WaveSpec(wave);
+    var queue = [];
+    var redCount = spec.red;
+    var greenCount = spec.green;
+    var blueCount = spec.blue;
+    while (redCount > 0 || greenCount > 0 || blueCount > 0) {
+      if (redCount > 0) {
+        queue.push("red");
+        redCount -= 1;
+      }
+      if (greenCount > 0) {
+        queue.push("green");
+        greenCount -= 1;
+      }
+      if (blueCount > 0) {
+        queue.push("blue");
+        blueCount -= 1;
+      }
+    }
+    return queue;
+  }
+
+  function startStage8Wave(wave) {
+    s8Wave = wave;
+    s8Phase = wave * 2 - 1;
+    s8WaveQueue = makeStage8Wave(wave);
+    s8WaveTimer = 0;
+    redCrates = [];
+    airGreenCrates = [];
+    blueCrates = [];
+    s8SpikeRain.active = false;
+    s8SpikeRain.done = false;
+    s8SpikeRain.landedFor = 0;
+  }
+
+  function startStage8SpikeRain(L) {
+    s8SpikeRain.active = true;
+    s8SpikeRain.done = false;
+    s8SpikeRain.h = Math.max(18, Math.round(H * 0.045));
+    s8SpikeRain.y = -s8SpikeRain.h;
+    s8SpikeRain.vy = H * 0.82;
+    s8SpikeRain.gapW = Math.max(player.w * 1.12, 20);
+    s8SpikeRain.gapX = Math.max(
+      L.pathX,
+      Math.min(
+        L.pathX + L.pathW - s8SpikeRain.gapW,
+        player.x + player.w * 0.5 - s8SpikeRain.gapW * 0.5
+      )
+    );
+    s8SpikeRain.landedFor = 0;
+    shake = 6;
+  }
+
+  function updateStage8SpikeRain(dt, L) {
+    if (!s8SpikeRain.active) return;
+    var floorY = L.pathY - s8SpikeRain.h;
+    if (s8SpikeRain.y < floorY) {
+      s8SpikeRain.vy += H * 1.25 * dt;
+      s8SpikeRain.y = Math.min(
+        floorY,
+        s8SpikeRain.y + s8SpikeRain.vy * dt
+      );
+    } else {
+      s8SpikeRain.landedFor += dt;
+    }
+
+    var left = {
+      x: L.pathX,
+      y: s8SpikeRain.y,
+      w: Math.max(0, s8SpikeRain.gapX - L.pathX),
+      h: s8SpikeRain.h,
+    };
+    var rightX = s8SpikeRain.gapX + s8SpikeRain.gapW;
+    var right = {
+      x: rightX,
+      y: s8SpikeRain.y,
+      w: Math.max(0, L.pathX + L.pathW - rightX),
+      h: s8SpikeRain.h,
+    };
+    if ((left.w > 0 && overlaps(player, left)) || (right.w > 0 && overlaps(player, right))) {
+      die();
+      return;
+    }
+    if (s8SpikeRain.y >= floorY && s8SpikeRain.landedFor >= 0.18) {
+      s8SpikeRain.active = false;
+      s8SpikeRain.done = true;
+      shake = 7;
+    }
+  }
+
   function stage9WaveSpec(wave) {
     var specs = [
       { red: 2, green: 1, interval: 0.75 },
@@ -358,6 +563,18 @@
       { red: 8, green: 6, interval: 1.25 },
     ];
     return specs[Math.max(0, Math.min(specs.length - 1, wave - 1))];
+  }
+
+  /** 红箱间隔随机，约 22% 会和下一个红箱叠在同一帧。 */
+  function stage9RedDelay() {
+    var base = stage9WaveSpec(s9WoodWave).interval;
+    if (Math.random() < 0.22) return 0;
+    return 0.08 + Math.random() * (base + 0.28);
+  }
+
+  function spawnStage9Hazard(L, hazard) {
+    if (hazard === "red") spawnRed(L, s9WaveDirection);
+    else spawnAirGreen(L);
   }
 
   function makeStage9Wave(wave) {
@@ -420,12 +637,18 @@
   }
 
   function vanishedOverlap(x, w, L) {
-    if (stage !== 8 || !floorGone) return 0;
-    var gaps = listGaps(L);
-    if (!gaps[2]) return 0;
-    var left = gaps[2].x + gaps[2].w;
-    var right = L.pathX + L.pathW + 24;
-    return Math.max(0, Math.min(x + w, right) - Math.max(x, left));
+    if (stage !== 8) return 0;
+    var platforms = stage8Platforms(L);
+    var total = 0;
+    for (var i = 0; i < platforms.length; i++) {
+      if (!s8VanishedPlatforms[i]) continue;
+      total += Math.max(
+        0,
+        Math.min(x + w, platforms[i].x + platforms[i].w) -
+          Math.max(x, platforms[i].x)
+      );
+    }
+    return total;
   }
 
   function gapOverlap(x, w, L) {
@@ -522,6 +745,7 @@
 
   function enterPortal() {
     if (entering || dead || fadeDir) return;
+    if (stage === 8 && s8Phase !== 8) return;
     if (stage === 9) {
       if (!s9RoundUnlocked) return;
       if (s9Round === 1 && portalSide === "right") {
@@ -626,47 +850,78 @@
   }
 
   function updateStage8(dt, L, justJumped) {
-    var gaps = listGaps(L);
-    if (gaps.length < 3) return;
-    if (!greenFlags[0] && atGapFrontOf(L, gaps[0], "left")) {
-      greenFlags[0] = true;
-      spawnGreen(L, gaps[0]);
+    var buttons = stage8RedButtons(L);
+    for (var i = 0; i < buttons.length; i++) {
+      var button = buttons[i];
+      var hitBox = stage8ButtonHitBox(button);
+      var touching = overlaps(player, hitBox);
+      if (
+        !s8VanishedPlatforms[button.index] &&
+        !s8ButtonContacts[button.index] &&
+        touching &&
+        player.onGround &&
+        player.y + player.h <= L.pathY + 2
+      ) {
+        s8VanishedPlatforms[button.index] = true;
+        shake = 10;
+        player.onGround = false;
+        if (player.vy < H * 0.25) player.vy = H * 0.25;
+      }
+      s8ButtonContacts[button.index] = touching;
     }
-    if (!greenFlags[2] && atGapFrontOf(L, gaps[2], "left")) {
-      greenFlags[2] = true;
-      spawnGreen(L, gaps[2]);
+
+    if (s8WaveQueue.length > 0) {
+      s8WaveTimer -= dt;
+      if (s8WaveTimer <= 0) {
+        var hazard = s8WaveQueue.shift();
+        if (hazard === "red") spawnRed(L, -1);
+        else if (hazard === "green") spawnAirGreen(L);
+        else spawnBlue(L, -1);
+        s8WaveTimer = s8WaveQueue.length ? 0.75 : -1;
+      }
     }
-    updateGreen(dt, L, justJumped);
+
+    updateRed(dt, L);
+    if (dead) return;
+    updateAirGreen(dt, L);
+    if (dead) return;
+    updateBlue(dt, L);
     if (dead) return;
 
-    var mid = gaps[1];
-    var atMid = atGapFrontOf(L, mid, "left");
-    if (justJumped && atMid) woodArmed = true;
-    if (
-      woodArmed &&
-      player.x >= mid.x + mid.w * 0.55 &&
-      !crate.cancelled &&
-      !crate.active
-    ) {
-      spawnCrate(L, -1);
-    }
-    if (!crate.cancelled && atMid) {
-      waitAtGap += dt;
-      if (waitAtGap >= 1) {
-        crate.cancelled = true;
-        crate.active = false;
+    var waveDone =
+      s8WaveQueue.length === 0 &&
+      redCrates.length === 0 &&
+      airGreenCrates.length === 0 &&
+      blueCrates.length === 0;
+    if (s8Phase % 2 === 1 && waveDone) {
+      if (!s8SpikeRain.active && !s8SpikeRain.done) {
+        startStage8SpikeRain(L);
       }
-    } else if (!crate.cancelled && !atMid) {
-      waitAtGap = 0;
+      updateStage8SpikeRain(dt, L);
+      if (dead || s8SpikeRain.active) return;
+      if (s8SpikeRain.done) {
+        s8Phase += 1;
+        shake = 5;
+      }
     }
-    moveCrate(dt, L, mid);
 
-    var btn = buttonBox(L);
-    if (btn && player.onGround && overlaps(player, btn)) {
-      floorGone = true;
-      shake = 10;
-      player.onGround = false;
-      if (player.vy < H * 0.25) player.vy = H * 0.25;
+    var trigger = null;
+    if (s8Phase === 2) trigger = stage8ProgressBox(L, "fake1");
+    else if (s8Phase === 4) trigger = stage8ProgressBox(L, "green");
+    else if (s8Phase === 6) trigger = stage8ProgressBox(L, "fake2");
+    if (!trigger) return;
+
+    var pad = player.w * 1.75;
+    var nearTrigger = overlaps(player, {
+      x: trigger.x - pad,
+      y: trigger.y,
+      w: trigger.w + pad * 2,
+      h: trigger.h,
+    });
+    if (s8Phase === 4) nearTrigger = player.onGround && overlaps(player, trigger);
+    if (nearTrigger) {
+      startStage8Wave(s8Phase === 2 ? 2 : s8Phase === 4 ? 3 : 4);
+      shake = 8;
     }
   }
 
@@ -735,6 +990,22 @@
       if (box.y + box.h < L.pathY) kept.push(box);
     }
     airGreenCrates = kept;
+  }
+
+  function updateBlue(dt, L) {
+    var kept = [];
+    for (var i = 0; i < blueCrates.length; i++) {
+      var box = blueCrates[i];
+      box.x += box.vx * dt;
+      if (overlaps(player, box)) {
+        die();
+        return;
+      }
+      var outsideLeft = box.x + box.w < L.pathX - 40;
+      var outsideRight = box.x > L.pathX + L.pathW + 40;
+      if (!outsideLeft && !outsideRight) kept.push(box);
+    }
+    blueCrates = kept;
   }
 
   function updateGrey(dt, L) {
@@ -860,13 +1131,21 @@
       s9WaveTimer -= dt;
       if (s9WaveTimer <= 0) {
         var hazard = s9WaveQueue.shift();
-        if (hazard === "red") spawnRed(L, s9WaveDirection);
-        else spawnAirGreen(L);
-        s9WaveTimer = s9WaveQueue.length
-          ? stage9WaveSpec(s9WoodWave).interval
-          : -1;
-        if (s9WoodWave === 3 && s9WaveQueue.length === 0) {
-          s9WaitLastRed = true;
+        spawnStage9Hazard(L, hazard);
+        if (
+          hazard === "red" &&
+          s9WaveQueue[0] === "red" &&
+          Math.random() < 0.38
+        ) {
+          spawnStage9Hazard(L, s9WaveQueue.shift());
+        }
+        if (!s9WaveQueue.length) {
+          s9WaveTimer = -1;
+          if (s9WoodWave === 3) s9WaitLastRed = true;
+        } else if (s9WaveQueue[0] === "red") {
+          s9WaveTimer = stage9RedDelay();
+        } else {
+          s9WaveTimer = stage9WaveSpec(s9WoodWave).interval;
         }
       }
     }
@@ -876,6 +1155,10 @@
   }
 
   function updateWaitAndCrate(dt, L, justJumped) {
+    if (stage === 1) {
+      updateBlue(dt, L);
+      return;
+    }
     if (stage === 8) {
       updateStage8(dt, L, justJumped);
       return;
@@ -976,7 +1259,7 @@
       jumpQueued = false;
       justJumped = true;
     } else if (jumpQueued) {
-      if (doubleJumpEnabled && airJumps < 1) {
+      if (doubleJumpEnabled) {
         player.vy = -Math.round(H * 0.68);
         airJumps += 1;
         justJumped = true;
@@ -1167,6 +1450,21 @@
     }
   }
 
+  function drawBlue() {
+    for (var i = 0; i < blueCrates.length; i++) {
+      var box = blueCrates[i];
+      drawWoodBox(
+        Math.round(box.x),
+        Math.round(box.y),
+        box.w,
+        box.h,
+        "#287cc4",
+        "#1d5f99",
+        "#123f6b"
+      );
+    }
+  }
+
   function drawGrey() {
     if (!grey.active) return;
     drawWoodBox(
@@ -1210,20 +1508,79 @@
       ctx.closePath();
       ctx.fill();
     }
-    if (stage === 8 && floorGone && holes[2]) {
-      var goneX = holes[2].x + holes[2].w;
-      ctx.fillStyle = "#1c2228";
-      ctx.fillRect(goneX, L.pathY, L.pathX + L.pathW - goneX, L.pathH + 8);
+    if (stage === 8) {
+      var platforms = stage8Platforms(L);
+      for (var pi = 0; pi < platforms.length; pi++) {
+        if (!s8VanishedPlatforms[pi]) continue;
+        ctx.fillStyle = "#1c2228";
+        ctx.fillRect(
+          platforms[pi].x,
+          L.pathY,
+          platforms[pi].w,
+          L.pathH + 8
+        );
+      }
     }
   }
 
   function drawButton(L) {
-    var btn = buttonBox(L);
-    if (!btn) return;
-    ctx.fillStyle = "#c43b32";
-    ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
-    ctx.fillStyle = "#e25a4f";
-    ctx.fillRect(btn.x + 2, btn.y + 2, btn.w - 4, Math.max(2, btn.h * 0.4));
+    var buttons = stage8RedButtons(L);
+    for (var i = 0; i < buttons.length; i++) {
+      var btn = buttons[i];
+      if (s8VanishedPlatforms[btn.index]) continue;
+      ctx.fillStyle = "#c43b32";
+      ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+      ctx.fillStyle = "#e25a4f";
+      ctx.fillRect(btn.x + 2, btn.y + 2, btn.w - 4, Math.max(2, btn.h * 0.4));
+    }
+  }
+
+  function drawStage8SpikeRain(L) {
+    if (stage !== 8 || !s8SpikeRain.active) return;
+    var pitch = Math.max(11, Math.round(H * 0.026));
+    var spikeW = Math.max(9, Math.round(pitch * 0.78));
+    var right = L.pathX + L.pathW;
+    for (var x = L.pathX; x < right; x += pitch) {
+      var cx = x + spikeW * 0.5;
+      if (
+        cx >= s8SpikeRain.gapX &&
+        cx <= s8SpikeRain.gapX + s8SpikeRain.gapW
+      ) {
+        continue;
+      }
+      ctx.fillStyle = "#30343a";
+      ctx.beginPath();
+      ctx.moveTo(x, s8SpikeRain.y);
+      ctx.lineTo(x + spikeW, s8SpikeRain.y);
+      ctx.lineTo(x + spikeW * 0.5, s8SpikeRain.y + s8SpikeRain.h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#555b63";
+      ctx.beginPath();
+      ctx.moveTo(x + spikeW * 0.5, s8SpikeRain.y);
+      ctx.lineTo(x + spikeW, s8SpikeRain.y);
+      ctx.lineTo(x + spikeW * 0.5, s8SpikeRain.y + s8SpikeRain.h);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  function drawStage8Progress(L) {
+    var kind = s8Phase === 2 ? "fake1" : s8Phase === 4 ? "green" : s8Phase === 6 ? "fake2" : "";
+    if (!kind) return;
+    var box = stage8ProgressBox(L, kind);
+    if (!box) return;
+    if (kind === "green") {
+      ctx.fillStyle = "#3d9a4a";
+      ctx.fillRect(box.x, box.y, box.w, box.h);
+      ctx.fillStyle = "#65c872";
+      ctx.fillRect(box.x + 2, box.y + 2, box.w - 4, Math.max(2, box.h * 0.4));
+      return;
+    }
+    ctx.fillStyle = "rgba(107, 111, 116, 0.55)";
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.fillStyle = "rgba(90, 94, 98, 0.45)";
+    ctx.fillRect(box.x + 5, box.y + 8, box.w - 10, box.h - 8);
   }
 
   function draw() {
@@ -1236,15 +1593,17 @@
     drawFloor(L);
 
     var door = portalBox(L);
-    ctx.save();
-    if (stage === 9 && portalSide === "left" && !s9RoundUnlocked) {
-      ctx.globalAlpha = 0.18;
+    if (stage !== 8 || s8Phase === 8) {
+      ctx.save();
+      if (stage === 9 && portalSide === "left" && !s9RoundUnlocked) {
+        ctx.globalAlpha = 0.18;
+      }
+      ctx.fillStyle = "#6b6f74";
+      ctx.fillRect(door.x, door.y, door.w, door.h);
+      ctx.fillStyle = "#5a5e62";
+      ctx.fillRect(door.x + 5, door.y + 8, door.w - 10, door.h - 8);
+      ctx.restore();
     }
-    ctx.fillStyle = "#6b6f74";
-    ctx.fillRect(door.x, door.y, door.w, door.h);
-    ctx.fillStyle = "#5a5e62";
-    ctx.fillRect(door.x + 5, door.y + 8, door.w - 10, door.h - 8);
-    ctx.restore();
 
     drawSpike(L);
     drawCrate();
@@ -1252,7 +1611,10 @@
     drawAirGreens();
     drawGrey();
     drawRed();
+    drawBlue();
     drawButton(L);
+    drawStage8SpikeRain(L);
+    if (stage === 8) drawStage8Progress(L);
 
     ctx.fillStyle = "#111214";
     ctx.fillRect(Math.round(player.x), Math.round(player.y), player.w, player.h);
