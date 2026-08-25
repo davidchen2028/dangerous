@@ -1952,6 +1952,7 @@
       trapPlaybackComplete = true;
       if (trapPlaybackControlsEl) trapPlaybackControlsEl.hidden = false;
     }
+    deriveCharacterAnim(trapPlayer, dt);
   }
 
   function update(dt) {
@@ -2090,6 +2091,7 @@
     ) {
       enterPortal();
     }
+    deriveCharacterAnim(player, dt);
   }
 
   function drawSky() {
