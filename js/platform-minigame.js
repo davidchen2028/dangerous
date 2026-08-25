@@ -2141,6 +2141,10 @@
   }
 
   function drawSky() {
+    if (sceneSprites.allLoaded) {
+      drawTile(sceneSprites.sky, 0, 0, W, H);
+      return;
+    }
     var g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, "#9ad4f5");
     g.addColorStop(0.55, "#7ec8ea");
@@ -2303,13 +2307,19 @@
   }
 
   function drawFloor(L) {
-    ctx.fillStyle = "#4a525a";
-    ctx.fillRect(0, L.pathY, W, H - L.pathY);
-
-    ctx.fillStyle = "#8d9196";
-    ctx.fillRect(L.pathX, L.pathY, L.pathW, L.pathH);
-    ctx.fillStyle = "#9aa0a6";
-    ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
+    if (sceneSprites.allLoaded) {
+      drawTile(sceneSprites.brick, 0, L.pathY, W, H - L.pathY);
+      drawTile(sceneSprites.brick, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile" });
+      ctx.fillStyle = "#9aa0a6";
+      ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
+    } else {
+      ctx.fillStyle = "#4a525a";
+      ctx.fillRect(0, L.pathY, W, H - L.pathY);
+      ctx.fillStyle = "#8d9196";
+      ctx.fillRect(L.pathX, L.pathY, L.pathW, L.pathH);
+      ctx.fillStyle = "#9aa0a6";
+      ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
+    }
 
     var holes = listGaps(L);
     var hi;
