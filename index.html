@@ -395,6 +395,19 @@
       </div>
     </div>
 
+    <div class="pirate-chest-loot" id="ammoCrateLoot" hidden role="dialog" aria-label="弹药铁箱">
+      <div class="pirate-chest-loot__backdrop" id="ammoCrateLootBackdrop"></div>
+      <div class="pirate-chest-loot__panel">
+        <header class="pirate-chest-loot__head">
+          <h2 class="pirate-chest-loot__title">弹药铁箱 · Ammo Crate</h2>
+          <button type="button" class="pirate-chest-loot__close" id="ammoCrateLootClose" aria-label="关闭">×</button>
+        </header>
+        <p class="pirate-chest-loot__status" id="ammoCrateLootStatus">双击物品拾取</p>
+        <div class="inv-grid-host" id="ammoCrateLootGrid"></div>
+        <p class="pirate-chest-loot__foot">4×3 内格 · 每箱至少 1 组黄铜子弹 · <kbd>Esc</kbd> 关闭</p>
+      </div>
+    </div>
+
     <div class="hidden-chest-puzzle" id="hiddenChestPuzzle" hidden role="dialog" aria-label="隐秘藏品箱密码">
       <div class="hidden-chest-puzzle__panel">
         <h2 class="hidden-chest-puzzle__title">隐秘藏品箱1</h2>
@@ -542,6 +555,7 @@
   <script src="js/waiting-hall-lockbox.js?v=12"></script>
   <script src="js/collection-room-chest.js?v=13"></script>
   <script src="js/president-office-chests.js?v=3"></script>
+  <script src="js/ammo-crate.js?v=2"></script>
   <script src="js/collection-room-floor-loot.js?v=12"></script>
   <script src="js/president-office-floor-loot.js?v=1"></script>
   <script src="js/action-drop-loot.js?v=8"></script>
@@ -549,6 +563,6 @@
   <script src="js/action-health.js?v=3"></script>
   <script src="js/action-joystick.js?v=11"></script>
   <script src="js/action-weapon.js?v=11"></script>
-  <script type="module" src="js/action-scene.js?v=222"></script>
+  <script type="module" src="js/action-scene.js?v=225"></script>
 </body>
 </html>

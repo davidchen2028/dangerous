@@ -440,6 +440,10 @@ if (typeof window !== "undefined") {
   var TEST_NORTH_REAR_HOUSE_WING_W = 11;
   var TEST_NORTH_REAR_HOUSE_WALL_H = 2;
   var TEST_NORTH_REAR_HOUSE_DOOR_H = 1.85;
+  var TEST_DOWN_STAIRS_WIDTH = 4.9;
+  var TEST_DOWN_STAIRS_DEPTH = 3;
+  var TEST_DOWN_STAIRS_DROP = 2.4;
+  var TEST_DOWN_STAIRS_STEPS = 10;
   var TEST_PALACE_REAR_EVAC_WIDTH = 6;
   var TEST_PALACE_REAR_EVAC_DEPTH = 4;
   var PRESIDENT_OFFICE_KEYCARD_ID = "keycard_president_office";
@@ -448,6 +452,8 @@ if (typeof window !== "undefined") {
   var testCollectionRoom = null;
   var testNorthRearHouse = null;
   var testPresidentOfficeDoor = null;
+  var testStairRoomDoor = null;
+  var testDownStairs = null;
   var testPalaceRearEvacRoom = null;
   var MISSILE_GLB_URL = "models/missile.glb";
   var ARMS_GLB_URL = "models/soldier-arms.glb";
@@ -1849,6 +1855,80 @@ if (typeof window !== "undefined") {
     parent.add(floorMesh);
   }
 
+  function getTestDownStairsLayout(house) {
+    var x1 = house.centerX + house.topHalfW - 0.9;
+    var x0 = x1 - TEST_DOWN_STAIRS_WIDTH;
+    var z0 = house.splitZ + 2.15;
+    return {
+      x0: x0,
+      x1: x1,
+      z0: z0,
+      z1: z0 + TEST_DOWN_STAIRS_DEPTH,
+      width: TEST_DOWN_STAIRS_WIDTH,
+      depth: TEST_DOWN_STAIRS_DEPTH,
+      drop: TEST_DOWN_STAIRS_DROP,
+      steps: TEST_DOWN_STAIRS_STEPS,
+    };
+  }
+
+  function buildRearHouseTopFloorAroundStairs(
+    parent,
+    house,
+    floorY,
+    floorThick,
+    floorMat
+  ) {
+    var stair = getTestDownStairsLayout(house);
+    var westX = house.centerX - house.topHalfW;
+    var eastX = house.centerX + house.topHalfW;
+    var topCenterZ = (house.splitZ + house.northZ) * 0.5;
+    var westW = stair.x0 - westX;
+    var eastW = eastX - stair.x1;
+    var southD = stair.z0 - house.splitZ;
+    var northD = house.northZ - stair.z1;
+
+    addRearHouseFloor(
+      parent,
+      westW,
+      house.topDepth,
+      westX + westW * 0.5,
+      topCenterZ,
+      floorY,
+      floorThick,
+      floorMat
+    );
+    addRearHouseFloor(
+      parent,
+      eastW,
+      house.topDepth,
+      stair.x1 + eastW * 0.5,
+      topCenterZ,
+      floorY,
+      floorThick,
+      floorMat
+    );
+    addRearHouseFloor(
+      parent,
+      stair.width,
+      southD,
+      (stair.x0 + stair.x1) * 0.5,
+      house.splitZ + southD * 0.5,
+      floorY,
+      floorThick,
+      floorMat
+    );
+    addRearHouseFloor(
+      parent,
+      stair.width,
+      northD,
+      (stair.x0 + stair.x1) * 0.5,
+      stair.z1 + northD * 0.5,
+      floorY,
+      floorThick,
+      floorMat
+    );
+  }
+
   function buildTestNorthRearHouseShell(parent, house) {
     var cx = house.centerX;
     var southZ = house.southZ;
@@ -1879,12 +1959,9 @@ if (typeof window !== "undefined") {
       polygonOffsetUnits: 1,
     });
 
-    addRearHouseFloor(
+    buildRearHouseTopFloorAroundStairs(
       parent,
-      house.width,
-      topDepth,
-      cx,
-      topCenterZ,
+      house,
       floorY,
       floorThick,
       floorMat
@@ -2056,8 +2133,10 @@ if (typeof window !== "undefined") {
       false
     );
 
-    /* 红圈：横厅西段用隔墙封成总统办公室，绿点为东侧门 */
+    /* 横厅西段为总统办公室，东段封成独立楼梯间 */
     buildPresidentOfficeDoor(parent, house, wallColor);
+    buildStairRoomDoor(parent, house, wallColor);
+    buildTestDownStairs(parent, house);
     buildTestPalaceRearEvacRoom(
       parent,
       house,
@@ -2249,6 +2328,191 @@ if (typeof window !== "undefined") {
     };
   }
 
+  function buildStairRoomDoor(parent, house, wallColor) {
+    var thick = TEST_WAITING_HALL_WALL_THICK;
+    var wallH = house.wallH;
+    var wallY = wallH * 0.5;
+    var doorW = TEST_WAITING_HALL_DOOR_W;
+    var doorH = TEST_NORTH_REAR_HOUSE_DOOR_H;
+    var topCenterZ = (house.splitZ + house.northZ) * 0.5;
+    var doorX = house.centerX + house.stemHalfW - thick * 0.5;
+    var doorZ = topCenterZ;
+    var sideSeg = (house.topDepth - doorW) * 0.5;
+
+    addBox(
+      parent,
+      thick,
+      wallH,
+      sideSeg,
+      doorX,
+      wallY,
+      house.splitZ + sideSeg * 0.5,
+      wallColor
+    );
+    addBox(
+      parent,
+      thick,
+      wallH,
+      sideSeg,
+      doorX,
+      wallY,
+      house.northZ - sideSeg * 0.5,
+      wallColor
+    );
+
+    var lintelH = wallH - doorH;
+    if (lintelH > 0.08) {
+      addBox(
+        parent,
+        thick,
+        lintelH,
+        doorW,
+        doorX,
+        doorH + lintelH * 0.5,
+        doorZ,
+        wallColor,
+        false
+      );
+    }
+
+    var doorMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(thick * 0.55, doorH * 0.96, doorW * 0.92),
+      new THREE.MeshLambertMaterial({ color: 0x435244 })
+    );
+    doorMesh.name = "StairRoomDoor";
+    doorMesh.position.set(doorX, doorH * 0.48, doorZ);
+    parent.add(doorMesh);
+
+    registerCollider(
+      thick + 0.08,
+      doorH,
+      doorW * 0.95,
+      doorX,
+      doorH * 0.5,
+      doorZ
+    );
+    testStairRoomDoor = {
+      open: false,
+      animating: false,
+      t: 0,
+      mesh: doorMesh,
+      homeZ: doorZ,
+      doorX: doorX,
+      doorZ: doorZ,
+      doorW: doorW,
+      closedColliders: [colliders[colliders.length - 1]],
+      openCollider: null,
+    };
+  }
+
+  function buildTestDownStairs(parent, house) {
+    var stair = getTestDownStairsLayout(house);
+    var concrete = new THREE.MeshLambertMaterial({ color: 0x555a60 });
+    var dark = new THREE.MeshBasicMaterial({ color: 0x080a0c });
+    var run = stair.width / stair.steps;
+    var bottomY = -stair.drop - 0.14;
+    var centerZ = (stair.z0 + stair.z1) * 0.5;
+    var i;
+
+    var pit = new THREE.Mesh(
+      new THREE.BoxGeometry(stair.width, 0.08, stair.depth),
+      dark
+    );
+    pit.position.set((stair.x0 + stair.x1) * 0.5, bottomY, centerZ);
+    parent.add(pit);
+
+    for (i = 0; i < stair.steps; i++) {
+      var topY = (-stair.drop * i) / (stair.steps - 1);
+      var stepH = topY - bottomY;
+      var step = new THREE.Mesh(
+        new THREE.BoxGeometry(run + 0.025, stepH, stair.depth - 0.34),
+        concrete
+      );
+      step.name = "DownStairs_Step_" + i;
+      step.position.set(
+        stair.x0 + run * (i + 0.5),
+        bottomY + stepH * 0.5,
+        centerZ
+      );
+      step.castShadow = true;
+      step.receiveShadow = true;
+      parent.add(step);
+    }
+
+    var wallH = stair.drop + house.wallH + 0.4;
+    var wallY = (house.wallH - stair.drop) * 0.5;
+    var wallT = 0.18;
+    addBox(
+      parent,
+      stair.width,
+      wallH,
+      wallT,
+      (stair.x0 + stair.x1) * 0.5,
+      wallY,
+      stair.z0 - wallT * 0.5,
+      0x292d32
+    );
+    addBox(
+      parent,
+      stair.width,
+      wallH,
+      wallT,
+      (stair.x0 + stair.x1) * 0.5,
+      wallY,
+      stair.z1 + wallT * 0.5,
+      0x292d32
+    );
+    addBox(
+      parent,
+      wallT,
+      wallH,
+      stair.depth + wallT * 2,
+      stair.x1 + wallT * 0.5,
+      wallY,
+      centerZ,
+      0x20242a
+    );
+
+    testDownStairs = stair;
+  }
+
+  function isNearStairRoomDoor() {
+    if (!testStairRoomDoor || testStairRoomDoor.open) return false;
+    var d = testStairRoomDoor;
+    return (
+      Math.abs(pos.x - d.doorX) < 1.65 &&
+      Math.abs(pos.z - d.doorZ) < d.doorW * 0.75 + 0.85
+    );
+  }
+
+  function tryOpenStairRoomDoor() {
+    if (!isNearStairRoomDoor()) return false;
+    var d = testStairRoomDoor;
+    d.open = true;
+    d.animating = true;
+    d.t = 0;
+    removeCollidersFromList(d.closedColliders);
+    if (d.mesh) d.openCollider = addColliderFromObject(d.mesh, 0.05);
+    showActionTopBanner("楼梯间已打开", 1600);
+    setInteractHintVisible(false);
+    return true;
+  }
+
+  function updateStairRoomDoor(dt) {
+    if (!testStairRoomDoor) return;
+    var d = testStairRoomDoor;
+    if (d.animating && d.mesh) {
+      d.t += dt;
+      var u = Math.min(1, d.t / 0.55);
+      var ease = u * u * (3 - 2 * u);
+      d.mesh.position.z = d.homeZ + PRESIDENT_OFFICE_DOOR_OPEN_Z * ease;
+      if (d.openCollider) syncColliderFromObject(d.openCollider, d.mesh, 0.05);
+      if (u >= 1) d.animating = false;
+    } else if (d.open && d.openCollider && d.mesh) {
+      syncColliderFromObject(d.openCollider, d.mesh, 0.05);
+    }
+  }
+
   function isNearPresidentOfficeDoor() {
     if (!testPresidentOfficeDoor || testPresidentOfficeDoor.open) return false;
     var d = testPresidentOfficeDoor;
@@ -2339,6 +2603,9 @@ if (typeof window !== "undefined") {
         getWaitingHallGltfHelpers(),
         house
       );
+    }
+    if (window.AmmoCrate && window.AmmoCrate.build) {
+      window.AmmoCrate.build(parent, getWaitingHallGltfHelpers(), house);
     }
     if (
       window.PresidentOfficeFloorLoot &&
@@ -4259,6 +4526,9 @@ if (typeof window !== "undefined") {
     if (window.PresidentOfficeChests && window.PresidentOfficeChests.closePanel) {
       window.PresidentOfficeChests.closePanel();
     }
+    if (window.AmmoCrate && window.AmmoCrate.closePanel) {
+      window.AmmoCrate.closePanel();
+    }
     if (window.LockpickingQTE && window.LockpickingQTE.close) {
       window.LockpickingQTE.close();
     }
@@ -5085,6 +5355,9 @@ if (typeof window !== "undefined") {
     if (window.PresidentOfficeChests && window.PresidentOfficeChests.updateAim) {
       window.PresidentOfficeChests.updateAim(pos.x, pos.z, camera);
     }
+    if (window.AmmoCrate && window.AmmoCrate.updateAim) {
+      window.AmmoCrate.updateAim(pos.x, pos.z, camera);
+    }
     if (window.WorldLootBox && window.WorldLootBox.updateAim) {
       window.WorldLootBox.updateAim(pos.x, pos.z, camera);
     }
@@ -5104,6 +5377,9 @@ if (typeof window !== "undefined") {
     var relaxAim = !!(opts && opts.fromHint && shouldUseDragLook());
     if (currentMapId === "test") {
       if (tryOpenTestNorthIronGates()) {
+        return true;
+      }
+      if (tryOpenStairRoomDoor()) {
         return true;
       }
       if (tryOpenPresidentOfficeDoor()) {
@@ -5175,6 +5451,15 @@ if (typeof window !== "undefined") {
             window.PresidentOfficeChests.tryInteractNear &&
             window.PresidentOfficeChests.tryInteractNear(pos.x, pos.z))
         ) {
+          releasePointerForUi();
+          return true;
+        }
+      }
+      if (window.AmmoCrate) {
+        if (camera && window.AmmoCrate.updateAim) {
+          window.AmmoCrate.updateAim(pos.x, pos.z, camera);
+        }
+        if (window.AmmoCrate.tryInteract(pos.x, pos.z, relaxAim)) {
           releasePointerForUi();
           return true;
         }
@@ -5356,11 +5641,34 @@ if (typeof window !== "undefined") {
           return;
         }
       }
+      if (camera && window.AmmoCrate) {
+        window.AmmoCrate.updateAim(pos.x, pos.z, camera);
+        if (window.AmmoCrate.isAimed()) {
+          setInteractHintVisible(true);
+          if (interactHintEl) {
+            interactHintEl.textContent = formatInteractHint(
+              window.AmmoCrate.isOpened()
+                ? "准星对准弹药铁箱 · 按 E 查看"
+                : "准星对准弹药铁箱 · 按 E 开锁"
+            );
+          }
+          return;
+        }
+      }
       if (isNearTestNorthIronGates()) {
         setInteractHintVisible(true);
         if (interactHintEl) {
           interactHintEl.textContent = formatInteractHint(
             "靠近铁门 · 按 E 向内打开"
+          );
+        }
+        return;
+      }
+      if (isNearStairRoomDoor()) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = formatInteractHint(
+            "楼梯间门 · 按 E 打开"
           );
         }
         return;
@@ -5527,6 +5835,8 @@ if (typeof window !== "undefined") {
     testCollectionRoom = null;
     testNorthRearHouse = null;
     testPresidentOfficeDoor = null;
+    testStairRoomDoor = null;
+    testDownStairs = null;
     testPalaceRearEvacRoom = null;
     testNorthCatColliders = [];
     securityDoorOpenCollider = null;
@@ -5690,6 +6000,78 @@ if (typeof window !== "undefined") {
     }
   }
 
+  function addGroundStrip(parent, w, d, cx, cz, y, material, receiveShadow) {
+    if (w <= 0.001 || d <= 0.001) return;
+    var mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d, 1, 1), material);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(cx, y, cz);
+    mesh.receiveShadow = !!receiveShadow;
+    parent.add(mesh);
+  }
+
+  /** 大地面按楼梯井切成四条，避免平面盖住下沉的台阶 */
+  function addGroundPlaneWithHole(
+    parent,
+    w,
+    d,
+    cz,
+    y,
+    material,
+    hole,
+    receiveShadow
+  ) {
+    var minX = -w * 0.5;
+    var maxX = w * 0.5;
+    var minZ = cz - d * 0.5;
+    var maxZ = cz + d * 0.5;
+    var westW = hole.x0 - minX;
+    var eastW = maxX - hole.x1;
+    var southD = hole.z0 - minZ;
+    var northD = maxZ - hole.z1;
+    var holeW = hole.x1 - hole.x0;
+
+    addGroundStrip(
+      parent,
+      westW,
+      d,
+      minX + westW * 0.5,
+      cz,
+      y,
+      material,
+      receiveShadow
+    );
+    addGroundStrip(
+      parent,
+      eastW,
+      d,
+      hole.x1 + eastW * 0.5,
+      cz,
+      y,
+      material,
+      receiveShadow
+    );
+    addGroundStrip(
+      parent,
+      holeW,
+      southD,
+      hole.x0 + holeW * 0.5,
+      minZ + southD * 0.5,
+      y,
+      material,
+      receiveShadow
+    );
+    addGroundStrip(
+      parent,
+      holeW,
+      northD,
+      hole.x0 + holeW * 0.5,
+      hole.z1 + northD * 0.5,
+      y,
+      material,
+      receiveShadow
+    );
+  }
+
   /** 测试地图 — S 形马路 + 沿路两侧包山 */
   function buildTestMap(parent) {
     colliders = [];
@@ -5697,22 +6079,29 @@ if (typeof window !== "undefined") {
     root.name = "TestMap_测试";
     parent.add(root);
 
-    var grass = new THREE.Mesh(
-      new THREE.PlaneGeometry(TEST_GRASS_W, TEST_GRASS_Z, 1, 1),
-      makeGroundLambertMaterial(0x4a7c3f)
-    );
-    grass.rotation.x = -Math.PI / 2;
-    grass.position.set(0, TEST_GRASS_Y, TEST_GRASS_Z_CENTER);
-    grass.receiveShadow = true;
-    root.add(grass);
+    var stairHole = getTestDownStairsLayout(getTestNorthRearHouseLayout());
 
-    var edge = new THREE.Mesh(
-      new THREE.PlaneGeometry(TEST_EDGE_W, TEST_EDGE_Z, 1, 1),
-      makeGroundLambertMaterial(0x3d6634)
+    addGroundPlaneWithHole(
+      root,
+      TEST_GRASS_W,
+      TEST_GRASS_Z,
+      TEST_GRASS_Z_CENTER,
+      TEST_GRASS_Y,
+      makeGroundLambertMaterial(0x4a7c3f),
+      stairHole,
+      true
     );
-    edge.rotation.x = -Math.PI / 2;
-    edge.position.set(0, TEST_EDGE_Y, TEST_EDGE_Z_CENTER);
-    root.add(edge);
+
+    addGroundPlaneWithHole(
+      root,
+      TEST_EDGE_W,
+      TEST_EDGE_Z,
+      TEST_EDGE_Z_CENTER,
+      TEST_EDGE_Y,
+      makeGroundLambertMaterial(0x3d6634),
+      stairHole,
+      false
+    );
 
     resetTestRoadSampleSets();
     var roadSamples = sampleTestRoadCurve(72);
@@ -6399,11 +6788,31 @@ if (typeof window !== "undefined") {
     }
   }
 
+  function getGroundYAt(px, pz) {
+    if (currentMapId !== "test" || !testDownStairs) return 0;
+    var stair = testDownStairs;
+    if (
+      px < stair.x0 ||
+      px > stair.x1 ||
+      pz < stair.z0 + 0.16 ||
+      pz > stair.z1 - 0.16
+    ) {
+      return 0;
+    }
+    var run = stair.width / stair.steps;
+    var index = Math.min(
+      stair.steps - 1,
+      Math.max(0, Math.floor((px - stair.x0) / run))
+    );
+    return (-stair.drop * index) / (stair.steps - 1);
+  }
+
   function updatePhysics(dt) {
+    var groundY = getGroundYAt(pos.x, pos.z);
     velY -= GRAVITY * dt;
     pos.y += velY * dt;
-    if (pos.y <= 0) {
-      pos.y = 0;
+    if (pos.y <= groundY) {
+      pos.y = groundY;
       velY = 0;
       grounded = true;
     }
@@ -6458,6 +6867,7 @@ if (typeof window !== "undefined") {
       (window.CollectionRoomChest && window.CollectionRoomChest.isPanelOpen()) ||
       (window.PresidentOfficeChests &&
         window.PresidentOfficeChests.isPanelOpen()) ||
+      (window.AmmoCrate && window.AmmoCrate.isPanelOpen()) ||
       (window.ActionWasteBin && window.ActionWasteBin.isOpen())
     );
   }
@@ -6514,6 +6924,7 @@ if (typeof window !== "undefined") {
 
     updateTestNorthIronGates(dt);
     updatePresidentOfficeDoor(dt);
+    updateStairRoomDoor(dt);
     updateTestNorthSideRooms();
     updateSecurityDoorOpenCollider();
 
@@ -6913,6 +7324,9 @@ if (typeof window !== "undefined") {
     ) {
       window.PresidentOfficeChests.resetForNewRun();
     }
+    if (window.AmmoCrate && window.AmmoCrate.resetForNewRun) {
+      window.AmmoCrate.resetForNewRun();
+    }
     if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.resetForNewRun) {
       window.CollectionRoomFloorLoot.resetForNewRun();
     }
@@ -7032,6 +7446,9 @@ if (typeof window !== "undefined") {
     ) {
       window.PresidentOfficeChests.resetForNewRun();
     }
+    if (window.AmmoCrate && window.AmmoCrate.resetForNewRun) {
+      window.AmmoCrate.resetForNewRun();
+    }
     if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.resetForNewRun) {
       window.CollectionRoomFloorLoot.resetForNewRun();
     }
@@ -7109,6 +7526,10 @@ if (typeof window !== "undefined") {
       window.PresidentOfficeChests.isPanelOpen()
     ) {
       window.PresidentOfficeChests.closePanel();
+      return true;
+    }
+    if (window.AmmoCrate && window.AmmoCrate.isPanelOpen()) {
+      window.AmmoCrate.closePanel();
       return true;
     }
     if (window.WorldLootBox && window.WorldLootBox.isPanelOpen()) {
