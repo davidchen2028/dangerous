@@ -67,6 +67,15 @@
   playerSprites.walkA.onload = markSpriteLoaded;
   playerSprites.walkB.onload = markSpriteLoaded;
   playerSprites.jump.onload = markSpriteLoaded;
+  function markSpriteError() {
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn("[platform-minigame] player sprite failed to load");
+    }
+  }
+  playerSprites.idle.onerror = markSpriteError;
+  playerSprites.walkA.onerror = markSpriteError;
+  playerSprites.walkB.onerror = markSpriteError;
+  playerSprites.jump.onerror = markSpriteError;
   playerSprites.idle.src = "img/platform-player/character_beige_idle.png";
   playerSprites.walkA.src = "img/platform-player/character_beige_walk_a.png";
   playerSprites.walkB.src = "img/platform-player/character_beige_walk_b.png";
@@ -188,6 +197,8 @@
   var dpr = 1;
   var W = 800;
   var H = 480;
+  var RUN_SPEED_THRESHOLD = 8;
+  var RUN_FRAME_DURATION = 0.1;
 
   function layout() {
     var pathH = Math.round(H * 0.26);
@@ -2476,9 +2487,6 @@
     }
   }
 
-  var RUN_SPEED_THRESHOLD = 8;
-  var RUN_FRAME_DURATION = 0.1;
-
   function deriveCharacterAnim(p, dt) {
     if (!p.onGround) {
       p.anim = p.vy < 0 ? "jump" : "fall";
@@ -2522,7 +2530,9 @@
       ctx.scale(-1, 1);
       ctx.translate(-dx, 0);
     }
-    ctx.drawImage(img, 0, 0, 128, 128, dx, dy, dw, dh);
+    var sw = img.naturalWidth || 128;
+    var sh = img.naturalHeight || 128;
+    ctx.drawImage(img, 0, 0, sw, sh, dx, dy, dw, dh);
     ctx.restore();
   }
 
