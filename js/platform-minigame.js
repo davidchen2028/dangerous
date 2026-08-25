@@ -2478,6 +2478,56 @@
     }
   }
 
+  var RUN_SPEED_THRESHOLD = 8;
+  var RUN_FRAME_DURATION = 0.1;
+
+  function deriveCharacterAnim(p, dt) {
+    if (!p.onGround) {
+      p.anim = p.vy < 0 ? "jump" : "fall";
+      return;
+    }
+    if (Math.abs(p.vx) > RUN_SPEED_THRESHOLD) {
+      p.anim = "run";
+      p.animT += dt;
+      if (p.animT >= RUN_FRAME_DURATION) {
+        p.animT = 0;
+        p.walkPhase = p.walkPhase ? 0 : 1;
+      }
+    } else {
+      p.anim = "idle";
+      p.animT = 0;
+      p.walkPhase = 0;
+    }
+  }
+
+  function drawCharacter(p) {
+    if (!playerSprites.allLoaded) {
+      ctx.fillStyle = "#111214";
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), p.w, p.h);
+      return;
+    }
+    var dh = Math.round(p.h * 1.45);
+    var dw = dh;
+    var dx = Math.round(p.x + p.w / 2 - dw / 2);
+    var dy = Math.round(p.y + p.h - dh);
+    var img;
+    if (p.anim === "jump" || p.anim === "fall") {
+      img = playerSprites.jump;
+    } else if (p.anim === "run") {
+      img = p.walkPhase ? playerSprites.walkB : playerSprites.walkA;
+    } else {
+      img = playerSprites.idle;
+    }
+    ctx.save();
+    if (p.facing < 0) {
+      ctx.translate(dx + dw, 0);
+      ctx.scale(-1, 1);
+      ctx.translate(-dx, 0);
+    }
+    ctx.drawImage(img, 0, 0, 128, 128, dx, dy, dw, dh);
+    ctx.restore();
+  }
+
   function draw() {
     var L = layout();
     ctx.save();
