@@ -2312,7 +2312,7 @@
 
   function drawFloor(L) {
     if (sceneSprites.allLoaded) {
-      drawTile(sceneSprites.brick, 0, L.pathY, W, H - L.pathY);
+      drawTile(sceneSprites.brick, 0, L.pathY, W, H - L.pathY, { fit: "tile" });
       drawTile(sceneSprites.brick, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile" });
       ctx.fillStyle = "#9aa0a6";
       ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
@@ -2477,7 +2477,7 @@
     }
     drawSky();
     if (sceneSprites.allLoaded) {
-      drawTile(sceneSprites.brick, 0, L.pathY, W, H - L.pathY);
+      drawTile(sceneSprites.brick, 0, L.pathY, W, H - L.pathY, { fit: "tile" });
     } else {
       ctx.fillStyle = "#4a525a";
       ctx.fillRect(0, L.pathY, W, H - L.pathY);
@@ -2614,7 +2614,9 @@
         for (var tx = x; tx < x + w; tx += 64) {
           var rw = Math.min(64, x + w - tx);
           var rh = Math.min(64, y + h - ty);
-          ctx.drawImage(img, 0, 0, sw, sh, tx, ty, rw, rh);
+          var cw = Math.min(sw, rw);
+          var ch = Math.min(sh, rh);
+          ctx.drawImage(img, 0, 0, cw, ch, tx, ty, rw, rh);
         }
       }
       return;
