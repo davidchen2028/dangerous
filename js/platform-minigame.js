@@ -2182,7 +2182,11 @@
     }
   }
 
-  function drawWoodBox(x, y, w, h, fill, slat, edge) {
+  function drawWoodBox(tileImg, x, y, w, h, fill, slat, edge) {
+    if (sceneSprites.allLoaded && tileImg) {
+      drawTile(tileImg, x, y, w, h);
+      return;
+    }
     ctx.fillStyle = fill;
     ctx.fillRect(x, y, w, h);
     ctx.fillStyle = slat;
@@ -2197,6 +2201,7 @@
   function drawCrate() {
     if (!crate.active) return;
     drawWoodBox(
+      sceneSprites.plank,
       Math.round(crate.x),
       Math.round(crate.y),
       crate.w,
@@ -2210,6 +2215,7 @@
   function drawGreen() {
     if (!green.active) return;
     drawWoodBox(
+      sceneSprites.green,
       Math.round(green.x),
       Math.round(green.y),
       green.w,
@@ -2224,6 +2230,7 @@
     for (var i = 0; i < airGreenCrates.length; i++) {
       var box = airGreenCrates[i];
       drawWoodBox(
+        sceneSprites.green,
         Math.round(box.x),
         Math.round(box.y),
         box.w,
@@ -2239,6 +2246,7 @@
     for (var i = 0; i < redCrates.length; i++) {
       var red = redCrates[i];
       drawWoodBox(
+        sceneSprites.red,
         Math.round(red.x),
         Math.round(red.y),
         red.w,
@@ -2253,6 +2261,7 @@
   function drawOriginalStage9Red() {
     if (!old9Red.active) return;
     drawWoodBox(
+      sceneSprites.red,
       Math.round(old9Red.x),
       Math.round(old9Red.y),
       old9Red.w,
@@ -2267,6 +2276,7 @@
     for (var i = 0; i < blueCrates.length; i++) {
       var box = blueCrates[i];
       drawWoodBox(
+        sceneSprites.blue,
         Math.round(box.x),
         Math.round(box.y),
         box.w,
@@ -2281,6 +2291,7 @@
   function drawGrey() {
     if (!grey.active) return;
     drawWoodBox(
+      sceneSprites.brick,
       Math.round(grey.x),
       Math.round(grey.y),
       grey.w,
