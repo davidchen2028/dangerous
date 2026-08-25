@@ -3,12 +3,19 @@
  */
 import * as THREE from "three";
 import { buildLevel2Doors } from "./backrooms-level2-doors.js";
+import {
+  CORRIDOR_LENGTH,
+  CORRIDOR_WIDTH,
+  CORRIDOR_HEIGHT,
+  SPAWN_Z,
+} from "./backrooms-level2-constants.js";
 
-export const CORRIDOR_LENGTH = 144;
-export const CORRIDOR_WIDTH = 2.9;
-export const CORRIDOR_HEIGHT = 3.4;
-/** 出生在 +Z 端，朝十字中心 */
-export const SPAWN_Z = CORRIDOR_LENGTH * 0.5 - 2;
+export {
+  CORRIDOR_LENGTH,
+  CORRIDOR_WIDTH,
+  CORRIDOR_HEIGHT,
+  SPAWN_Z,
+} from "./backrooms-level2-constants.js";
 
 const CEIL = 0x050506;
 const PIPE = 0x2a2a32;

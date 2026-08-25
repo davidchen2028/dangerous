@@ -3,7 +3,7 @@
  */
 import * as THREE from "three";
 import { buildClumpFigure } from "./backrooms-clump.js";
-import { CORRIDOR_LENGTH, CORRIDOR_WIDTH } from "./backrooms-level2-world.js";
+import { CORRIDOR_LENGTH, CORRIDOR_WIDTH } from "./backrooms-level2-constants.js";
 import {
   getLevel2SharedCorridorSpec,
   insetCorridorPosition,

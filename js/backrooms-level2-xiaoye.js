@@ -2,7 +2,7 @@
  * Level 2 — 笑靥：三条非出生走廊末端随机一只，靠近扑击 -100；扑击后下次进 L2 再刷
  */
 import * as THREE from "three";
-import { CORRIDOR_LENGTH, CORRIDOR_WIDTH } from "./backrooms-level2-world.js";
+import { CORRIDOR_LENGTH, CORRIDOR_WIDTH } from "./backrooms-level2-constants.js";
 import {
   BACKROOMS_ENTITY_HEALTH,
   registerBackroomsEntityTarget,

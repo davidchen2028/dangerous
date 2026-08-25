@@ -54,10 +54,10 @@ export const LEVEL_PASS_KEYS = {
   c1294: { pass: "backrooms_c1294_pass", yaw: "backrooms_c1294_yaw" },
   c1295: { pass: "backrooms_c1295_pass", yaw: "backrooms_c1295_yaw" },
   c1296: { pass: "backrooms_c1296_pass", yaw: "backrooms_c1296_yaw" },
-  c1297: { pass: "backrooms_c1297_pass", yaw: "backrooms_c1297_yaw" },
-  c1298: { pass: "backrooms_c1298_pass", yaw: "backrooms_c1298_yaw" },
   c1299: { pass: "backrooms_c1299_pass", yaw: "backrooms_c1299_yaw" },
   c1299_1: { pass: "backrooms_c1299_1_pass", yaw: "backrooms_c1299_1_yaw" },
+  c1297: { pass: "backrooms_c1297_pass", yaw: "backrooms_c1297_yaw" },
+  c1298: { pass: "backrooms_c1298_pass", yaw: "backrooms_c1298_yaw" },
 };
 
 function keysFor(levelId) {

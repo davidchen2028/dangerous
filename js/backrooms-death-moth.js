@@ -3,7 +3,7 @@
  */
 import * as THREE from "three";
 import { buildDeathMothFigure } from "./backrooms-moth.js";
-import { CORRIDOR_LENGTH } from "./backrooms-level2-world.js";
+import { CORRIDOR_LENGTH } from "./backrooms-level2-constants.js";
 import {
   getLevel2SharedCorridorSpec,
   insetCorridorPosition,
