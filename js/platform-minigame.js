@@ -2169,6 +2169,10 @@
     for (i = 0; i < boxes.length; i++) {
       var box = boxes[i];
       if (box.h <= 1) continue;
+      if (sceneSprites.allLoaded) {
+        drawTile(sceneSprites.spikes, box.x, L.pathY - box.h, box.w, box.h);
+        continue;
+      }
       ctx.fillStyle = "#2c2c30";
       ctx.beginPath();
       ctx.moveTo(box.x, L.pathY);
@@ -2368,26 +2372,23 @@
   }
 
   function drawButton(L) {
-    var oldButton = originalStage8Button(L);
-    if (oldButton) {
+    function drawOne(b) {
+      if (sceneSprites.allLoaded) {
+        drawTile(sceneSprites.red, b.x, b.y, b.w, b.h);
+        return;
+      }
       ctx.fillStyle = "#c43b32";
-      ctx.fillRect(oldButton.x, oldButton.y, oldButton.w, oldButton.h);
+      ctx.fillRect(b.x, b.y, b.w, b.h);
       ctx.fillStyle = "#e25a4f";
-      ctx.fillRect(
-        oldButton.x + 2,
-        oldButton.y + 2,
-        oldButton.w - 4,
-        Math.max(2, oldButton.h * 0.4)
-      );
+      ctx.fillRect(b.x + 2, b.y + 2, b.w - 4, Math.max(2, b.h * 0.4));
     }
+    var oldButton = originalStage8Button(L);
+    if (oldButton) drawOne(oldButton);
     var buttons = stage8RedButtons(L);
     for (var i = 0; i < buttons.length; i++) {
       var btn = buttons[i];
       if (s8VanishedPlatforms[btn.index]) continue;
-      ctx.fillStyle = "#c43b32";
-      ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
-      ctx.fillStyle = "#e25a4f";
-      ctx.fillRect(btn.x + 2, btn.y + 2, btn.w - 4, Math.max(2, btn.h * 0.4));
+      drawOne(btn);
     }
   }
 
