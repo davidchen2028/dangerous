@@ -1,14 +1,15 @@
 /**
  * 大厅小游戏 2 — Level Devil 风格平台：天空 + 灰地板。
  * 1 蓝箱演示 → 2 三刺挤一起 → 3 前中后三刺 → 4 中间裂开 → 5 裂开 + 木箱
- * → 6 门搬家 + 绿箱 → 7 前中后三缝 → 8 三缝 + 四波红/绿/蓝箱
- * → 9 中刺变三刺 → 过刺即出灰箱回城 → 单缝双向绿/木/红箱陷阱
- * → 10 巨大缝，鼠标拖到门边再走进去。
+ * → 6 门搬家 + 绿箱 → 7 前中后三缝 → 8 原三缝陷阱 → 9 原中刺变缝
+ * → 10 双向升级版中刺变缝 → 11 三缝四波陷阱
+ * → 12 巨大缝，鼠标拖到门边再走进去。
  * 死亡只重开当前关。刷新保留关卡进度，左上角可回第一关。
  */
 (function () {
-  var STAGE_COUNT = 10;
+  var STAGE_COUNT = 12;
   var STAGE_KEY = "jiwei_minigame2_stage";
+  var STAGE_LAYOUT_KEY = "jiwei_minigame2_stage_layout_v2";
   var DOUBLE_JUMP_KEY = "jiwei_minigame2_double_jump";
   var viewEl = document.getElementById("platformGameView");
   var canvas = document.getElementById("platformGameCanvas");
@@ -24,6 +25,15 @@
   var doubleJumpBtn = document.getElementById("platformDoubleJump");
   var doubleJumpPassEl = document.getElementById("platformDoubleJumpPass");
   var doubleJumpInputEl = document.getElementById("platformDoubleJumpInput");
+  var trapBuilderEl = document.getElementById("trapBuilder");
+  var trapBuilderPaletteEl = document.getElementById("trapBuilderPalette");
+  var trapBuilderTimelineEl = document.getElementById("trapBuilderTimeline");
+  var trapBuilderEmptyEl = document.getElementById("trapBuilderEmpty");
+  var trapBuilderStartEl = document.getElementById("trapBuilderStart");
+  var trapBuilderClearEl = document.getElementById("trapBuilderClear");
+  var trapPlaybackControlsEl = document.getElementById("trapPlaybackControls");
+  var trapPlaybackReplayEl = document.getElementById("trapPlaybackReplay");
+  var trapPlaybackEditEl = document.getElementById("trapPlaybackEdit");
   var padEl = document.getElementById("platformGamePad");
   if (!viewEl || !canvas) return;
 
@@ -48,6 +58,19 @@
   var waitAtGap = 0;
   var woodArmed = false;
   var greenFlags = [false, false, false];
+  var old8FloorGone = false;
+  var old9SideOn = false;
+  var old9BecameGap = false;
+  var old9GapTimer = -1;
+  var old9Red = {
+    active: false,
+    spawned: false,
+    x: 0,
+    y: 0,
+    w: 28,
+    h: 22,
+    vx: 0,
+  };
   var s8Wave = 0;
   var s8Phase = 0;
   var s8WaveQueue = [];
@@ -82,6 +105,37 @@
   var airGreenCrates = [];
   var blueCrates = [];
   var selectOpen = false;
+  var trapChordIndex = 0;
+  var trapMode = "off";
+  var trapTimeline = [];
+  var trapPlaybackIndex = -1;
+  var trapPlaybackTimer = -1;
+  var trapPlaybackComplete = false;
+  var trapDead = false;
+  var trapDeadT = 0;
+  var trapShake = 0;
+  var trapPlayer = {
+    x: 0,
+    y: 0,
+    w: 22,
+    h: 34,
+    vx: 0,
+    vy: 0,
+    onGround: false,
+  };
+  var trapAirJumps = 0;
+  var trapWoods = [];
+  var trapGreens = [];
+  var trapReds = [];
+  var trapBlues = [];
+  var trapSpikeRows = [];
+  var TRAP_LABELS = {
+    wood: "木箱",
+    green: "绿箱",
+    red: "红箱",
+    blue: "蓝箱",
+    spikes: "刺雨",
+  };
   var STAGE_LABELS = [
     "第 1 关 · 蓝箱演示",
     "第 2 关 · 三刺挤一起",
@@ -90,9 +144,11 @@
     "第 5 关 · 木箱",
     "第 6 关 · 门搬家",
     "第 7 关 · 三缝",
-    "第 8 关 · 三缝四波陷阱",
-    "第 9 关 · 中刺变缝",
-    "第 10 关 · 大缝",
+    "第 8 关 · 三缝陷阱",
+    "第 9 关 · 原中刺变缝",
+    "第 10 关 · 双向中刺变缝",
+    "第 11 关 · 三缝四波陷阱",
+    "第 12 关 · 大缝",
   ];
   var drag = { on: false, ox: 0, oy: 0 };
   var fade = 0;
@@ -127,16 +183,17 @@
 
   function gapSlots() {
     if (stage === 7) return [0.24, 0.5, 0.76];
-    if (stage === 8) return [0.2, 0.42, 0.62];
-    if (stage === 9 && s9BecameGap) return [0.5];
-    if (stage === 10) return [0.5];
+    if (stage === 8 || stage === 11) return [0.2, 0.42, 0.62];
+    if (stage === 9 && old9BecameGap) return [0.5];
+    if (stage === 10 && s9BecameGap) return [0.5];
+    if (stage === 12) return [0.5];
     if (stage === 4 || stage === 5 || stage === 6) return [0.5];
     return [];
   }
 
   function gapBoxAt(L, t) {
     var gw =
-      stage === 10
+      stage === 12
         ? Math.round(L.pathW * 0.66)
         : Math.max(28, Math.round(player.w * 1.5));
     var cx = L.pathX + L.pathW * t;
@@ -165,7 +222,13 @@
     if (stage === 3) {
       return [{ t: 0.24, count: 1 }, { t: 0.5, count: 1 }, { t: 0.76, count: 1 }];
     }
-    if (stage === 9 && !s9BecameGap) {
+    if (stage === 9 && !old9BecameGap) {
+      if (old9SideOn) {
+        return [{ t: 0.48, count: 1 }, { t: 0.5, count: 1 }, { t: 0.52, count: 1 }];
+      }
+      return [{ t: 0.5, count: 1 }];
+    }
+    if (stage === 10 && !s9BecameGap) {
       if (s9SpikesCleared) return [];
       if (s9SideOn) {
         return [{ t: 0.48, count: 1 }, { t: 0.5, count: 1 }, { t: 0.52, count: 1 }];
@@ -186,6 +249,15 @@
   function readStage() {
     try {
       var n = parseInt(window.localStorage.getItem(STAGE_KEY), 10);
+      if (window.localStorage.getItem(STAGE_LAYOUT_KEY) !== "1") {
+        if (n === 8) n = 11;
+        else if (n === 9) n = 10;
+        else if (n === 10) n = 12;
+        window.localStorage.setItem(STAGE_LAYOUT_KEY, "1");
+        if (n >= 1 && n <= STAGE_COUNT) {
+          window.localStorage.setItem(STAGE_KEY, String(n));
+        }
+      }
       if (n >= 1 && n <= STAGE_COUNT) return n;
     } catch (err) {
       /* ignore */
@@ -226,6 +298,13 @@
     spikeStates = spikeGroups().map(function () {
       return { shown: false, h: 0 };
     });
+    old8FloorGone = false;
+    old9SideOn = false;
+    old9BecameGap = false;
+    old9GapTimer = -1;
+    old9Red.active = false;
+    old9Red.spawned = false;
+    old9Red.vx = 0;
     s9SideOn = false;
     s9SpikesCleared = false;
     s9BecameGap = false;
@@ -243,10 +322,10 @@
     grey.spawned = false;
     grey.vx = 0;
     drag.on = false;
-    crack.armed = (stage >= 4 && stage <= 8) || stage === 9 || stage === 10;
-    crack.open = stage === 8 || stage === 10;
+    crack.armed = stage >= 4 && stage <= 12;
+    crack.open = stage === 8 || stage === 11 || stage === 12;
     gapStates = gapSlots().map(function () {
-      return { open: stage === 8 || stage === 10 };
+      return { open: stage === 8 || stage === 11 || stage === 12 };
     });
     portalSide = "right";
     crate.w = player.h;
@@ -280,13 +359,13 @@
     airGreenCrates = [];
     blueCrates = [];
     if (stage === 1) spawnBlue(L, -1);
-    if (stage === 8) {
+    if (stage === 11) {
       startStage8Wave(1);
       s8ButtonContacts = stage8RedButtons(L).map(function (button) {
         return overlaps(player, stage8ButtonHitBox(button));
       });
     }
-    if (stage === 9) {
+    if (stage === 9 || stage === 10) {
       spike.armed = true;
       spikeStates = [{ shown: true, h: spike.maxH }];
     }
@@ -341,7 +420,7 @@
   }
 
   function stage8RedButtons(L) {
-    if (stage !== 8) return [];
+    if (stage !== 11) return [];
     var platforms = stage8Platforms(L);
     var bw = Math.max(22, Math.round(player.w * 1.2));
     var bh = Math.max(8, Math.round(player.h * 0.2));
@@ -365,6 +444,20 @@
       y: button.y + (button.h - h) * 0.5,
       w: w,
       h: h,
+    };
+  }
+
+  function originalStage8Button(L) {
+    if (stage !== 8 || old8FloorGone) return null;
+    var gaps = listGaps(L);
+    if (!gaps[2]) return null;
+    var bw = Math.max(22, Math.round(player.w * 1.2));
+    var bh = Math.max(8, Math.round(player.h * 0.2));
+    return {
+      x: gaps[2].x + gaps[2].w + Math.round(player.w * 1.7),
+      y: L.pathY - bh,
+      w: bw,
+      h: bh,
     };
   }
 
@@ -421,7 +514,7 @@
     redCrates.push(red);
   }
 
-  /** 第 9 关后两波会从门的另一边回来，因此木箱按飞行方向从场地边缘出现。 */
+  /** 第 10 关后两波会从门的另一边回来，因此木箱按飞行方向从场地边缘出现。 */
   function spawnStage9Crate(L, dir) {
     spawnCrate(L, dir);
     crate.x =
@@ -632,12 +725,138 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
+  function trapDelayText(value) {
+    var n = Number(value);
+    if (!isFinite(n) || n < 0) n = 0.75;
+    return String(Math.round(n * 100) / 100);
+  }
+
+  function trapDelayValue(value) {
+    if (String(value == null ? "" : value).trim() === "") return 0.75;
+    var n = Number(value);
+    return isFinite(n) && n >= 0 ? n : 0.75;
+  }
+
+  function renderTrapTimeline() {
+    if (!trapBuilderTimelineEl) return;
+    var html = "";
+    for (var i = 0; i < trapTimeline.length; i++) {
+      var item = trapTimeline[i];
+      html +=
+        '<div class="trap-timeline-card trap-card--' +
+        item.kind +
+        '"><span>' +
+        TRAP_LABELS[item.kind] +
+        "</span></div>";
+      if (i < trapTimeline.length - 1) {
+        html +=
+          '<button type="button" class="trap-timeline-arrow" data-trap-arrow="' +
+          i +
+          '" aria-label="设置出场间隔"><span>' +
+          trapDelayText(item.delay) +
+          "s</span></button>";
+      }
+    }
+    trapBuilderTimelineEl.innerHTML = html;
+    if (trapBuilderEmptyEl) trapBuilderEmptyEl.hidden = trapTimeline.length > 0;
+    if (trapBuilderStartEl) trapBuilderStartEl.disabled = trapTimeline.length === 0;
+  }
+
+  function addTrapTimelineItem(kind) {
+    if (!TRAP_LABELS[kind]) return;
+    trapTimeline.push({ kind: kind, delay: 0.75 });
+    renderTrapTimeline();
+    if (trapBuilderTimelineEl) {
+      trapBuilderTimelineEl.scrollLeft = trapBuilderTimelineEl.scrollWidth;
+    }
+  }
+
+  function editTrapTimelineDelay(button, index) {
+    if (!button || !trapTimeline[index]) return;
+    button.innerHTML =
+      '<input class="trap-timeline-interval" type="number" min="0" step="0.05" ' +
+      'inputmode="decimal" aria-label="间隔秒数" value="' +
+      trapDelayText(trapTimeline[index].delay) +
+      '">';
+    var input = button.querySelector("input");
+    if (!input) return;
+    input.focus();
+    input.select();
+  }
+
+  function commitTrapTimelineDelay(input) {
+    if (!input) return;
+    var button = input.closest("[data-trap-arrow]");
+    if (!button) return;
+    var index = parseInt(button.getAttribute("data-trap-arrow"), 10);
+    if (!trapTimeline[index]) return;
+    trapTimeline[index].delay = trapDelayValue(input.value);
+    renderTrapTimeline();
+  }
+
+  function openTrapBuilder() {
+    if (!trapBuilderEl || !running) return;
+    closeSelect();
+    closeSettings();
+    trapMode = "editor";
+    trapChordIndex = 0;
+    keys.left = keys.right = keys.jump = false;
+    jumpQueued = false;
+    trapBuilderEl.hidden = false;
+    if (trapPlaybackControlsEl) trapPlaybackControlsEl.hidden = true;
+    renderTrapTimeline();
+  }
+
+  function clearTrapPlayback() {
+    trapWoods = [];
+    trapGreens = [];
+    trapReds = [];
+    trapBlues = [];
+    trapSpikeRows = [];
+    trapPlaybackIndex = -1;
+    trapPlaybackTimer = -1;
+    trapPlaybackComplete = false;
+    trapDead = false;
+    trapDeadT = 0;
+    trapShake = 0;
+  }
+
+  function closeTrapBuilder() {
+    trapMode = "off";
+    trapChordIndex = 0;
+    clearTrapPlayback();
+    keys.left = keys.right = keys.jump = false;
+    jumpQueued = false;
+    if (trapBuilderEl) trapBuilderEl.hidden = true;
+    if (trapPlaybackControlsEl) trapPlaybackControlsEl.hidden = true;
+  }
+
+  function showTrapEditor() {
+    clearTrapPlayback();
+    trapMode = "editor";
+    keys.left = keys.right = keys.jump = false;
+    jumpQueued = false;
+    if (trapBuilderEl) trapBuilderEl.hidden = false;
+    if (trapPlaybackControlsEl) trapPlaybackControlsEl.hidden = true;
+    renderTrapTimeline();
+  }
+
   function overlaps(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
 
   function vanishedOverlap(x, w, L) {
-    if (stage !== 8) return 0;
+    if (stage === 8 && old8FloorGone) {
+      var oldGaps = listGaps(L);
+      if (!oldGaps[2]) return 0;
+      var oldLeft = oldGaps[2].x + oldGaps[2].w;
+      var oldRight = L.pathX + L.pathW + 24;
+      return Math.max(
+        0,
+        Math.min(x + w, oldRight) - Math.max(x, oldLeft)
+      );
+    }
+    if (stage !== 11) return 0;
     var platforms = stage8Platforms(L);
     var total = 0;
     for (var i = 0; i < platforms.length; i++) {
@@ -649,6 +868,76 @@
       );
     }
     return total;
+  }
+
+  function listOpenHoles(L) {
+    var holes = [];
+    var gaps = listGaps(L);
+    var i;
+    for (i = 0; i < gaps.length; i++) {
+      if (gaps[i].open) holes.push({ x: gaps[i].x, w: gaps[i].w });
+    }
+    if (stage === 8 && old8FloorGone && gaps[2]) {
+      holes.push({
+        x: gaps[2].x + gaps[2].w,
+        w: L.pathX + L.pathW - (gaps[2].x + gaps[2].w),
+      });
+    }
+    if (stage === 11) {
+      var platforms = stage8Platforms(L);
+      for (i = 0; i < platforms.length; i++) {
+        if (s8VanishedPlatforms[i]) {
+          holes.push({ x: platforms[i].x, w: platforms[i].w });
+        }
+      }
+    }
+    return holes;
+  }
+
+  function nearestOpenHole(L) {
+    var holes = listOpenHoles(L);
+    if (!holes.length) return null;
+    var mid = player.x + player.w * 0.5;
+    var best = holes[0];
+    var bestDist = Infinity;
+    var i;
+    for (i = 0; i < holes.length; i++) {
+      var hole = holes[i];
+      var dist;
+      if (mid >= hole.x && mid <= hole.x + hole.w) dist = 0;
+      else {
+        dist = Math.min(
+          Math.abs(mid - hole.x),
+          Math.abs(mid - (hole.x + hole.w))
+        );
+      }
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = hole;
+      }
+    }
+    return best;
+  }
+
+  function pushPlayerIntoHole(L, hole) {
+    if (!hole) return;
+    if (hole.w >= player.w) {
+      player.x = hole.x + (hole.w - player.w) * 0.5;
+    } else {
+      player.x = hole.x + hole.w * 0.5 - player.w * 0.5;
+    }
+    player.onGround = false;
+    if (player.vy < H * 0.35) player.vy = H * 0.35;
+  }
+
+  /** 脚已低于台面且身体叠在实心地板上：立刻推进最近的缝，避免卡在地板里。 */
+  function ejectIfEmbeddedInFloor(L) {
+    var feet = player.y + player.h;
+    if (feet <= L.pathY + 2) return;
+    if (player.y >= L.pathY + L.pathH) return;
+    var solid = player.w - gapOverlap(player.x, player.w, L);
+    if (solid <= player.w * 0.28) return;
+    pushPlayerIntoHole(L, nearestOpenHole(L));
   }
 
   function gapOverlap(x, w, L) {
@@ -677,14 +966,12 @@
   }
 
   function resolvePitWalls(L) {
-    if (!crack.open) return;
     if (player.y + player.h <= L.pathY + 2) return;
-    var gaps = listGaps(L);
+    var holes = listOpenHoles(L);
     var mid = player.x + player.w * 0.5;
     var i;
-    for (i = 0; i < gaps.length; i++) {
-      if (!gaps[i].open) continue;
-      var g = gaps[i];
+    for (i = 0; i < holes.length; i++) {
+      var g = holes[i];
       if (mid < g.x || mid > g.x + g.w) continue;
       if (player.x < g.x) player.x = g.x;
       if (player.x + player.w > g.x + g.w) player.x = g.x + g.w - player.w;
@@ -745,8 +1032,8 @@
 
   function enterPortal() {
     if (entering || dead || fadeDir) return;
-    if (stage === 8 && s8Phase !== 8) return;
-    if (stage === 9) {
+    if (stage === 11 && s8Phase !== 8) return;
+    if (stage === 10) {
       if (!s9RoundUnlocked) return;
       if (s9Round === 1 && portalSide === "right") {
         portalSide = "left";
@@ -847,6 +1134,160 @@
       player.onGround = false;
       if (player.vy < H * 0.12) player.vy = H * 0.12;
     }
+  }
+
+  function updateOriginalStage8(dt, L, justJumped) {
+    var gaps = listGaps(L);
+    if (gaps.length < 3) return;
+    if (!greenFlags[0] && atGapFrontOf(L, gaps[0], "left")) {
+      greenFlags[0] = true;
+      spawnGreen(L, gaps[0]);
+    }
+    if (!greenFlags[2] && atGapFrontOf(L, gaps[2], "left")) {
+      greenFlags[2] = true;
+      spawnGreen(L, gaps[2]);
+    }
+    updateGreen(dt, L, justJumped);
+    if (dead) return;
+
+    var mid = gaps[1];
+    var atMid = atGapFrontOf(L, mid, "left");
+    if (justJumped && atMid) woodArmed = true;
+    if (
+      woodArmed &&
+      player.x >= mid.x + mid.w * 0.55 &&
+      !crate.cancelled &&
+      !crate.active
+    ) {
+      spawnCrate(L, -1);
+    }
+    if (!crate.cancelled && atMid) {
+      waitAtGap += dt;
+      if (waitAtGap >= 1) {
+        crate.cancelled = true;
+        crate.active = false;
+      }
+    } else if (!crate.cancelled && !atMid) {
+      waitAtGap = 0;
+    }
+    moveCrate(dt, L, mid);
+
+    var btn = originalStage8Button(L);
+    if (btn && player.onGround && overlaps(player, btn)) {
+      old8FloorGone = true;
+      shake = 10;
+      player.onGround = false;
+      if (player.vy < H * 0.25) player.vy = H * 0.25;
+    }
+  }
+
+  function becomeOriginalStage9Gap(L) {
+    old9BecameGap = true;
+    old9SideOn = false;
+    old9GapTimer = -1;
+    grey.active = false;
+    spike.armed = false;
+    spikeStates = [];
+    crack.armed = true;
+    crack.open = true;
+    gapStates = [{ open: true }];
+    shake = 8;
+  }
+
+  function spawnOriginalStage9Red(L) {
+    var door = portalBox(L);
+    old9Red.active = true;
+    old9Red.spawned = true;
+    old9Red.w = Math.max(18, Math.round(player.h * 0.62));
+    old9Red.h = Math.max(10, Math.round(player.h * 0.36));
+    old9Red.x = door.x - old9Red.w * 0.1;
+    old9Red.y = L.pathY - old9Red.h;
+    old9Red.vx = -W * 0.5;
+  }
+
+  function updateOriginalStage9Red(dt, L) {
+    if (!old9Red.active) return;
+    old9Red.x += old9Red.vx * dt;
+    if (
+      overlaps(player, old9Red) &&
+      player.y + player.h > old9Red.y + 2
+    ) {
+      die();
+      return;
+    }
+    if (old9Red.x + old9Red.w < L.pathX - 40) old9Red.active = false;
+  }
+
+  function updateOriginalStage9Grey(dt, L) {
+    if (old9GapTimer >= 0) {
+      old9GapTimer -= dt;
+      if (old9GapTimer <= 0) becomeOriginalStage9Gap(L);
+    }
+    if (!grey.active) return;
+    grey.x += grey.vx * dt;
+    if (overlaps(player, grey)) {
+      placePlayer(L);
+      grey.active = false;
+      old9GapTimer = 0.3;
+      shake = 8;
+      return;
+    }
+    if (grey.x + grey.w < L.pathX - 40) grey.active = false;
+  }
+
+  function updateOriginalStage9(dt, L, justJumped) {
+    if (!old9BecameGap) {
+      var midX = L.pathX + L.pathW * 0.5;
+      var overSpike =
+        !player.onGround &&
+        player.x + player.w > midX - player.w &&
+        player.x < midX + player.w &&
+        player.y + player.h < L.pathY - 6;
+      if (overSpike && !old9SideOn) {
+        old9SideOn = true;
+        spikeStates = [
+          { shown: true, h: spike.maxH },
+          { shown: true, h: spike.maxH },
+          { shown: true, h: spike.maxH },
+        ];
+        shake = 7;
+      }
+      var rightX = L.pathX + L.pathW * 0.52;
+      if (old9SideOn && !grey.spawned && player.x >= rightX + 4) {
+        spawnGrey(L);
+      }
+      updateOriginalStage9Grey(dt, L);
+      return;
+    }
+
+    var g = gapBox(L);
+    if (!green.started && atGapFrontOf(L, g, "left")) spawnGreen(L, g);
+    updateGreen(dt, L, justJumped);
+    if (dead) return;
+    if (green.landed && !old9Red.spawned) spawnOriginalStage9Red(L);
+    if (justJumped && green.landed && atGapFrontOf(L, g, "left")) {
+      woodArmed = true;
+    }
+    if (
+      woodArmed &&
+      player.x >= g.x + g.w * 0.55 &&
+      !crate.cancelled &&
+      !crate.active
+    ) {
+      spawnCrate(L, -1);
+    }
+    var atFront = atGapFrontOf(L, g, "left");
+    if (!crate.cancelled && atFront && green.landed) {
+      waitAtGap += dt;
+      if (waitAtGap >= 1) {
+        crate.cancelled = true;
+        crate.active = false;
+      }
+    } else if (!crate.cancelled && !atFront) {
+      waitAtGap = 0;
+    }
+    moveCrate(dt, L, g);
+    updateOriginalStage9Red(dt, L);
   }
 
   function updateStage8(dt, L, justJumped) {
@@ -967,7 +1408,7 @@
     redCrates = kept;
     // 门搬到左边后一直半透明，直到最后一个红箱飞出场地才恢复可用
     if (
-      stage === 9 &&
+      stage === 10 &&
       s9WaitLastRed &&
       redCrates.length === 0 &&
       s9WaveQueue.length === 0
@@ -1160,10 +1601,18 @@
       return;
     }
     if (stage === 8) {
-      updateStage8(dt, L, justJumped);
+      updateOriginalStage8(dt, L, justJumped);
       return;
     }
     if (stage === 9) {
+      updateOriginalStage9(dt, L, justJumped);
+      return;
+    }
+    if (stage === 11) {
+      updateStage8(dt, L, justJumped);
+      return;
+    }
+    if (stage === 10) {
       updateStage9(dt, L, justJumped);
       return;
     }
@@ -1201,6 +1650,281 @@
     }
     if (crate.cancelled || !crate.active) return;
     moveCrate(dt, L, g);
+  }
+
+  function placeTrapPlayer(L) {
+    trapPlayer.w = Math.max(16, Math.round(H * 0.045));
+    trapPlayer.h = Math.max(26, Math.round(H * 0.07));
+    trapPlayer.x = L.pathX + Math.round(L.pathW * 0.045);
+    trapPlayer.y = L.pathY - trapPlayer.h;
+    trapPlayer.vx = 0;
+    trapPlayer.vy = 0;
+    trapPlayer.onGround = true;
+    trapAirJumps = 0;
+  }
+
+  function spawnTrapHazard(kind, L) {
+    var size = trapPlayer.h;
+    if (kind === "wood") {
+      trapWoods.push({
+        x: L.pathX + L.pathW - size,
+        y: L.pathY - size,
+        w: size,
+        h: size,
+        vx: -W * 0.55,
+      });
+    } else if (kind === "green") {
+      trapGreens.push({
+        x: trapPlayer.x + trapPlayer.w * 0.5 - size * 0.5,
+        y: 6,
+        w: size,
+        h: size,
+        vy: H * 0.72,
+      });
+    } else if (kind === "red") {
+      var redW = Math.max(18, Math.round(trapPlayer.h * 0.62));
+      var redH = Math.max(10, Math.round(trapPlayer.h * 0.36));
+      trapReds.push({
+        x: L.pathX + L.pathW - redW,
+        y: L.pathY - redH,
+        w: redW,
+        h: redH,
+        vx: -W * 0.5,
+      });
+    } else if (kind === "blue") {
+      var blueW = Math.max(22, Math.round(trapPlayer.h * 0.78));
+      var blueH = Math.max(12, Math.round(trapPlayer.h * 0.4));
+      trapBlues.push({
+        x: L.pathX + L.pathW - blueW,
+        y: L.pathY - trapPlayer.h - Math.round(H * 0.035),
+        w: blueW,
+        h: blueH,
+        vx: -W * 0.52,
+      });
+    } else if (kind === "spikes") {
+      var spikeH = Math.max(18, Math.round(H * 0.045));
+      var gapW = Math.max(trapPlayer.w * 1.12, 20);
+      trapSpikeRows.push({
+        y: -spikeH,
+        vy: H * 0.82,
+        h: spikeH,
+        gapW: gapW,
+        gapX: Math.max(
+          L.pathX,
+          Math.min(
+            L.pathX + L.pathW - gapW,
+            trapPlayer.x + trapPlayer.w * 0.5 - gapW * 0.5
+          )
+        ),
+        landedFor: 0,
+      });
+    }
+  }
+
+  function dispatchTrapTimelineItem(index, L) {
+    if (!trapTimeline[index]) return;
+    trapPlaybackIndex = index;
+    spawnTrapHazard(trapTimeline[index].kind, L);
+    trapPlaybackTimer =
+      index < trapTimeline.length - 1
+        ? trapDelayValue(trapTimeline[index].delay)
+        : -1;
+  }
+
+  function startTrapPlayback() {
+    if (!trapTimeline.length) return;
+    clearTrapPlayback();
+    trapMode = "play";
+    keys.left = keys.right = keys.jump = false;
+    jumpQueued = false;
+    if (trapBuilderEl) trapBuilderEl.hidden = true;
+    if (trapPlaybackControlsEl) trapPlaybackControlsEl.hidden = true;
+    var L = layout();
+    placeTrapPlayer(L);
+    dispatchTrapTimelineItem(0, L);
+  }
+
+  function killTrapPlayer() {
+    if (trapDead) return;
+    trapDead = true;
+    trapDeadT = 0;
+    trapShake = 10;
+    keys.jump = false;
+    jumpQueued = false;
+  }
+
+  function updateTrapSpikeRows(dt, L) {
+    var kept = [];
+    for (var i = 0; i < trapSpikeRows.length; i++) {
+      var row = trapSpikeRows[i];
+      var floorY = L.pathY - row.h;
+      if (row.y < floorY) {
+        row.vy += H * 1.25 * dt;
+        row.y = Math.min(floorY, row.y + row.vy * dt);
+      } else {
+        row.landedFor += dt;
+      }
+      var left = {
+        x: L.pathX,
+        y: row.y,
+        w: Math.max(0, row.gapX - L.pathX),
+        h: row.h,
+      };
+      var rightX = row.gapX + row.gapW;
+      var right = {
+        x: rightX,
+        y: row.y,
+        w: Math.max(0, L.pathX + L.pathW - rightX),
+        h: row.h,
+      };
+      if (
+        (left.w > 0 && overlaps(trapPlayer, left)) ||
+        (right.w > 0 && overlaps(trapPlayer, right))
+      ) {
+        killTrapPlayer();
+        return;
+      }
+      if (!(row.y >= floorY && row.landedFor >= 0.18)) kept.push(row);
+    }
+    trapSpikeRows = kept;
+  }
+
+  function updateTrapHazards(dt, L) {
+    var kept = [];
+    var i;
+    for (i = 0; i < trapWoods.length; i++) {
+      var wood = trapWoods[i];
+      wood.x += wood.vx * dt;
+      if (overlaps(trapPlayer, wood)) {
+        trapPlayer.x = wood.x - trapPlayer.w;
+        trapPlayer.onGround = false;
+        if (trapPlayer.vy < H * 0.12) trapPlayer.vy = H * 0.12;
+      }
+      if (wood.x + wood.w >= L.pathX - 40) kept.push(wood);
+    }
+    trapWoods = kept;
+
+    kept = [];
+    for (i = 0; i < trapGreens.length; i++) {
+      var greenBox = trapGreens[i];
+      greenBox.vy += Math.round(H * 3.2) * dt;
+      greenBox.y += greenBox.vy * dt;
+      if (overlaps(trapPlayer, greenBox)) {
+        killTrapPlayer();
+        return;
+      }
+      if (greenBox.y + greenBox.h < L.pathY) kept.push(greenBox);
+    }
+    trapGreens = kept;
+
+    kept = [];
+    for (i = 0; i < trapReds.length; i++) {
+      var redBox = trapReds[i];
+      redBox.x += redBox.vx * dt;
+      if (
+        overlaps(trapPlayer, redBox) &&
+        trapPlayer.y + trapPlayer.h > redBox.y + 2
+      ) {
+        killTrapPlayer();
+        return;
+      }
+      if (redBox.x + redBox.w >= L.pathX - 40) kept.push(redBox);
+    }
+    trapReds = kept;
+
+    kept = [];
+    for (i = 0; i < trapBlues.length; i++) {
+      var blueBox = trapBlues[i];
+      blueBox.x += blueBox.vx * dt;
+      if (overlaps(trapPlayer, blueBox)) {
+        killTrapPlayer();
+        return;
+      }
+      if (blueBox.x + blueBox.w >= L.pathX - 40) kept.push(blueBox);
+    }
+    trapBlues = kept;
+    updateTrapSpikeRows(dt, L);
+  }
+
+  function trapHazardsRemain() {
+    return (
+      trapWoods.length > 0 ||
+      trapGreens.length > 0 ||
+      trapReds.length > 0 ||
+      trapBlues.length > 0 ||
+      trapSpikeRows.length > 0
+    );
+  }
+
+  function updateTrapPlayback(dt) {
+    var L = layout();
+    if (trapShake > 0) trapShake = Math.max(0, trapShake - dt * 28);
+    if (trapDead) {
+      trapDeadT += dt;
+      if (trapDeadT >= 0.55) startTrapPlayback();
+      return;
+    }
+    if (trapPlaybackTimer >= 0 && trapPlaybackIndex < trapTimeline.length - 1) {
+      trapPlaybackTimer -= dt;
+      while (
+        trapPlaybackTimer <= 0 &&
+        trapPlaybackIndex < trapTimeline.length - 1
+      ) {
+        var overshoot = -trapPlaybackTimer;
+        dispatchTrapTimelineItem(trapPlaybackIndex + 1, L);
+        if (trapPlaybackTimer >= 0) trapPlaybackTimer -= overshoot;
+      }
+    }
+
+    var speed = Math.round(W * 0.38);
+    var want = 0;
+    if (keys.left) want -= 1;
+    if (keys.right) want += 1;
+    trapPlayer.vx = want * speed;
+    var prevFeet = trapPlayer.y + trapPlayer.h;
+    trapPlayer.x += trapPlayer.vx * dt;
+    trapPlayer.x = Math.max(
+      L.pathX + 2,
+      Math.min(L.pathX + L.pathW - trapPlayer.w - 2, trapPlayer.x)
+    );
+
+    if ((jumpQueued || keys.jump) && trapPlayer.onGround) {
+      trapPlayer.vy = -Math.round(H * 0.68);
+      trapPlayer.onGround = false;
+      trapAirJumps = 0;
+      jumpQueued = false;
+    } else if (jumpQueued) {
+      if (doubleJumpEnabled) {
+        trapPlayer.vy = -Math.round(H * 0.68);
+        trapAirJumps += 1;
+      }
+      jumpQueued = false;
+    }
+    trapPlayer.vy += Math.round(H * 3.8) * dt;
+    trapPlayer.y += trapPlayer.vy * dt;
+    var feet = trapPlayer.y + trapPlayer.h;
+    if (
+      prevFeet <= L.pathY + 1 &&
+      trapPlayer.vy >= 0 &&
+      feet >= L.pathY
+    ) {
+      trapPlayer.y = L.pathY - trapPlayer.h;
+      trapPlayer.vy = 0;
+      trapPlayer.onGround = true;
+      trapAirJumps = 0;
+    } else {
+      trapPlayer.onGround = false;
+    }
+
+    updateTrapHazards(dt, L);
+    if (
+      !trapDead &&
+      trapPlaybackIndex === trapTimeline.length - 1 &&
+      !trapHazardsRemain()
+    ) {
+      trapPlaybackComplete = true;
+      if (trapPlaybackControlsEl) trapPlaybackControlsEl.hidden = false;
+    }
   }
 
   function update(dt) {
@@ -1280,6 +2004,7 @@
     } else {
       player.onGround = false;
     }
+    ejectIfEmbeddedInFloor(L);
 
     if (player.y > L.pathY + L.pathH * 0.35) {
       die();
@@ -1334,7 +2059,7 @@
     if (
       overlaps(player, portalBox(L)) &&
       !overGap(player.x, player.w, L) &&
-      (stage !== 10 || keys.left || keys.right)
+      (stage !== 12 || keys.left || keys.right)
     ) {
       enterPortal();
     }
@@ -1450,6 +2175,19 @@
     }
   }
 
+  function drawOriginalStage9Red() {
+    if (!old9Red.active) return;
+    drawWoodBox(
+      Math.round(old9Red.x),
+      Math.round(old9Red.y),
+      old9Red.w,
+      old9Red.h,
+      "#c43b32",
+      "#9a2a24",
+      "#6a1814"
+    );
+  }
+
   function drawBlue() {
     for (var i = 0; i < blueCrates.length; i++) {
       var box = blueCrates[i];
@@ -1508,7 +2246,17 @@
       ctx.closePath();
       ctx.fill();
     }
-    if (stage === 8) {
+    if (stage === 8 && old8FloorGone && holes[2]) {
+      var goneX = holes[2].x + holes[2].w;
+      ctx.fillStyle = "#1c2228";
+      ctx.fillRect(
+        goneX,
+        L.pathY,
+        L.pathX + L.pathW - goneX,
+        L.pathH + 8
+      );
+    }
+    if (stage === 11) {
       var platforms = stage8Platforms(L);
       for (var pi = 0; pi < platforms.length; pi++) {
         if (!s8VanishedPlatforms[pi]) continue;
@@ -1524,6 +2272,18 @@
   }
 
   function drawButton(L) {
+    var oldButton = originalStage8Button(L);
+    if (oldButton) {
+      ctx.fillStyle = "#c43b32";
+      ctx.fillRect(oldButton.x, oldButton.y, oldButton.w, oldButton.h);
+      ctx.fillStyle = "#e25a4f";
+      ctx.fillRect(
+        oldButton.x + 2,
+        oldButton.y + 2,
+        oldButton.w - 4,
+        Math.max(2, oldButton.h * 0.4)
+      );
+    }
     var buttons = stage8RedButtons(L);
     for (var i = 0; i < buttons.length; i++) {
       var btn = buttons[i];
@@ -1536,7 +2296,7 @@
   }
 
   function drawStage8SpikeRain(L) {
-    if (stage !== 8 || !s8SpikeRain.active) return;
+    if (stage !== 11 || !s8SpikeRain.active) return;
     var pitch = Math.max(11, Math.round(H * 0.026));
     var spikeW = Math.max(9, Math.round(pitch * 0.78));
     var right = L.pathX + L.pathW;
@@ -1583,6 +2343,114 @@
     ctx.fillRect(box.x + 5, box.y + 8, box.w - 10, box.h - 8);
   }
 
+  function drawTrapSpikeRows(L) {
+    var pitch = Math.max(11, Math.round(H * 0.026));
+    var spikeW = Math.max(9, Math.round(pitch * 0.78));
+    for (var i = 0; i < trapSpikeRows.length; i++) {
+      var row = trapSpikeRows[i];
+      for (var x = L.pathX; x < L.pathX + L.pathW; x += pitch) {
+        var cx = x + spikeW * 0.5;
+        if (cx >= row.gapX && cx <= row.gapX + row.gapW) continue;
+        ctx.fillStyle = "#30343a";
+        ctx.beginPath();
+        ctx.moveTo(x, row.y);
+        ctx.lineTo(x + spikeW, row.y);
+        ctx.lineTo(x + spikeW * 0.5, row.y + row.h);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#555b63";
+        ctx.beginPath();
+        ctx.moveTo(x + spikeW * 0.5, row.y);
+        ctx.lineTo(x + spikeW, row.y);
+        ctx.lineTo(x + spikeW * 0.5, row.y + row.h);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawTrapPlayback() {
+    var L = layout();
+    ctx.save();
+    if (trapShake > 0) {
+      ctx.translate(
+        (Math.random() - 0.5) * trapShake,
+        (Math.random() - 0.5) * trapShake
+      );
+    }
+    drawSky();
+    ctx.fillStyle = "#4a525a";
+    ctx.fillRect(0, L.pathY, W, H - L.pathY);
+    ctx.fillStyle = "#8d9196";
+    ctx.fillRect(L.pathX, L.pathY, L.pathW, L.pathH);
+    ctx.fillStyle = "#9aa0a6";
+    ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
+
+    var i;
+    for (i = 0; i < trapWoods.length; i++) {
+      var wood = trapWoods[i];
+      drawWoodBox(
+        wood.x,
+        wood.y,
+        wood.w,
+        wood.h,
+        "#8a5a2b",
+        "#6d441e",
+        "#4a2e12"
+      );
+    }
+    for (i = 0; i < trapGreens.length; i++) {
+      var greenBox = trapGreens[i];
+      drawWoodBox(
+        greenBox.x,
+        greenBox.y,
+        greenBox.w,
+        greenBox.h,
+        "#3d9a4a",
+        "#2d7336",
+        "#1d4f24"
+      );
+    }
+    for (i = 0; i < trapReds.length; i++) {
+      var redBox = trapReds[i];
+      drawWoodBox(
+        redBox.x,
+        redBox.y,
+        redBox.w,
+        redBox.h,
+        "#c43b32",
+        "#9a2a24",
+        "#6a1814"
+      );
+    }
+    for (i = 0; i < trapBlues.length; i++) {
+      var blueBox = trapBlues[i];
+      drawWoodBox(
+        blueBox.x,
+        blueBox.y,
+        blueBox.w,
+        blueBox.h,
+        "#287cc4",
+        "#1d5f99",
+        "#123f6b"
+      );
+    }
+    drawTrapSpikeRows(L);
+    ctx.fillStyle = "#111214";
+    ctx.fillRect(
+      Math.round(trapPlayer.x),
+      Math.round(trapPlayer.y),
+      trapPlayer.w,
+      trapPlayer.h
+    );
+    ctx.restore();
+    if (trapDead) {
+      ctx.fillStyle =
+        "rgba(120, 8, 8, " + Math.min(0.45, trapDeadT * 1.2) + ")";
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
   function draw() {
     var L = layout();
     ctx.save();
@@ -1593,9 +2461,9 @@
     drawFloor(L);
 
     var door = portalBox(L);
-    if (stage !== 8 || s8Phase === 8) {
+    if (stage !== 11 || s8Phase === 8) {
       ctx.save();
-      if (stage === 9 && portalSide === "left" && !s9RoundUnlocked) {
+      if (stage === 10 && portalSide === "left" && !s9RoundUnlocked) {
         ctx.globalAlpha = 0.18;
       }
       ctx.fillStyle = "#6b6f74";
@@ -1611,14 +2479,15 @@
     drawAirGreens();
     drawGrey();
     drawRed();
+    drawOriginalStage9Red();
     drawBlue();
     drawButton(L);
     drawStage8SpikeRain(L);
-    if (stage === 8) drawStage8Progress(L);
+    if (stage === 11) drawStage8Progress(L);
 
     ctx.fillStyle = "#111214";
     ctx.fillRect(Math.round(player.x), Math.round(player.y), player.w, player.h);
-    canvas.style.cursor = stage === 10 ? (drag.on ? "grabbing" : "grab") : "";
+    canvas.style.cursor = stage === 12 ? (drag.on ? "grabbing" : "grab") : "";
 
     ctx.restore();
 
@@ -1636,8 +2505,13 @@
     if (!running) return;
     var dt = lastTs ? Math.min(0.033, (ts - lastTs) / 1000) : 0.016;
     lastTs = ts;
-    update(dt);
-    draw();
+    if (trapMode === "play") {
+      updateTrapPlayback(dt);
+      drawTrapPlayback();
+    } else {
+      if (trapMode === "off") update(dt);
+      draw();
+    }
     rafId = window.requestAnimationFrame(frame);
   }
 
@@ -1773,8 +2647,55 @@
     }
   }
 
+  function isTypingTarget(target) {
+    if (!target) return false;
+    var tag = String(target.tagName || "").toLowerCase();
+    return tag === "input" || tag === "textarea" || !!target.isContentEditable;
+  }
+
+  function updateTrapChord(e) {
+    if (e.repeat || isTypingTarget(e.target)) return false;
+    var expected = ["KeyF", "KeyC", "KeyF"];
+    if (e.code === expected[trapChordIndex]) {
+      trapChordIndex += 1;
+    } else {
+      trapChordIndex = e.code === "KeyF" ? 1 : 0;
+    }
+    if (trapChordIndex === expected.length) {
+      openTrapBuilder();
+      return true;
+    }
+    return e.code === "KeyF" || e.code === "KeyC";
+  }
+
   function onKeyDown(e) {
     if (!running) return;
+    if (trapMode === "editor") {
+      if (e.code === "Escape") {
+        closeTrapBuilder();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
+    if (trapMode === "play") {
+      if (e.code === "Escape") {
+        closeTrapBuilder();
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (e.code === "Space" && e.repeat) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (setKey(e.code, true)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
     if (settingsOpen) {
       if (e.code === "KeyP") {
         closeSettings();
@@ -1818,6 +2739,11 @@
       }
       return;
     }
+    if (updateTrapChord(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (e.code === "KeyP") {
       openSettings();
       e.preventDefault();
@@ -1843,6 +2769,14 @@
 
   function onKeyUp(e) {
     if (!running) return;
+    if (trapMode === "editor") return;
+    if (trapMode === "play") {
+      if (setKey(e.code, false)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
     if (selectOpen || settingsOpen) return;
     if (setKey(e.code, false)) {
       e.preventDefault();
@@ -1894,6 +2828,7 @@
   function start() {
     showViews();
     resize();
+    closeTrapBuilder();
     entering = false;
     fade = 0;
     fadeDir = 0;
@@ -1931,7 +2866,8 @@
   function onCanvasPointerDown(e) {
     if (
       !running ||
-      stage !== 10 ||
+      trapMode !== "off" ||
+      stage !== 12 ||
       dead ||
       entering ||
       selectOpen ||
@@ -1969,6 +2905,7 @@
     rafId = 0;
     keys.left = keys.right = keys.jump = false;
     endDrag();
+    closeTrapBuilder();
     closeSelect();
     closeSettings();
     hideViews();
@@ -1982,13 +2919,13 @@
   if (restartBtn) {
     restartBtn.addEventListener("click", function (e) {
       e.preventDefault();
-      if (running && !entering) setStage(stage);
+      if (running && !entering && trapMode === "off") setStage(stage);
     });
   }
   if (firstBtn) {
     firstBtn.addEventListener("click", function (e) {
       e.preventDefault();
-      if (running && !entering) setStage(1);
+      if (running && !entering && trapMode === "off") setStage(1);
     });
   }
   if (selectChoicesEl) {
@@ -2007,6 +2944,55 @@
       e.preventDefault();
       openDoubleJumpPassword();
     });
+  }
+  if (trapBuilderPaletteEl) {
+    trapBuilderPaletteEl.addEventListener("click", function (e) {
+      var card = e.target.closest("[data-trap-kind]");
+      if (!card || trapMode !== "editor") return;
+      addTrapTimelineItem(card.getAttribute("data-trap-kind"));
+    });
+  }
+  if (trapBuilderTimelineEl) {
+    trapBuilderTimelineEl.addEventListener("click", function (e) {
+      if (e.target.closest(".trap-timeline-interval")) return;
+      var arrow = e.target.closest("[data-trap-arrow]");
+      if (!arrow || trapMode !== "editor") return;
+      editTrapTimelineDelay(
+        arrow,
+        parseInt(arrow.getAttribute("data-trap-arrow"), 10)
+      );
+    });
+    trapBuilderTimelineEl.addEventListener("keydown", function (e) {
+      if (!e.target.classList.contains("trap-timeline-interval")) return;
+      if (e.code === "Enter") {
+        commitTrapTimelineDelay(e.target);
+        e.preventDefault();
+      } else if (e.code === "Escape") {
+        renderTrapTimeline();
+        e.preventDefault();
+      }
+    });
+    trapBuilderTimelineEl.addEventListener("focusout", function (e) {
+      if (e.target.classList.contains("trap-timeline-interval")) {
+        commitTrapTimelineDelay(e.target);
+      }
+    });
+  }
+  if (trapBuilderClearEl) {
+    trapBuilderClearEl.addEventListener("click", function () {
+      if (trapMode !== "editor") return;
+      trapTimeline = [];
+      renderTrapTimeline();
+    });
+  }
+  if (trapBuilderStartEl) {
+    trapBuilderStartEl.addEventListener("click", startTrapPlayback);
+  }
+  if (trapPlaybackReplayEl) {
+    trapPlaybackReplayEl.addEventListener("click", startTrapPlayback);
+  }
+  if (trapPlaybackEditEl) {
+    trapPlaybackEditEl.addEventListener("click", showTrapEditor);
   }
   canvas.addEventListener("pointerdown", onCanvasPointerDown);
   canvas.addEventListener("pointermove", onCanvasPointerMove);

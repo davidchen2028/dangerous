@@ -208,6 +208,43 @@
               </div>
             </div>
           </div>
+          <section class="trap-builder" id="trapBuilder" hidden aria-label="自定义陷阱时间线">
+            <div class="trap-builder__palette" id="trapBuilderPalette">
+              <button type="button" class="trap-card trap-card--wood" data-trap-kind="wood">
+                <span class="trap-card__preview" aria-hidden="true"></span>
+                <span>木箱</span>
+              </button>
+              <button type="button" class="trap-card trap-card--green" data-trap-kind="green">
+                <span class="trap-card__preview" aria-hidden="true"></span>
+                <span>绿箱</span>
+              </button>
+              <button type="button" class="trap-card trap-card--red" data-trap-kind="red">
+                <span class="trap-card__preview" aria-hidden="true"></span>
+                <span>红箱</span>
+              </button>
+              <button type="button" class="trap-card trap-card--blue" data-trap-kind="blue">
+                <span class="trap-card__preview" aria-hidden="true"></span>
+                <span>蓝箱</span>
+              </button>
+              <button type="button" class="trap-card trap-card--spikes" data-trap-kind="spikes">
+                <span class="trap-card__preview" aria-hidden="true"></span>
+                <span>刺雨</span>
+              </button>
+            </div>
+            <div class="trap-builder__actions">
+              <button type="button" class="trap-builder__clear" id="trapBuilderClear">清空</button>
+              <button type="button" class="trap-builder__start" id="trapBuilderStart" disabled>START</button>
+            </div>
+            <div class="trap-builder__timeline-wrap">
+              <p class="trap-builder__empty" id="trapBuilderEmpty">点击左上角卡片，设置出场顺序</p>
+              <div class="trap-builder__timeline" id="trapBuilderTimeline"></div>
+            </div>
+            <p class="trap-builder__hint">点击箭头设置间隔 · 留空默认 0.75 秒 · Esc 返回关卡</p>
+          </section>
+          <div class="trap-playback-controls" id="trapPlaybackControls" hidden>
+            <button type="button" id="trapPlaybackReplay">重新播放</button>
+            <button type="button" id="trapPlaybackEdit">返回编辑</button>
+          </div>
         </div>
       </div>
     </div>
@@ -488,7 +525,7 @@
   <script src="js/tutorial-progress.js?v=2"></script>
   <script src="js/lobby-ui.js?v=21"></script>
   <script src="js/password-minigame.js?v=8"></script>
-  <script src="js/platform-minigame.js?v=22"></script>
+  <script src="js/platform-minigame.js?v=24"></script>
   <script src="js/item-catalog.js?v=41"></script>
   <script src="js/grid-inventory.js?v=5"></script>
   <script src="js/grid-stash-ui.js?v=27"></script>
