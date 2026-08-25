@@ -47,7 +47,30 @@
   var airJumps = 0;
   var doubleJumpEnabled = false;
   var settingsOpen = false;
-  var player = { x: 0, y: 0, w: 22, h: 34, vx: 0, vy: 0, onGround: false };
+  var player = {
+    x: 0, y: 0, w: 22, h: 34, vx: 0, vy: 0, onGround: false,
+    facing: 1, anim: "idle", animT: 0, walkPhase: 0
+  };
+  var playerSprites = {
+    idle: new Image(),
+    walkA: new Image(),
+    walkB: new Image(),
+    jump: new Image(),
+    loaded: 0,
+    allLoaded: false
+  };
+  function markSpriteLoaded() {
+    playerSprites.loaded += 1;
+    if (playerSprites.loaded >= 4) playerSprites.allLoaded = true;
+  }
+  playerSprites.idle.onload = markSpriteLoaded;
+  playerSprites.walkA.onload = markSpriteLoaded;
+  playerSprites.walkB.onload = markSpriteLoaded;
+  playerSprites.jump.onload = markSpriteLoaded;
+  playerSprites.idle.src = "img/platform-player/character_beige_idle.png";
+  playerSprites.walkA.src = "img/platform-player/character_beige_walk_a.png";
+  playerSprites.walkB.src = "img/platform-player/character_beige_walk_b.png";
+  playerSprites.jump.src = "img/platform-player/character_beige_jump.png";
   var spike = { armed: false, maxH: 18 };
   var spikeStates = [];
   var crack = { armed: false, open: false };
@@ -122,6 +145,10 @@
     vx: 0,
     vy: 0,
     onGround: false,
+    facing: 1,
+    anim: "idle",
+    animT: 0,
+    walkPhase: 0,
   };
   var trapAirJumps = 0;
   var trapWoods = [];
