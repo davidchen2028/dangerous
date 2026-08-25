@@ -2463,13 +2463,7 @@
       );
     }
     drawTrapSpikeRows(L);
-    ctx.fillStyle = "#111214";
-    ctx.fillRect(
-      Math.round(trapPlayer.x),
-      Math.round(trapPlayer.y),
-      trapPlayer.w,
-      trapPlayer.h
-    );
+    drawCharacter(trapPlayer);
     ctx.restore();
     if (trapDead) {
       ctx.fillStyle =
@@ -2562,8 +2556,7 @@
     drawStage8SpikeRain(L);
     if (stage === 11) drawStage8Progress(L);
 
-    ctx.fillStyle = "#111214";
-    ctx.fillRect(Math.round(player.x), Math.round(player.y), player.w, player.h);
+    drawCharacter(player);
     canvas.style.cursor = stage === 12 ? (drag.on ? "grabbing" : "grab") : "";
 
     ctx.restore();
