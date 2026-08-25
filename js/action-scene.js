@@ -163,6 +163,12 @@ if (typeof window !== "undefined") {
     if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.getPreloadUrls) {
       urls = urls.concat(window.CollectionRoomFloorLoot.getPreloadUrls());
     }
+    if (
+      window.PresidentOfficeFloorLoot &&
+      window.PresidentOfficeFloorLoot.getPreloadUrls
+    ) {
+      urls = urls.concat(window.PresidentOfficeFloorLoot.getPreloadUrls());
+    }
     if (window.ActionDropLoot && window.ActionDropLoot.getPreloadUrls) {
       urls = urls.concat(window.ActionDropLoot.getPreloadUrls());
     }
@@ -2329,6 +2335,16 @@ if (typeof window !== "undefined") {
     buildTestNorthRearHouseShell(parent, house);
     if (window.PresidentOfficeChests && window.PresidentOfficeChests.build) {
       window.PresidentOfficeChests.build(
+        parent,
+        getWaitingHallGltfHelpers(),
+        house
+      );
+    }
+    if (
+      window.PresidentOfficeFloorLoot &&
+      window.PresidentOfficeFloorLoot.build
+    ) {
+      window.PresidentOfficeFloorLoot.build(
         parent,
         getWaitingHallGltfHelpers(),
         house
@@ -5102,6 +5118,12 @@ if (typeof window !== "undefined") {
       ) {
         return true;
       }
+      if (
+        window.PresidentOfficeFloorLoot &&
+        window.PresidentOfficeFloorLoot.tryPickup(pos.x, pos.z)
+      ) {
+        return true;
+      }
       if (window.ActionWasteBin) {
         if (camera && window.ActionWasteBin.updateAim) {
           window.ActionWasteBin.updateAim(pos.x, pos.z, camera);
@@ -5299,6 +5321,16 @@ if (typeof window !== "undefined") {
         setInteractHintVisible(true);
         if (interactHintEl) {
           interactHintEl.textContent = formatInteractHint("按 E 拾取");
+        }
+        return;
+      }
+      if (
+        window.PresidentOfficeFloorLoot &&
+        window.PresidentOfficeFloorLoot.shouldShowPickupHint(pos.x, pos.z)
+      ) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = formatInteractHint("按 E 拾取总统府产品");
         }
         return;
       }
@@ -6884,6 +6916,12 @@ if (typeof window !== "undefined") {
     if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.resetForNewRun) {
       window.CollectionRoomFloorLoot.resetForNewRun();
     }
+    if (
+      window.PresidentOfficeFloorLoot &&
+      window.PresidentOfficeFloorLoot.resetForNewRun
+    ) {
+      window.PresidentOfficeFloorLoot.resetForNewRun();
+    }
     if (window.ActionDropLoot && window.ActionDropLoot.resetForNewRun) {
       window.ActionDropLoot.resetForNewRun();
     }
@@ -6996,6 +7034,12 @@ if (typeof window !== "undefined") {
     }
     if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.resetForNewRun) {
       window.CollectionRoomFloorLoot.resetForNewRun();
+    }
+    if (
+      window.PresidentOfficeFloorLoot &&
+      window.PresidentOfficeFloorLoot.resetForNewRun
+    ) {
+      window.PresidentOfficeFloorLoot.resetForNewRun();
     }
     if (window.ActionDropLoot && window.ActionDropLoot.resetForNewRun) {
       window.ActionDropLoot.resetForNewRun();
