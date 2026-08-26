@@ -2629,14 +2629,15 @@
     ctx.drawImage(img, 0, 0, sw, sh, x, y, w, h);
   }
 
-  // The surface sprite has a 2px framing border on both sides. Crop it out
-  // while keeping the top edge, so repeated grass tiles touch without gaps.
+  // The surface sprite has a 2px framing border on its sides and bottom.
+  // Crop those edges while keeping the top edge, so grass and dirt meet cleanly.
   function drawSurfaceStrip(x, y, w, h) {
     var img = sceneSprites.surface;
     var sw = img.naturalWidth || 18;
     var sh = img.naturalHeight || 18;
     var sourceX = Math.min(2, Math.max(0, sw - 1));
     var sourceW = Math.max(1, sw - sourceX * 2);
+    var sourceH = Math.max(1, sh - 2);
     var step = 36;
     x = Math.round(x);
     y = Math.round(y);
@@ -2644,7 +2645,7 @@
     h = Math.round(h);
     for (var tx = x; tx < x + w; tx += step) {
       var rw = Math.min(step, x + w - tx);
-      ctx.drawImage(img, sourceX, 0, sourceW, sh, tx, y, rw, h);
+      ctx.drawImage(img, sourceX, 0, sourceW, sourceH, tx, y, rw, h);
     }
   }
 
