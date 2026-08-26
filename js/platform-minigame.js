@@ -121,7 +121,7 @@
   sceneSprites.plank.src = "img/platform-scene/block_plank.png";
   sceneSprites.green.src = "img/platform-scene/block_green.png";
   sceneSprites.red.src = "img/platform-scene/block_red.png";
-  sceneSprites.redSlime.src = "img/platform-scene/slime_fire_walk_b.svg";
+  sceneSprites.redSlime.src = "img/platform-scene/slime_fire_walk_a.svg";
   sceneSprites.blue.src = "img/platform-scene/block_blue.png";
   sceneSprites.plant124.src = "img/platform-scene/tile_0124.png";
   sceneSprites.plant125.src = "img/platform-scene/tile_0125.png";
