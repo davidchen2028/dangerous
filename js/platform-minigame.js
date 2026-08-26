@@ -2318,9 +2318,7 @@
   function drawFloor(L) {
     if (sceneSprites.allLoaded) {
       drawTile(sceneSprites.brickBrown, 0, L.pathY, W, H - L.pathY, { fit: "tile", step: 36 });
-      drawTile(sceneSprites.surface, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile", step: 36 });
-      ctx.fillStyle = "#9aa0a6";
-      ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
+      drawTile(sceneSprites.surface, L.pathX, L.pathY, L.pathW, 36, { fit: "tile", step: 36 });
     } else {
       ctx.fillStyle = "#4a525a";
       ctx.fillRect(0, L.pathY, W, H - L.pathY);
@@ -2488,7 +2486,7 @@
       ctx.fillRect(0, L.pathY, W, H - L.pathY);
     }
     if (sceneSprites.allLoaded) {
-      drawTile(sceneSprites.surface, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile", step: 36 });
+      drawTile(sceneSprites.surface, L.pathX, L.pathY, L.pathW, 36, { fit: "tile", step: 36 });
     } else {
       ctx.fillStyle = "#8d9196";
       ctx.fillRect(L.pathX, L.pathY, L.pathW, L.pathH);
