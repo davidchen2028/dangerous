@@ -92,13 +92,12 @@
     blue: new Image(),
     plant124: new Image(),
     plant125: new Image(),
-    plant128: new Image(),
     loaded: 0,
     allLoaded: false
   };
   function markSceneLoaded() {
     sceneSprites.loaded += 1;
-    if (sceneSprites.loaded >= 12) sceneSprites.allLoaded = true;
+    if (sceneSprites.loaded >= 11) sceneSprites.allLoaded = true;
   }
   function markSceneError() {
     if (typeof console !== "undefined" && console.warn) {
@@ -108,7 +107,7 @@
   [sceneSprites.sky, sceneSprites.brick, sceneSprites.brickBrown,
    sceneSprites.surface, sceneSprites.spikes, sceneSprites.plank,
    sceneSprites.green, sceneSprites.red, sceneSprites.blue,
-   sceneSprites.plant124, sceneSprites.plant125, sceneSprites.plant128
+   sceneSprites.plant124, sceneSprites.plant125
   ].forEach(function (img) {
     img.onload = markSceneLoaded;
     img.onerror = markSceneError;
@@ -124,7 +123,6 @@
   sceneSprites.blue.src = "img/platform-scene/block_blue.png";
   sceneSprites.plant124.src = "img/platform-scene/tile_0124.png";
   sceneSprites.plant125.src = "img/platform-scene/tile_0125.png";
-  sceneSprites.plant128.src = "img/platform-scene/tile_0128.png";
   var spike = { armed: false, maxH: 18 };
   var spikeStates = [];
   var crack = { armed: false, open: false };
@@ -256,18 +254,18 @@
 
   // Fixed decorative groups keep the route readable and avoid each stage's hazards.
   var SURFACE_PLANTS = {
-    1: [[0.16, "124"], [0.21, "125"], [0.42, "128"], [0.68, "124"], [0.73, "125"]],
-    2: [[0.11, "124"], [0.16, "125"], [0.35, "128"], [0.68, "124"], [0.73, "128"]],
-    3: [[0.11, "125"], [0.16, "124"], [0.38, "128"], [0.63, "124"], [0.84, "125"]],
-    4: [[0.11, "124"], [0.17, "125"], [0.38, "128"], [0.68, "124"], [0.84, "128"]],
-    5: [[0.11, "125"], [0.17, "124"], [0.38, "128"], [0.68, "125"], [0.84, "124"]],
-    6: [[0.11, "124"], [0.17, "128"], [0.38, "125"], [0.64, "124"], [0.82, "128"]],
-    7: [[0.10, "124"], [0.16, "125"], [0.37, "128"], [0.63, "124"], [0.85, "125"]],
-    8: [[0.10, "125"], [0.34, "124"], [0.73, "128"], [0.84, "124"]],
-    9: [[0.11, "124"], [0.19, "125"], [0.38, "128"], [0.68, "124"], [0.84, "125"]],
-    10: [[0.11, "125"], [0.19, "124"], [0.38, "128"], [0.68, "125"], [0.84, "128"]],
-    11: [[0.10, "124"], [0.34, "125"], [0.73, "128"], [0.84, "124"]],
-    12: [[0.09, "124"], [0.17, "125"], [0.83, "128"], [0.91, "124"]],
+    1: [[0.16, "124"], [0.21, "125"], [0.68, "124"], [0.73, "125"]],
+    2: [[0.11, "124"], [0.16, "125"], [0.35, "124"], [0.68, "124"]],
+    3: [[0.11, "125"], [0.16, "124"], [0.38, "125"], [0.63, "124"], [0.84, "125"]],
+    4: [[0.11, "124"], [0.17, "125"], [0.38, "124"], [0.68, "124"]],
+    5: [[0.11, "125"], [0.17, "124"], [0.38, "124"], [0.68, "125"], [0.84, "124"]],
+    6: [[0.11, "124"], [0.17, "124"], [0.38, "125"], [0.64, "124"]],
+    7: [[0.10, "124"], [0.16, "125"], [0.37, "124"], [0.63, "124"], [0.85, "125"]],
+    8: [[0.10, "125"], [0.34, "124"], [0.84, "124"]],
+    9: [[0.11, "124"], [0.19, "125"], [0.38, "124"], [0.68, "124"], [0.84, "125"]],
+    10: [[0.11, "125"], [0.19, "124"], [0.38, "124"], [0.68, "125"]],
+    11: [[0.10, "124"], [0.34, "125"], [0.84, "124"]],
+    12: [[0.09, "124"], [0.17, "125"], [0.83, "124"], [0.91, "124"]],
   };
 
   function surfacePlants() {
@@ -2408,15 +2406,14 @@
     var images = {
       "124": sceneSprites.plant124,
       "125": sceneSprites.plant125,
-      "128": sceneSprites.plant128,
     };
     for (var i = 0; i < plants.length; i++) {
       var item = plants[i];
       var img = images[item[1]];
       if (!img || !img.complete || !img.naturalWidth) continue;
-      var size = Math.max(28, Math.round(H * 0.075));
+      var size = Math.max(20, Math.round(H * 0.045));
       var x = Math.round(L.pathX + L.pathW * item[0] - size * 0.5);
-      var y = Math.round(L.pathY - size * 0.34);
+      var y = Math.round(L.pathY - size);
       ctx.save();
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(img, x, y, size, size);
