@@ -2475,8 +2475,8 @@
     ctx.save();
     if (trapShake > 0) {
       ctx.translate(
-        (Math.random() - 0.5) * trapShake,
-        (Math.random() - 0.5) * trapShake
+        Math.round((Math.random() - 0.5) * trapShake),
+        Math.round((Math.random() - 0.5) * trapShake)
       );
     }
     drawSky();
@@ -2659,7 +2659,10 @@
     var L = layout();
     ctx.save();
     if (shake > 0) {
-      ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+      ctx.translate(
+        Math.round((Math.random() - 0.5) * shake),
+        Math.round((Math.random() - 0.5) * shake)
+      );
     }
     drawSky();
     drawFloor(L);
