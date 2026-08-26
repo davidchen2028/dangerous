@@ -2306,7 +2306,7 @@
     for (var i = 0; i < airGreenCrates.length; i++) {
       var box = airGreenCrates[i];
       drawWoodBox(
-        sceneSprites.green,
+        sceneSprites.spikes,
         Math.round(box.x),
         Math.round(box.y),
         box.w,
