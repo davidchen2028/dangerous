@@ -3,11 +3,12 @@
  * 1 蓝箱演示 → 2 三刺挤一起 → 3 前中后三刺 → 4 中间裂开 → 5 裂开 + 木箱
  * → 6 门搬家 + 绿箱 → 7 前中后三缝 → 8 原三缝陷阱 → 9 原中刺变缝
  * → 10 双向升级版中刺变缝 → 11 三缝四波陷阱
- * → 12 巨大缝，鼠标拖到门边再走进去。
+ * → 12 巨大缝，鼠标拖到门边再走进去
+ * → 13 平地随机炼狱，强度超过第 11 关后出现出口。
  * 死亡只重开当前关。刷新保留关卡进度，左上角可回第一关。
  */
 (function () {
-  var STAGE_COUNT = 12;
+  var STAGE_COUNT = 13;
   var STAGE_KEY = "jiwei_minigame2_stage";
   var STAGE_LAYOUT_KEY = "jiwei_minigame2_stage_layout_v2";
   var DOUBLE_JUMP_KEY = "jiwei_minigame2_double_jump";
@@ -192,6 +193,18 @@
   var redCrates = [];
   var airGreenCrates = [];
   var blueCrates = [];
+  var s13 = {
+    wave: 0,
+    peakBudget: 0,
+    queue: [],
+    spawnTimer: -1,
+    intermission: 0,
+    doorState: "locked",
+    doorTimer: 0,
+    rainCooldown: 0,
+    spikes: [],
+    gaps: [],
+  };
   var selectOpen = false;
   var trapChordIndex = 0;
   var trapMode = "off";
@@ -241,6 +254,7 @@
     "第 10 关 · 双向中刺变缝",
     "第 11 关 · 三缝四波陷阱",
     "第 12 关 · 大缝",
+    "第 13 关 · 随机炼狱",
   ];
   var drag = { on: false, ox: 0, oy: 0 };
   var fade = 0;
@@ -353,11 +367,18 @@
 
   function listGaps(L) {
     var slots = gapSlots();
-    return slots.map(function (t, i) {
+    var result = slots.map(function (t, i) {
       var box = gapBoxAt(L, t);
       box.open = !!(gapStates[i] && gapStates[i].open);
       return box;
     });
+    if (stage === 13) {
+      for (var i = 0; i < s13.gaps.length; i++) {
+        var gap = s13.gaps[i];
+        result.push({ x: gap.x, w: gap.w, open: gap.warning <= 0 });
+      }
+    }
+    return result;
   }
 
   function gapBox(L) {
@@ -474,7 +495,7 @@
     grey.vx = 0;
     drag.on = false;
     crack.armed = stage >= 4 && stage <= 12;
-    crack.open = stage === 8 || stage === 11 || stage === 12;
+    crack.open = stage === 8 || stage === 11 || stage === 12 || stage === 13;
     gapStates = gapSlots().map(function () {
       return { open: stage === 8 || stage === 11 || stage === 12 };
     });
@@ -510,6 +531,7 @@
     redCrates = [];
     airGreenCrates = [];
     blueCrates = [];
+    resetStage13();
     if (stage === 1) spawnBlue(L, -1);
     if (stage === 11) {
       startStage8Wave(1);
@@ -521,6 +543,7 @@
       spike.armed = true;
       spikeStates = [{ shown: true, h: spike.maxH }];
     }
+    if (stage === 13) startStage13Wave(1);
   }
 
   function spawnCrate(L, dir) {
@@ -798,6 +821,285 @@
       s8SpikeRain.active = false;
       s8SpikeRain.done = true;
       shake = 7;
+    }
+  }
+
+  var STAGE13_WAVE_BUDGETS = [12, 20, 28, 38, 60];
+  var STAGE13_COSTS = {
+    spike: 2,
+    gap: 4,
+    green: 2,
+    red: 2,
+    blue: 2,
+    rain: 10,
+  };
+
+  function resetStage13() {
+    s13.wave = 0;
+    s13.peakBudget = 0;
+    s13.queue = [];
+    s13.spawnTimer = -1;
+    s13.intermission = 0;
+    s13.doorState = "locked";
+    s13.doorTimer = 0;
+    s13.rainCooldown = 0;
+    s13.spikes = [];
+    s13.gaps = [];
+  }
+
+  function makeStage13Wave(wave) {
+    var budget = STAGE13_WAVE_BUDGETS[wave - 1] || 60;
+    var left = budget;
+    var queue = [];
+    var choices = ["spike", "green", "red", "blue", "gap", "gap", "gap"];
+    if (wave >= 3) choices.push("rain");
+    while (left >= 2) {
+      var kind = choices[Math.floor(Math.random() * choices.length)];
+      var cost = STAGE13_COSTS[kind];
+      if (cost > left || (kind === "rain" && queue.indexOf("rain") >= 0)) {
+        kind = "spike";
+        cost = STAGE13_COSTS.spike;
+      }
+      queue.push(kind);
+      left -= cost;
+    }
+    return queue;
+  }
+
+  function startStage13Wave(wave) {
+    s13.wave = wave;
+    s13.peakBudget = Math.max(
+      s13.peakBudget,
+      STAGE13_WAVE_BUDGETS[wave - 1] || 60
+    );
+    s13.queue = makeStage13Wave(wave);
+    s13.spawnTimer = 0.75;
+    s13.intermission = 0;
+  }
+
+  function stage13SafeX(L, w) {
+    var startSafe = L.pathX + L.pathW * 0.13;
+    var endSafe = L.pathX + L.pathW * 0.87;
+    for (var attempt = 0; attempt < 18; attempt++) {
+      var x =
+        startSafe + Math.random() * Math.max(1, endSafe - startSafe - w);
+      var playerPad = player.w * 2.4;
+      if (
+        x + w > player.x - playerPad &&
+        x < player.x + player.w + playerPad
+      ) {
+        continue;
+      }
+      var blocked = false;
+      for (var i = 0; i < s13.gaps.length; i++) {
+        if (
+          x + w + player.w > s13.gaps[i].x &&
+          x < s13.gaps[i].x + s13.gaps[i].w + player.w
+        ) {
+          blocked = true;
+          break;
+        }
+      }
+      for (i = 0; i < s13.spikes.length && !blocked; i++) {
+        if (
+          x + w + player.w > s13.spikes[i].x &&
+          x < s13.spikes[i].x + s13.spikes[i].w + player.w
+        ) {
+          blocked = true;
+        }
+      }
+      if (!blocked) return x;
+    }
+    return null;
+  }
+
+  function spawnStage13Hazard(L, kind) {
+    if (kind === "red") {
+      spawnRed(L, Math.random() < 0.5 ? -1 : 1);
+      return;
+    }
+    if (kind === "blue") {
+      spawnBlue(L, Math.random() < 0.5 ? -1 : 1);
+      return;
+    }
+    if (kind === "green") {
+      spawnAirGreen(L);
+      return;
+    }
+    if (kind === "rain") {
+      if (!s8SpikeRain.active) startStage8SpikeRain(L);
+      return;
+    }
+    if (kind === "gap") {
+      if (s13.gaps.length >= 2) return;
+      var gapW = Math.max(28, Math.round(player.w * 1.42));
+      var gapX = stage13SafeX(L, gapW);
+      if (gapX != null) {
+        s13.gaps.push({
+          x: gapX,
+          w: gapW,
+          warning: 0.65,
+          life: 3.2 + Math.random() * 1.8,
+        });
+      }
+      return;
+    }
+    var spikeW = Math.max(18, Math.round(player.w * (0.9 + Math.random())));
+    var spikeX = stage13SafeX(L, spikeW);
+    if (spikeX != null) {
+      s13.spikes.push({
+        x: spikeX,
+        w: spikeW,
+        h: 0,
+        warning: 0.58,
+        life: 2.2 + Math.random() * 1.4,
+        retracting: false,
+      });
+    }
+  }
+
+  function updateStage13Spikes(dt, L) {
+    var kept = [];
+    for (var i = 0; i < s13.spikes.length; i++) {
+      var item = s13.spikes[i];
+      if (item.warning > 0) {
+        item.warning -= dt;
+        kept.push(item);
+        continue;
+      }
+      item.life -= dt;
+      if (item.life <= 0) item.retracting = true;
+      if (item.retracting) {
+        item.h = Math.max(0, item.h - spike.maxH * dt * 6);
+      } else {
+        item.h = Math.min(spike.maxH, item.h + spike.maxH * dt * 9);
+      }
+      if (
+        item.h > 6 &&
+        overlaps(player, {
+          x: item.x,
+          y: L.pathY - item.h,
+          w: item.w,
+          h: item.h,
+        })
+      ) {
+        die();
+        return;
+      }
+      if (item.h > 0 || !item.retracting) kept.push(item);
+    }
+    s13.spikes = kept;
+  }
+
+  function updateStage13Gaps(dt, L) {
+    var kept = [];
+    for (var i = 0; i < s13.gaps.length; i++) {
+      var gap = s13.gaps[i];
+      if (gap.warning > 0) {
+        var playerNear =
+          player.x + player.w > gap.x - 4 &&
+          player.x < gap.x + gap.w + 4;
+        if (playerNear) gap.warning = Math.max(gap.warning, 0.12);
+        else gap.warning -= dt;
+        kept.push(gap);
+        continue;
+      }
+      gap.life -= dt;
+      var overlapsGap =
+        player.x + player.w > gap.x && player.x < gap.x + gap.w;
+      if (gap.life > 0 || overlapsGap || player.y + player.h > L.pathY + 2) {
+        kept.push(gap);
+      }
+    }
+    s13.gaps = kept;
+  }
+
+  function stage13HazardsClear() {
+    return (
+      s13.queue.length === 0 &&
+      s13.spikes.length === 0 &&
+      s13.gaps.length === 0 &&
+      redCrates.length === 0 &&
+      airGreenCrates.length === 0 &&
+      blueCrates.length === 0 &&
+      !s8SpikeRain.active
+    );
+  }
+
+  function stage13BoxesClear() {
+    return (
+      redCrates.length === 0 &&
+      airGreenCrates.length === 0 &&
+      blueCrates.length === 0
+    );
+  }
+
+  function isStage13BoxKind(kind) {
+    return kind === "red" || kind === "green" || kind === "blue";
+  }
+
+  function updateStage13(dt, L) {
+    updateStage13Spikes(dt, L);
+    if (dead) return;
+    updateStage13Gaps(dt, L);
+    updateRed(dt, L);
+    if (dead) return;
+    updateAirGreen(dt, L);
+    if (dead) return;
+    updateBlue(dt, L);
+    if (dead) return;
+    var rainWasActive = s8SpikeRain.active;
+    var rainJustEnded = false;
+    updateStage8SpikeRain(dt, L);
+    if (dead) return;
+    if (rainWasActive && !s8SpikeRain.active && s8SpikeRain.done) {
+      s13.rainCooldown = 1;
+      rainJustEnded = true;
+    }
+    if (s8SpikeRain.active) return;
+    if (s13.rainCooldown > 0 && !rainJustEnded) {
+      s13.rainCooldown = Math.max(0, s13.rainCooldown - dt);
+    }
+
+    if (s13.doorState === "warning") {
+      s13.doorTimer -= dt;
+      if (s13.doorTimer <= 0) {
+        s13.doorState = "open";
+        shake = 8;
+      }
+      return;
+    }
+    if (s13.doorState === "open") return;
+
+    if (s13.queue.length > 0) {
+      s13.spawnTimer -= dt;
+      if (s13.spawnTimer <= 0) {
+        var nextKind = s13.queue[0];
+        // 刺雨只在所有箱子离场后触发；结束后一秒内禁止刷新新箱子。
+        if (nextKind === "rain" && !stage13BoxesClear()) {
+          s13.spawnTimer = 0.12;
+          return;
+        }
+        if (s13.rainCooldown > 0 && isStage13BoxKind(nextKind)) {
+          s13.spawnTimer = Math.min(0.12, s13.rainCooldown);
+          return;
+        }
+        spawnStage13Hazard(L, s13.queue.shift());
+        s13.spawnTimer = Math.max(0.38, 0.82 - s13.wave * 0.08);
+      }
+      return;
+    }
+    if (!stage13HazardsClear()) return;
+
+    if (s13.wave < STAGE13_WAVE_BUDGETS.length) {
+      s13.intermission += dt;
+      if (s13.intermission >= 1.35) startStage13Wave(s13.wave + 1);
+      return;
+    }
+    // 60 的末波预算高于第 11 关末波的 37 个机关，满足后才显现出口。
+    if (s13.peakBudget > 37) {
+      s13.doorState = "warning";
+      s13.doorTimer = 1.15;
     }
   }
 
@@ -1187,6 +1489,7 @@
   function enterPortal() {
     if (entering || dead || fadeDir) return;
     if (stage === 11 && s8Phase !== 8) return;
+    if (stage === 13 && s13.doorState !== "open") return;
     if (stage === 10) {
       if (!s9RoundUnlocked) return;
       if (s9Round === 1 && portalSide === "right") {
@@ -1766,6 +2069,10 @@
       updateStage8(dt, L, justJumped);
       return;
     }
+    if (stage === 13) {
+      updateStage13(dt, L);
+      return;
+    }
     if (stage === 10) {
       updateStage9(dt, L, justJumped);
       return;
@@ -2216,7 +2523,8 @@
     if (
       overlaps(player, portalBox(L)) &&
       !overGap(player.x, player.w, L) &&
-      (stage !== 12 || keys.left || keys.right)
+      (stage !== 12 || keys.left || keys.right) &&
+      (stage !== 13 || s13.doorState === "open")
     ) {
       enterPortal();
     }
@@ -2543,7 +2851,7 @@
   }
 
   function drawStage8SpikeRain(L) {
-    if (stage !== 11 || !s8SpikeRain.active) return;
+    if ((stage !== 11 && stage !== 13) || !s8SpikeRain.active) return;
     var pitch = Math.max(11, Math.round(H * 0.026));
     var spikeW = Math.max(9, Math.round(pitch * 0.78));
     var right = L.pathX + L.pathW;
@@ -2570,6 +2878,67 @@
       ctx.closePath();
       ctx.fill();
     }
+  }
+
+  function drawStage13Hazards(L) {
+    if (stage !== 13) return;
+    var i;
+    for (i = 0; i < s13.gaps.length; i++) {
+      var gap = s13.gaps[i];
+      if (gap.warning <= 0) continue;
+      var pulse = 0.45 + Math.sin(gap.warning * 28) * 0.25;
+      ctx.fillStyle = "rgba(40, 15, 15, " + pulse + ")";
+      ctx.fillRect(gap.x, L.pathY - 3, gap.w, 3);
+    }
+    for (i = 0; i < s13.spikes.length; i++) {
+      var item = s13.spikes[i];
+      if (item.warning > 0) {
+        ctx.fillStyle =
+          "rgba(170, 28, 22, " +
+          (0.35 + Math.sin(item.warning * 30) * 0.2) +
+          ")";
+        ctx.fillRect(item.x, L.pathY - 3, item.w, 3);
+        continue;
+      }
+      if (item.h <= 0) continue;
+      var spikeW = Math.max(7, Math.round(H * 0.014));
+      for (var x = item.x; x < item.x + item.w; x += spikeW) {
+        var rw = Math.min(spikeW, item.x + item.w - x);
+        ctx.fillStyle = "#4e5359";
+        ctx.beginPath();
+        ctx.moveTo(x, L.pathY);
+        ctx.lineTo(x + rw, L.pathY);
+        ctx.lineTo(x + rw * 0.5, L.pathY - item.h);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    if (s13.doorState === "warning") {
+      var warningDoor = portalBox(L);
+      ctx.save();
+      ctx.globalAlpha = 0.12 + Math.abs(Math.sin(s13.doorTimer * 18)) * 0.22;
+      ctx.fillStyle = "#d7dde2";
+      ctx.fillRect(
+        warningDoor.x,
+        warningDoor.y,
+        warningDoor.w,
+        warningDoor.h
+      );
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.font = "600 " + Math.max(12, Math.round(H * 0.026)) + "px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(20, 24, 28, 0.78)";
+    var waveText =
+      s13.doorState === "open"
+        ? "出口已出现"
+        : s13.doorState === "warning"
+          ? "空间正在稳定……"
+          : "威胁波 " + s13.wave + " / " + STAGE13_WAVE_BUDGETS.length;
+    ctx.fillText(waveText, W * 0.5, Math.max(24, H * 0.08));
+    ctx.restore();
   }
 
   function drawStage8Progress(L) {
@@ -2826,7 +3195,10 @@
     drawFloor(L);
 
     var door = portalBox(L);
-    if (stage !== 11 || s8Phase === 8) {
+    if (
+      (stage !== 11 || s8Phase === 8) &&
+      (stage !== 13 || s13.doorState === "open")
+    ) {
       ctx.save();
       if (stage === 10 && portalSide === "left" && !s9RoundUnlocked) {
         ctx.globalAlpha = 0.18;
@@ -2863,6 +3235,7 @@
     drawButton(L);
     drawStage8SpikeRain(L);
     if (stage === 11) drawStage8Progress(L);
+    drawStage13Hazards(L);
 
     drawCharacter(player);
     canvas.style.cursor = stage === 12 ? (drag.on ? "grabbing" : "grab") : "";
