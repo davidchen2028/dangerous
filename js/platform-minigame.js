@@ -252,7 +252,7 @@
     return { pathX: pathX, pathY: pathY, pathW: pathW, pathH: pathH };
   }
 
-  // Fixed decorative groups keep the route readable and avoid each stage's hazards.
+  // Safe candidate groups keep the route readable; actual positions are randomized per reset.
   var SURFACE_PLANTS = {
     1: [[0.16, "124"], [0.21, "125"], [0.68, "124"], [0.73, "125"]],
     2: [[0.11, "124"], [0.16, "125"], [0.35, "124"], [0.68, "124"]],
@@ -268,8 +268,44 @@
     12: [[0.09, "124"], [0.17, "125"], [0.83, "124"], [0.91, "124"]],
   };
 
+  var surfacePlantLayout = [];
+
   function surfacePlants() {
-    return SURFACE_PLANTS[stage] || [];
+    return surfacePlantLayout;
+  }
+
+  function randomizeSurfacePlants(L) {
+    var candidates = (SURFACE_PLANTS[stage] || []).slice();
+    var result = [];
+    var gaps = gapSlots();
+    for (var i = candidates.length - 1; i > 0; i--) {
+      var swap = Math.floor(Math.random() * (i + 1));
+      var tmp = candidates[i];
+      candidates[i] = candidates[swap];
+      candidates[swap] = tmp;
+    }
+    for (var ci = 0; ci < candidates.length; ci++) {
+      var candidate = candidates[ci];
+      var placed = false;
+      for (var attempt = 0; attempt < 12 && !placed; attempt++) {
+        var t = candidate[0] + (Math.random() - 0.5) * 0.08;
+        if (t < 0.12 || t > 0.88) continue;
+        var safe = true;
+        for (var gi = 0; gi < gaps.length; gi++) {
+          if (Math.abs(t - gaps[gi]) < 0.075) {
+            safe = false;
+            break;
+          }
+        }
+        for (var ri = 0; ri < result.length && safe; ri++) {
+          if (Math.abs(t - result[ri][0]) < 0.055) safe = false;
+        }
+        if (!safe) continue;
+        result.push([t, candidate[1]]);
+        placed = true;
+      }
+    }
+    surfacePlantLayout = result;
   }
 
   function portalBox(L) {
@@ -430,6 +466,7 @@
       return { open: stage === 8 || stage === 11 || stage === 12 };
     });
     portalSide = "right";
+    randomizeSurfacePlants(L);
     crate.w = player.h;
     crate.h = player.h;
     crate.active = false;
