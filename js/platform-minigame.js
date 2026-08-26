@@ -116,7 +116,7 @@
   sceneSprites.brick.src = "img/platform-scene/brick_grey.png";
   sceneSprites.brickBrown.src = "img/platform-scene/tile_dirt.png";
   sceneSprites.surface.src = "img/platform-scene/tile_surface.png";
-  sceneSprites.spikes.src = "img/platform-scene/block_spikes.png";
+  sceneSprites.spikes.src = "img/platform-scene/spike_wood_up.png";
   sceneSprites.plank.src = "img/platform-scene/block_plank.png";
   sceneSprites.green.src = "img/platform-scene/block_green.png";
   sceneSprites.red.src = "img/platform-scene/block_red.png";
