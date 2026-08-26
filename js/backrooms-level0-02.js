@@ -1,28 +1,38 @@
 /**
- * Level 0.2 — 灰色镜像迷宫、进门灾害、出生点回归门
+ * Level 0.2 — 被遗弃的翻修区。
+ *
+ * 本文件刻意不依赖宿主的渲染循环细节：旧版 start/update 接口仍可使用，
+ * 新版入口控制器、阶段、灰尘和文档则通过附加 API 暴露。
  */
 import * as THREE from "three";
 import { isRedChannelCell } from "./backrooms-level0-red-room.js";
 import { resolveBackroomsGfxProfile } from "./backrooms-gfx-profile.js";
 import { createPointLightPool } from "./backrooms-point-light-pool.js";
 
-/** 须为 BACKROOMS_MATRIX 中的 1；邻接可走格在西侧 (col 1) */
 export const GRAY_DOOR_CELL = { row: 8, col: 2 };
-/** 与 L0 切出墙同格 — 此处为回出生点的灰门 */
 export const LEVEL02_EXIT_CELL = { row: 9, col: 11 };
-
-export const LEVEL02_FOG = 0x9a9a98;
-export const LEVEL02_DAMAGE = 50;
-export const LEVEL02_BIG_DAMAGE = 75;
+export const LEVEL02_FOG = 0xd8d5cf;
+export const LEVEL02_DAMAGE = 18;
+export const LEVEL02_BIG_DAMAGE = 28;
+export const LEVEL02_DUST_DAMAGE_PER_SEC = 1.2;
+export const LEVEL02_EXIT_SAFE_RADIUS = 4;
 export const LEVEL02_DEBRIS_DELAY_SEC = 2;
-export const LEVEL02_DEBRIS_INTERVAL_SEC = 1;
-export const LEVEL02_WALL_INTERVAL_SEC = 1;
-/** 同时播放的倒墙动画上限，避免堆太多卡顿 */
-export const LEVEL02_MAX_ACTIVE_WALL_FALLS = 5;
-export const LEVEL02_MAX_DEBRIS = 18;
+export const LEVEL02_DEBRIS_INTERVAL_SEC = 1.15;
+export const LEVEL02_WALL_INTERVAL_SEC = 1.35;
+export const LEVEL02_MAX_ACTIVE_WALL_FALLS = 4;
+export const LEVEL02_MAX_DEBRIS = 24;
+export const LEVEL02_PHASES = Object.freeze({
+  RENOVATED: "renovated",
+  COLLAPSE_TILES: "collapse_tiles",
+  COLLAPSE_WALLS: "collapse_walls",
+  SKELETON_EXPOSED: "skeleton_exposed",
+  EXIT_SAFE: "exit_safe",
+});
 
 var _grayDoorPickMesh = null;
 var _level02ExitPickMesh = null;
+var _entranceControllers = [];
+var _worldSerial = 0;
 
 export function isGrayDoorCell(row, col) {
   return row === GRAY_DOOR_CELL.row && col === GRAY_DOOR_CELL.col;
@@ -40,368 +50,544 @@ export function getLevel02ExitPickMesh() {
   return _level02ExitPickMesh;
 }
 
-function createSolidGrayWallTexture() {
-  var cw = 128;
-  var ch = 192;
-  var canvas = document.createElement("canvas");
-  canvas.width = cw;
-  canvas.height = ch;
-  var ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  ctx.fillStyle = "#8a8a86";
-  ctx.fillRect(0, 0, cw, ch);
-  var n;
-  for (n = 0; n < 220; n++) {
-    ctx.fillStyle = "rgba(0,0,0," + (0.012 + Math.random() * 0.028) + ")";
-    ctx.fillRect(Math.random() * cw, Math.random() * ch, 1, 1);
-  }
-  var tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+export function getLevel02EntranceControllers() {
+  _entranceControllers = _entranceControllers.filter(function (controller) {
+    return !controller.disposed && controller.group && controller.group.parent;
+  });
+  return _entranceControllers.slice();
 }
 
-function createGrayDoorWallTexture() {
-  var cw = 128;
-  var ch = 192;
+function canvasTexture(width, height, painter) {
+  if (typeof document === "undefined") return null;
   var canvas = document.createElement("canvas");
-  canvas.width = cw;
-  canvas.height = ch;
+  canvas.width = width;
+  canvas.height = height;
   var ctx = canvas.getContext("2d");
   if (!ctx) return null;
-  ctx.fillStyle = "#8a8a86";
-  ctx.fillRect(0, 0, cw, ch);
-  var doorW = cw * 0.42;
-  var doorH = ch * 0.72;
-  var doorX = (cw - doorW) * 0.5;
-  var doorY = ch * 0.12;
-  ctx.fillStyle = "#4a4a48";
-  ctx.fillRect(doorX, doorY, doorW, doorH);
-  ctx.fillStyle = "#323230";
-  ctx.fillRect(doorX + doorW * 0.08, doorY + doorH * 0.06, doorW * 0.84, doorH * 0.88);
-  var tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  painter(ctx, width, height);
+  var texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
-function makeGrayWallMaterial(tex, emissiveIntensity) {
-  return new THREE.MeshStandardMaterial({
-    map: tex || undefined,
-    color: tex ? 0xffffff : 0x8a8a86,
-    emissive: 0x555553,
-    emissiveIntensity: emissiveIntensity == null ? 0.12 : emissiveIntensity,
-    roughness: 0.86,
-    metalness: 0.02,
+function makeNoiseTexture(base, fleck, lines) {
+  return canvasTexture(128, 128, function (ctx, w, h) {
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, w, h);
+    var i;
+    for (i = 0; i < 260; i++) {
+      ctx.fillStyle = fleck;
+      ctx.globalAlpha = 0.025 + Math.random() * 0.08;
+      ctx.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1);
+    }
+    ctx.globalAlpha = 1;
+    if (lines) lines(ctx, w, h);
   });
 }
 
-/** L0 中的灰门墙（西侧为门，Q 打开进入 0.2） */
-export function buildGrayDoorWall(parent, wx, wz, gridSize, wallH, wallColliders) {
-  var group = new THREE.Group();
-  group.name = "GrayDoorChannel";
-  group.position.set(wx, 0, wz);
+function material(color, roughness, opts) {
+  opts = opts || {};
+  return new THREE.MeshStandardMaterial({
+    color: color,
+    map: opts.map || undefined,
+    roughness: roughness == null ? 0.9 : roughness,
+    metalness: opts.metalness || 0,
+    emissive: opts.emissive || 0x000000,
+    emissiveIntensity: opts.emissiveIntensity || 0,
+    side: opts.side,
+    transparent: !!opts.transparent,
+    opacity: opts.opacity == null ? 1 : opts.opacity,
+    depthWrite: opts.depthWrite == null ? true : opts.depthWrite,
+  });
+}
 
-  var solidTex = createSolidGrayWallTexture();
-  var doorTex = createGrayDoorWallTexture();
-  var solidMat = makeGrayWallMaterial(solidTex, 0.08);
-  var doorMat = makeGrayWallMaterial(doorTex, 0.18);
-
-  var mesh = new THREE.Mesh(new THREE.BoxGeometry(gridSize, wallH, gridSize), [
-    solidMat,
-    doorMat,
-    solidMat,
-    solidMat,
-    solidMat,
-    solidMat,
-  ]);
-  mesh.name = "GrayDoorWall";
-  mesh.position.y = wallH * 0.5;
+function addBox(parent, name, size, position, mat) {
+  var mesh = new THREE.Mesh(new THREE.BoxGeometry(size[0], size[1], size[2]), mat);
+  mesh.name = name;
+  mesh.position.set(position[0], position[1], position[2]);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
-  mesh.userData.brInteract = { kind: "gray_door" };
-  group.add(mesh);
-  _grayDoorPickMesh = mesh;
+  parent.add(mesh);
+  return mesh;
+}
 
-  parent.add(group);
+/**
+ * L0 入口：施工遮挡会在玩家驻留时逐步安静、显出干地毯，最后露出白门。
+ * collider 从创建到显门后始终有效。
+ */
+export function buildGrayDoorWall(parent, wx, wz, gridSize, wallH, wallColliders) {
+  var group = new THREE.Group();
+  group.name = "Level02ConstructionEntrance";
+  group.position.set(wx, 0, wz);
+
+  var dustMat = material(0xc2bba8, 0.98);
+  var plasterMat = material(0xe5e2da, 0.94);
+  var timberMat = material(0x8b6542, 0.86);
+  var whiteDoorMat = material(0xf4f2eb, 0.72, {
+    emissive: 0xc9c4b8,
+    emissiveIntensity: 0.08,
+  });
+  var darkMat = material(0x2d2c29, 0.8);
+
+  var blocker = addBox(
+    group,
+    "Level02ConstructionBlocker",
+    [gridSize, wallH, gridSize],
+    [0, wallH * 0.5, 0],
+    plasterMat
+  );
+  blocker.userData.brInteract = { kind: "level02_construction" };
+  _grayDoorPickMesh = blocker;
+
+  var frame = new THREE.Group();
+  frame.name = "Level02TimberFrame";
+  addBox(frame, "StudL", [0.11, wallH * 0.92, 0.1], [-gridSize * 0.22, wallH * 0.46, -gridSize * 0.51], timberMat);
+  addBox(frame, "StudR", [0.11, wallH * 0.92, 0.1], [gridSize * 0.22, wallH * 0.46, -gridSize * 0.51], timberMat);
+  addBox(frame, "Header", [gridSize * 0.56, 0.11, 0.1], [0, wallH * 0.88, -gridSize * 0.51], timberMat);
+  group.add(frame);
+
+  var dryTrace = new THREE.Mesh(
+    new THREE.PlaneGeometry(gridSize * 0.72, gridSize * 0.82),
+    material(0x9b1f20, 1, { transparent: true, opacity: 0 })
+  );
+  dryTrace.name = "Level02DryCarpetTrace";
+  dryTrace.rotation.x = -Math.PI * 0.5;
+  dryTrace.position.set(0, 0.012, -gridSize * 0.12);
+  group.add(dryTrace);
+
+  var door = addBox(
+    group,
+    "Level02WhiteDoor",
+    [gridSize * 0.46, wallH * 0.76, 0.09],
+    [0, wallH * 0.38, -gridSize * 0.515],
+    whiteDoorMat
+  );
+  door.visible = false;
+  door.userData.brInteract = { kind: "white_door" };
+  var knob = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), darkMat);
+  knob.position.set(gridSize * 0.16, wallH * 0.39, -0.06);
+  door.add(knob);
+
+  var tape = addBox(group, "WarningTape", [gridSize * 0.74, 0.055, 0.025], [0, wallH * 0.57, -gridSize * 0.525], dustMat);
+  tape.rotation.z = -0.14;
 
   var half = gridSize * 0.5;
-  wallColliders.push({
+  var collider = {
     minX: wx - half,
     maxX: wx + half,
     minZ: wz - half,
     maxZ: wz + half,
     grayDoor: true,
+    level02Entrance: true,
     ghost: false,
+  };
+  wallColliders.push(collider);
+  parent.add(group);
+
+  var controller = {
+    group: group,
+    pickMesh: blocker,
+    door: door,
+    collider: collider,
+    x: wx,
+    z: wz,
+    startedAt: 0,
+    elapsed: 0,
+    phase: "construction",
+    disposed: false,
+    silenceSent: false,
+    traceSent: false,
+    doorSent: false,
+    reset: function () {
+      this.startedAt = 0;
+      this.elapsed = 0;
+      this.phase = "construction";
+      this.silenceSent = false;
+      this.traceSent = false;
+      this.doorSent = false;
+      blocker.visible = true;
+      blocker.userData.brInteract.kind = "level02_construction";
+      dryTrace.material.opacity = 0;
+      door.visible = false;
+      frame.visible = true;
+      tape.visible = true;
+      this.pickMesh = blocker;
+      _grayDoorPickMesh = blocker;
+    },
+    dispose: function () {
+      this.disposed = true;
+    },
+  };
+  group.userData.level02EntranceController = controller;
+  _entranceControllers.push(controller);
+  return controller;
+}
+
+/**
+ * 更新所有入口。now 应为 performance.now() 风格的毫秒值。
+ */
+export function updateLevel02Entrances(px, pz, now, callbacks) {
+  callbacks = callbacks || {};
+  var controllers = getLevel02EntranceControllers();
+  var i;
+  for (i = 0; i < controllers.length; i++) {
+    var c = controllers[i];
+    var near = Math.hypot(px - c.x, pz - c.z) <= 4.2;
+    if (!near || c.doorSent) continue;
+    if (!c.startedAt) c.startedAt = now;
+    c.elapsed = Math.max(0, (now - c.startedAt) / 1000);
+    if (c.elapsed >= 1.5 && !c.silenceSent) {
+      c.silenceSent = true;
+      c.phase = "silenced";
+      if (callbacks.setHumSilence) callbacks.setHumSilence(true, c);
+    }
+    if (c.elapsed >= 3 && !c.traceSent) {
+      c.traceSent = true;
+      c.phase = "dry_trace";
+      c.group.getObjectByName("Level02DryCarpetTrace").material.opacity = 0.92;
+      c.group.getObjectByName("WarningTape").visible = false;
+      if (callbacks.showToast) callbacks.showToast("潮湿的地毯在施工灰下变干了");
+    }
+    if (c.elapsed >= 5.8) {
+      c.doorSent = true;
+      c.phase = "white_door";
+      c.group.getObjectByName("Level02ConstructionBlocker").visible = false;
+      c.group.getObjectByName("Level02TimberFrame").visible = false;
+      c.door.visible = true;
+      c.pickMesh = c.door;
+      _grayDoorPickMesh = c.door;
+      if (callbacks.showToast) callbacks.showToast("一扇没有标记的白门露了出来");
+    }
+  }
+  return controllers;
+}
+
+function makeWhiteWallTexture(gridSize, wallH) {
+  var texture = makeNoiseTexture("#dedbd3", "#6f6b63", function (ctx, w, h) {
+    ctx.strokeStyle = "rgba(135,130,120,.18)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, h * 0.72);
+    ctx.lineTo(w, h * 0.72);
+    ctx.stroke();
   });
+  if (texture) {
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(Math.max(1, gridSize / 1.5), Math.max(1, wallH / 1.5));
+  }
+  return texture;
 }
 
-function createLevel02WallPaperTexture(gridSize, wallH) {
-  var colW = 38;
-  var rowH = 41;
-  var cw = colW * 2;
-  var ch = rowH * 2;
-  var canvas = document.createElement("canvas");
-  canvas.width = cw;
-  canvas.height = ch;
-  var ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  ctx.fillStyle = "#9a9a96";
-  ctx.fillRect(0, 0, cw, ch);
-  var ink = "#3a3a38";
-
-  function verticalDashesAlong(x0, y0, x1, y1, dashLen, step) {
-    var len = Math.hypot(x1 - x0, y1 - y0);
-    if (len < 0.001) return;
-    var count = Math.max(1, Math.floor(len / step));
-    var i;
-    for (i = 0; i <= count; i++) {
-      var t = i / count;
-      var px = x0 + (x1 - x0) * t;
-      var py = y0 + (y1 - y0) * t;
-      ctx.fillStyle = ink;
-      ctx.fillRect(Math.floor(px), Math.floor(py - dashLen * 0.5), 1, dashLen);
-    }
-  }
-
-  function drawDiamond(cx, cy, rx, ry) {
-    var top = [cx, cy - ry];
-    var right = [cx + rx, cy];
-    var bottom = [cx, cy + ry];
-    var left = [cx - rx, cy];
-    var dash = 3.2;
-    var step = 3.4;
-    verticalDashesAlong(top[0], top[1], right[0], right[1], dash, step);
-    verticalDashesAlong(right[0], right[1], bottom[0], bottom[1], dash, step);
-    verticalDashesAlong(bottom[0], bottom[1], left[0], left[1], dash, step);
-    verticalDashesAlong(left[0], left[1], top[0], top[1], dash, step);
-  }
-
-  var col;
-  var row;
-  for (col = 0; col < 2; col++) {
-    var xBase = col * colW + colW * 0.5;
-    var yShift = col & 1 ? rowH * 0.5 : 0;
-    for (row = -1; row < 3; row++) {
-      drawDiamond(xBase, row * rowH + yShift, 7.5, 9.5);
-    }
-  }
-
-  var tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(gridSize / 1.0, wallH / 1.0);
-  return tex;
-}
-
-function buildLevel02ExitDoor(parent, wx, wz, gridSize, wallH, wallColliders) {
-  var solidTex = createSolidGrayWallTexture();
-  var doorTex = createGrayDoorWallTexture();
-  var solidMat = makeGrayWallMaterial(solidTex, 0.08);
-  var doorMat = makeGrayWallMaterial(doorTex, 0.22);
-
-  var mesh = new THREE.Mesh(new THREE.BoxGeometry(gridSize, wallH, gridSize), [
-    solidMat,
-    doorMat,
-    solidMat,
-    solidMat,
-    solidMat,
-    solidMat,
-  ]);
-  mesh.name = "Level02ExitDoor";
-  mesh.position.set(wx, wallH * 0.5, wz);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.userData.brInteract = { kind: "level02_exit" };
-  parent.add(mesh);
-  _level02ExitPickMesh = mesh;
-
+function addCollider(colliders, wx, wz, gridSize, extra) {
   var half = gridSize * 0.5;
-  wallColliders.push({
+  var collider = Object.assign({
     minX: wx - half,
     maxX: wx + half,
     minZ: wz - half,
     maxZ: wz + half,
-    level02Exit: true,
     ghost: false,
-  });
+    fallen: false,
+  }, extra || {});
+  colliders.push(collider);
+  return collider;
+}
+
+function buildLevel02ExitDoor(parent, wx, wz, gridSize, wallH, colliders, interactMeshes) {
+  var jambMat = material(0xd5d1c8, 0.82);
+  var doorMat = material(0x85847f, 0.78);
+  var mesh = addBox(parent, "Level02ExitDoor", [gridSize, wallH, gridSize], [wx, wallH * 0.5, wz], jambMat);
+  var face = addBox(mesh, "Level02ExitDoorFace", [gridSize * 0.46, wallH * 0.74, 0.08], [0, -wallH * 0.1, -gridSize * 0.51], doorMat);
+  face.userData.brInteract = { kind: "level02_exit" };
+  mesh.userData.brInteract = { kind: "level02_exit" };
+  _level02ExitPickMesh = face;
+  interactMeshes.push(face);
+  addCollider(colliders, wx, wz, gridSize, { level02Exit: true });
+}
+
+function addOutlet(parent, x, z, y, rotationY) {
+  var plate = addBox(parent, "Level02Outlet", [0.12, 0.17, 0.025], [x, y, z], material(0xd8d4cb, 0.8));
+  plate.rotation.y = rotationY || 0;
+  var slots = addBox(plate, "OutletSlots", [0.045, 0.07, 0.008], [0, 0, -0.018], material(0x4b4944, 0.95));
+  slots.castShadow = false;
+}
+
+function addDocument(parent, x, z, index, interactMeshes) {
+  var texts = [
+    "残页 01：白墙不是新刷的。它们是在我们离开后自己变白的。",
+    "残页 02：先掉的是板，然后是墙。木骨架不会倒，它想让你看见里面。",
+    "残页 03：灰尘开始变浓时，往旧灰门跑。门边四米是唯一能呼吸的地方。",
+  ];
+  var paper = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.28, 0.36),
+    material(0xd6c7a1, 0.98, { side: THREE.DoubleSide })
+  );
+  paper.name = "Level02Document_" + (index + 1);
+  paper.rotation.set(-Math.PI * 0.49, 0, (index - 1) * 0.31);
+  paper.position.set(x, 0.026, z);
+  paper.userData.brInteract = {
+    kind: "level02_document",
+    title: "施工记录残页 " + (index + 1),
+    text: texts[index],
+    page: index + 1,
+  };
+  parent.add(paper);
+  interactMeshes.push(paper);
+  return paper;
+}
+
+export function getLevel02DocumentText(mesh) {
+  return mesh && mesh.userData && mesh.userData.brInteract
+    ? mesh.userData.brInteract.text || ""
+    : "";
+}
+
+function createPhaseController() {
+  return {
+    phase: LEVEL02_PHASES.RENOVATED,
+    elapsed: 0,
+    phaseElapsed: 0,
+    dustLevel: 0,
+    exitSafe: false,
+    generation: _worldSerial,
+    reset: function () {
+      this.phase = LEVEL02_PHASES.RENOVATED;
+      this.elapsed = 0;
+      this.phaseElapsed = 0;
+      this.dustLevel = 0;
+      this.exitSafe = false;
+    },
+    setPhase: function (next) {
+      if (this.phase === next) return false;
+      this.phase = next;
+      this.phaseElapsed = 0;
+      return true;
+    },
+    getPhase: function () { return this.phase; },
+    getDustLevel: function () { return this.dustLevel; },
+    isExitSafe: function () { return this.exitSafe; },
+  };
 }
 
 /**
- * @param {object} opts
- * @param {number[][]} opts.matrix
- * @param {number} opts.mapRows
- * @param {number} opts.mapCols
+ * 新建即生成全新的 geometry/material、collider、交互和阶段状态。
  */
 export function buildLevel02World(parent, opts) {
+  opts = opts || {};
+  _worldSerial++;
   _level02ExitPickMesh = null;
 
-  var gridSize = opts.gridSize;
-  var wallH = opts.wallHeight;
-  var matrix = opts.matrix;
-  var mapRows = opts.mapRows;
-  var mapCols = opts.mapCols;
-  var cellCenterX = opts.cellCenterX;
-  var cellCenterZ = opts.cellCenterZ;
-  var mapWidth = opts.mapWidth;
-  var mapDepth = opts.mapDepth;
+  var gridSize = opts.gridSize || 2;
+  var wallH = opts.wallHeight || 2.4;
+  var matrix = opts.matrix || [[0]];
+  var mapRows = opts.mapRows || matrix.length;
+  var mapCols = opts.mapCols || matrix[0].length;
+  var cellCenterX = opts.cellCenterX || function (col) { return (col - mapCols * 0.5) * gridSize; };
+  var cellCenterZ = opts.cellCenterZ || function (row) { return (row - mapRows * 0.5) * gridSize; };
+  var mapWidth = opts.mapWidth || mapCols * gridSize;
+  var mapDepth = opts.mapDepth || mapRows * gridSize;
 
   var group = new THREE.Group();
   group.name = "BackroomsLevel02";
   group.visible = false;
-
-  var wallGeo = new THREE.BoxGeometry(gridSize, wallH, gridSize);
-  var wallTex = createLevel02WallPaperTexture(gridSize, wallH);
-  var wallMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    map: wallTex || undefined,
-    roughness: 0.88,
-    metalness: 0,
-  });
-  if (!wallTex) wallMat.color.setHex(0x90908c);
+  group.userData.level02Generation = _worldSerial;
+  var architecture = new THREE.Group();
+  var dressing = new THREE.Group();
+  var skeletonLayer = new THREE.Group();
+  var hazardGroup = new THREE.Group();
+  architecture.name = "Level02Architecture";
+  dressing.name = "Level02Dressing";
+  skeletonLayer.name = "Level02SkeletonLayer";
+  hazardGroup.name = "Level02Hazards";
+  group.add(architecture, dressing, skeletonLayer, hazardGroup);
 
   var colliders = [];
-  /** @type {Array<{ mesh: THREE.Mesh, row: number, col: number, colliderIndex: number }>} */
   var wallAnimTargets = [];
+  var interactMeshes = [];
+  var phaseController = createPhaseController();
+  colliders._l02Gen = 0;
+  colliders._l02PhaseController = phaseController;
 
+  var wallTex = makeWhiteWallTexture(gridSize, wallH);
+  var wallMat = material(0xf0ede6, 0.92, { map: wallTex });
+  var shellMat = material(0xd8d5cd, 0.95);
+  var studMat = material(0x8c6845, 0.88);
+  var wallGeo = new THREE.BoxGeometry(gridSize, wallH, gridSize);
+  var studGeo = new THREE.BoxGeometry(0.1, wallH * 0.92, 0.11);
   var row;
   var col;
   for (row = 0; row < mapRows; row++) {
     for (col = 0; col < mapCols; col++) {
-      if (matrix[row][col] !== 1) continue;
-      if (isRedChannelCell(row, col)) continue;
-      if (isGrayDoorCell(row, col)) continue;
-
+      if (matrix[row][col] !== 1 || isRedChannelCell(row, col) || isGrayDoorCell(row, col)) continue;
       var wx = cellCenterX(col);
       var wz = cellCenterZ(row);
-
       if (isLevel02ExitCell(row, col)) {
-        buildLevel02ExitDoor(group, wx, wz, gridSize, wallH, colliders);
+        buildLevel02ExitDoor(architecture, wx, wz, gridSize, wallH, colliders, interactMeshes);
         continue;
       }
+      var wall = new THREE.Mesh(wallGeo, wallMat);
+      wall.name = "L02_WhiteWall_" + row + "_" + col;
+      wall.position.set(wx, wallH * 0.5, wz);
+      wall.castShadow = true;
+      wall.receiveShadow = true;
+      architecture.add(wall);
+      var wallCollider = addCollider(colliders, wx, wz, gridSize, { row: row, col: col });
+      wallAnimTargets.push({ mesh: wall, row: row, col: col, collider: wallCollider, colliderIndex: colliders.length - 1 });
 
-      var mesh = new THREE.Mesh(wallGeo, wallMat);
-      mesh.name = "L02_Wall_" + row + "_" + col;
-      mesh.position.set(wx, wallH * 0.5, wz);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      group.add(mesh);
-
-      var half = gridSize * 0.5;
-      colliders.push({
-        minX: wx - half,
-        maxX: wx + half,
-        minZ: wz - half,
-        maxZ: wz + half,
-        ghost: false,
-        fallen: false,
-        row: row,
-        col: col,
-      });
-      wallAnimTargets.push({
-        mesh: mesh,
-        row: row,
-        col: col,
-        collider: colliders[colliders.length - 1],
-        colliderIndex: colliders.length - 1,
-      });
+      if ((row * 3 + col) % 4 === 0) {
+        var stud = new THREE.Mesh(studGeo, studMat);
+        stud.name = "L02_Stud_" + row + "_" + col;
+        stud.position.set(wx, wallH * 0.48, wz);
+        stud.visible = false;
+        skeletonLayer.add(stud);
+        wall.userData.exposedStud = stud;
+      }
+      if ((row + col) % 5 === 0) addOutlet(dressing, wx, wz - gridSize * 0.505, 0.28, 0);
     }
   }
 
-  var shellMat = makeGrayWallMaterial(createSolidGrayWallTexture(), 0.06);
-  var half = gridSize * 0.5;
-  function addOuterShellWall(shellRow, shellCol) {
-    var wx = cellCenterX(shellCol);
-    var wz = cellCenterZ(shellRow);
-    var shellMesh = new THREE.Mesh(wallGeo, shellMat);
-    shellMesh.name = "L02_Shell_" + shellRow + "_" + shellCol;
-    shellMesh.position.set(wx, wallH * 0.5, wz);
-    shellMesh.castShadow = true;
-    shellMesh.receiveShadow = true;
-    group.add(shellMesh);
-    colliders.push({
-      minX: wx - half,
-      maxX: wx + half,
-      minZ: wz - half,
-      maxZ: wz + half,
-      ghost: false,
-      fallen: false,
-      shell: true,
-    });
+  function addShell(shellRow, shellCol) {
+    var x = cellCenterX(shellCol);
+    var z = cellCenterZ(shellRow);
+    var shell = new THREE.Mesh(wallGeo, shellMat);
+    shell.name = "L02_Shell_" + shellRow + "_" + shellCol;
+    shell.position.set(x, wallH * 0.5, z);
+    architecture.add(shell);
+    addCollider(colliders, x, z, gridSize, { shell: true });
   }
   for (col = -1; col <= mapCols; col++) {
-    addOuterShellWall(-1, col);
-    addOuterShellWall(mapRows, col);
+    addShell(-1, col);
+    addShell(mapRows, col);
   }
   for (row = 0; row < mapRows; row++) {
-    addOuterShellWall(row, -1);
-    addOuterShellWall(row, mapCols);
+    addShell(row, -1);
+    addShell(row, mapCols);
   }
 
-  var floorMat = new THREE.MeshStandardMaterial({
-    color: 0x6e6e6a,
-    roughness: 0.96,
-    metalness: 0,
-  });
-  var ceilMat = new THREE.MeshStandardMaterial({
-    color: 0xa8a8a4,
-    roughness: 0.9,
-    metalness: 0,
-    side: THREE.DoubleSide,
-  });
-
   var pad = gridSize * 2;
-  var floor = new THREE.Mesh(
+  var supportFloor = new THREE.Mesh(
     new THREE.PlaneGeometry(mapWidth + pad, mapDepth + pad),
-    floorMat
+    material(0x4c4640, 1)
   );
-  floor.rotation.x = -Math.PI * 0.5;
-  floor.receiveShadow = true;
-  group.add(floor);
+  supportFloor.name = "Level02SafetySupportFloor";
+  supportFloor.rotation.x = -Math.PI * 0.5;
+  supportFloor.position.y = -0.035;
+  supportFloor.receiveShadow = true;
+  architecture.add(supportFloor);
+
+  var carpetTex = makeNoiseTexture("#8d1f22", "#2c1112", function (ctx, w, h) {
+    ctx.fillStyle = "rgba(255,210,180,.05)";
+    for (var i = 0; i < 18; i++) ctx.fillRect(Math.random() * w, 0, 1, h);
+  });
+  if (carpetTex) {
+    carpetTex.wrapS = carpetTex.wrapT = THREE.RepeatWrapping;
+    carpetTex.repeat.set(mapWidth / 2, mapDepth / 2);
+  }
+  var carpet = new THREE.Mesh(
+    new THREE.PlaneGeometry(mapWidth + pad, mapDepth + pad, 12, 12),
+    material(0x8d1f22, 1, { map: carpetTex })
+  );
+  carpet.name = "Level02RedCarpet";
+  carpet.rotation.x = -Math.PI * 0.5;
+  carpet.position.y = 0.006;
+  carpet.receiveShadow = true;
+  architecture.add(carpet);
+
+  var damageLayer = new THREE.Group();
+  damageLayer.name = "Level02CarpetDamage";
+  damageLayer.visible = false;
+  var tearMat = material(0x302924, 1, { side: THREE.DoubleSide });
+  for (var ti = 0; ti < 11; ti++) {
+    var tear = new THREE.Mesh(
+      new THREE.CircleGeometry(0.2 + (ti % 4) * 0.09, 5),
+      tearMat
+    );
+    tear.rotation.x = -Math.PI * 0.5;
+    tear.rotation.z = ti * 1.73;
+    tear.scale.set(1.8, 0.42 + (ti % 3) * 0.18, 1);
+    tear.position.set(
+      ((ti * 7) % 13) / 13 * mapWidth - mapWidth * 0.5,
+      0.012,
+      ((ti * 11) % 17) / 17 * mapDepth - mapDepth * 0.5
+    );
+    damageLayer.add(tear);
+  }
+  architecture.add(damageLayer);
 
   var ceiling = new THREE.Mesh(
     new THREE.PlaneGeometry(mapWidth + pad, mapDepth + pad),
-    ceilMat
+    material(0xe5e2da, 0.94, { side: THREE.DoubleSide })
   );
+  ceiling.name = "Level02Ceiling";
   ceiling.rotation.x = Math.PI * 0.5;
   ceiling.position.y = wallH;
-  group.add(ceiling);
+  architecture.add(ceiling);
 
-  var hemi = new THREE.HemisphereLight(0xd8d8d4, 0x5a5a58, 0.42);
-  group.add(hemi);
-  var amb = new THREE.AmbientLight(0xc8c8c4, 0.2);
-  group.add(amb);
+  // 简单洗手间暗示：磨砂隔板、洗手台和失效标牌。
+  var restroom = new THREE.Group();
+  restroom.name = "Level02Restroom";
+  var rrX = cellCenterX(Math.max(1, Math.floor(mapCols * 0.25)));
+  var rrZ = cellCenterZ(Math.max(1, Math.floor(mapRows * 0.25)));
+  restroom.position.set(rrX, 0, rrZ);
+  addBox(restroom, "RestroomPartition", [1.4, wallH * 0.82, 0.08], [0, wallH * 0.41, 0], material(0xc9cbc8, 0.72));
+  addBox(restroom, "RestroomSink", [0.56, 0.14, 0.42], [0, 0.72, -0.3], material(0xe5e3dc, 0.65));
+  addBox(restroom, "RestroomSign", [0.28, 0.18, 0.025], [0.43, 1.45, -0.055], material(0x41484c, 0.8));
+  dressing.add(restroom);
 
-  // 灯位只作为候选点，实际点光由 lightPool 复用最近的几盏（见 backrooms-point-light-pool.js）
-  /** @type {Array<{ x: number, y: number, z: number, intensity: number }>} */
-  var lightCandidates = [];
+  // 板夹与三张可阅读残页。
+  var clipboard = addBox(
+    dressing,
+    "Level02Clipboard",
+    [0.34, 0.035, 0.46],
+    [cellCenterX(2), 0.025, cellCenterZ(2)],
+    material(0x6d4a2e, 0.9)
+  );
+  clipboard.userData.brInteract = {
+    kind: "level02_document",
+    title: "装修公司板夹",
+    text: "工单：旧墙拆除后必须保留木骨架。施工队未签署撤离记录。",
+  };
+  interactMeshes.push(clipboard);
+  var walkable = [];
   for (row = 0; row < mapRows; row++) {
     for (col = 0; col < mapCols; col++) {
-      if (matrix[row][col] !== 0) continue;
-      if ((row + col) % 2 !== 0) continue;
-      lightCandidates.push({
-        x: cellCenterX(col),
-        y: wallH - 0.25,
-        z: cellCenterZ(row),
-        intensity: 0.38,
-      });
+      if (matrix[row][col] === 0) walkable.push({ x: cellCenterX(col), z: cellCenterZ(row) });
     }
   }
+  var docs = Math.min(3, walkable.length);
+  for (var di = 0; di < docs; di++) {
+    var spot = walkable[Math.floor(((di + 1) * walkable.length) / (docs + 1))];
+    addDocument(dressing, spot.x + (di - 1) * 0.2, spot.z + 0.15, di, interactMeshes);
+  }
 
+  var spawnSpot = walkable[0] || { x: 0, z: 0 };
+  var exitCenter = {
+    x: cellCenterX(LEVEL02_EXIT_CELL.col),
+    z: cellCenterZ(LEVEL02_EXIT_CELL.row),
+  };
+  var spawn = { x: spawnSpot.x, y: 0, z: spawnSpot.z };
+
+  group.add(new THREE.HemisphereLight(0xfffdf3, 0x593d36, 0.48));
+  group.add(new THREE.AmbientLight(0xe9dfd2, 0.24));
+  var lightCandidates = walkable.filter(function (_, index) { return index % 3 === 0; }).map(function (p) {
+    return { x: p.x, y: wallH - 0.25, z: p.z, intensity: 0.42 };
+  });
   var gfx = resolveBackroomsGfxProfile();
   var lightPool = createPointLightPool(group, {
     count: Math.min(gfx.pointLightBudget, lightCandidates.length),
-    color: 0xe8e8e4,
+    color: 0xffe8ce,
     distance: 9,
-    decay: 1.5,
+    decay: 1.7,
     y: wallH - 0.25,
     name: "Level02PooledLight",
   });
 
-  var hazardGroup = new THREE.Group();
-  hazardGroup.name = "Level02Hazards";
-  group.add(hazardGroup);
-
+  phaseController.skeletonLayer = skeletonLayer;
+  phaseController.carpet = carpet;
+  phaseController.damageLayer = damageLayer;
+  phaseController.ceiling = ceiling;
+  phaseController.exitCenter = exitCenter;
+  phaseController.interactMeshes = interactMeshes;
   parent.add(group);
 
   return {
@@ -409,329 +595,349 @@ export function buildLevel02World(parent, opts) {
     hazardGroup: hazardGroup,
     colliders: colliders,
     wallAnimTargets: wallAnimTargets,
-    updateLights: function updateLevel02Lights(px, pz) {
-      lightPool.update(px, pz, lightCandidates);
-    },
-    disposeLights: function disposeLevel02Lights() {
-      lightPool.dispose();
-    },
+    spawn: spawn,
+    exitCenter: exitCenter,
+    interactMeshes: interactMeshes,
+    phaseController: phaseController,
+    updateLights: function (px, pz) { lightPool.update(px, pz, lightCandidates); },
+    disposeLights: function () { lightPool.dispose(); },
   };
 }
 
+function playCrackSound() {
+  try {
+    var AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    var ac = new AudioCtx();
+    var length = Math.floor(ac.sampleRate * 0.22);
+    var buffer = ac.createBuffer(1, length, ac.sampleRate);
+    var data = buffer.getChannelData(0);
+    for (var i = 0; i < length; i++) {
+      var decay = 1 - i / length;
+      data[i] = (Math.random() * 2 - 1) * decay * decay;
+    }
+    var source = ac.createBufferSource();
+    var filter = ac.createBiquadFilter();
+    var gain = ac.createGain();
+    filter.type = "bandpass";
+    filter.frequency.value = 520;
+    gain.gain.value = 0.12;
+    source.buffer = buffer;
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(ac.destination);
+    source.start();
+    source.onended = function () { ac.close().catch(function () {}); };
+  } catch (_) {
+    // WebAudio 可能受自动播放策略限制；灾害视觉不依赖声音。
+  }
+}
+
 /**
- * Level 0.2 内持续灾害：玩家头顶大块落顶 + 附近墙体朝玩家倒塌
- * @param {THREE.Scene} scene
- * @param {object} ctx
+ * 兼容旧宿主的灾害入口，并提供阶段/灰尘/FX 查询。
  */
 export function createLevel02EnterHazards(scene, ctx) {
   ctx = ctx || {};
-  var wallH = ctx.wallHeight != null ? ctx.wallHeight : 2.4;
-  var debrisMeshes = [];
-  var debrisState = [];
-  var wallFalls = [];
+  var wallH = ctx.wallHeight || 2.4;
   var active = false;
-  /** @type {THREE.Object3D | null} */
   var hazardParent = null;
-  /** @type {THREE.Object3D | null} */
-  var debrisVisualRoot = null;
-  /** @type {Array<{ mesh: THREE.Mesh, row: number, col: number, colliderIndex: number }> | null} */
-  var wallTargetsRef = null;
-  /** @type {object[] | null} */
-  var collidersRef = null;
-  var fallenWallKeys = Object.create(null);
-  var debrisTimeSinceEnter = 0;
-  var debrisSpawnCooldown = 0;
-  var wallSpawnAcc = 0.4;
-  var debrisMat = new THREE.MeshBasicMaterial({
-    color: 0x8a8a86,
-  });
-  var bigDebrisMat = new THREE.MeshBasicMaterial({
-    color: 0x6e6e6a,
-  });
-  var sharedDebrisGeo = new THREE.BoxGeometry(1, 1, 1);
+  var debrisRoot = null;
+  var wallTargets = [];
+  var colliders = null;
+  var phase = createPhaseController();
+  var exitCenter = null;
+  var debris = [];
+  var warnings = [];
+  var fallen = Object.create(null);
+  var elapsed = 0;
+  var renovatedDuration = 10 + Math.random() * 10;
+  var spawnAcc = 0;
+  var wallAcc = 0;
+  var dustDamageAcc = 0;
+  var sharedGeo = null;
+  var tileMat = null;
+  var dustMat = null;
 
-  function addToHazardRoot(obj) {
-    if (hazardParent) hazardParent.add(obj);
-    else scene.add(obj);
-  }
-
-  function removeFromHazardRoot(obj) {
-    if (obj.parent) obj.parent.remove(obj);
-    else scene.remove(obj);
-  }
-
-  function addDebrisMesh(obj) {
-    if (debrisVisualRoot) debrisVisualRoot.add(obj);
-    else addToHazardRoot(obj);
-  }
-
-  /** 整块在天花板下方，避免顶面穿进天花板看起来“卡天” */
-  function debrisSpawnY(chunkH) {
-    var h = chunkH != null ? chunkH : 0.3;
-    return wallH - 0.2 - h * 0.52 - Math.random() * 0.12;
-  }
-
-  function spawnDebrisChunk(px, pz, big, overHead) {
-    if (!scene && !debrisVisualRoot) return;
-    var mat = big ? bigDebrisMat : debrisMat;
-    var w = big ? 0.65 + Math.random() * 1.05 : 0.32 + Math.random() * 0.42;
-    var h = big ? 0.28 + Math.random() * 0.42 : 0.14 + Math.random() * 0.22;
-    var d = big ? 0.55 + Math.random() * 0.95 : 0.28 + Math.random() * 0.45;
-    var mesh = new THREE.Mesh(sharedDebrisGeo, mat);
-    mesh.scale.set(w, h, d);
-    var spread = overHead ? 0.28 + Math.random() * 0.22 : big ? 0.65 : 1.4;
-    mesh.position.set(
-      px + (Math.random() - 0.5) * spread,
-      debrisSpawnY(h),
-      pz + (Math.random() - 0.5) * spread
-    );
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    mesh.frustumCulled = false;
-    mesh.renderOrder = 10;
-    addDebrisMesh(mesh);
-    debrisMeshes.push(mesh);
-    debrisState.push({
-      vy: -(4.5 + Math.random() * 3.5),
-      hitPlayer: false,
-      hx: w * 0.52,
-      hz: d * 0.52,
-      hy: h * 0.55,
-      damage: big ? LEVEL02_BIG_DAMAGE : LEVEL02_DAMAGE,
-      big: big,
-    });
-  }
-
-  function spawnDebrisAtWorld(wx, wz, y, big) {
-    if (!scene && !debrisVisualRoot) return;
-    var mat = big ? bigDebrisMat : debrisMat;
-    var w = big ? 0.55 + Math.random() * 0.85 : 0.28 + Math.random() * 0.38;
-    var h = big ? 0.22 + Math.random() * 0.35 : 0.12 + Math.random() * 0.2;
-    var d = big ? 0.45 + Math.random() * 0.75 : 0.25 + Math.random() * 0.4;
-    var mesh = new THREE.Mesh(sharedDebrisGeo, mat);
-    mesh.scale.set(w, h, d);
-    mesh.position.set(
-      wx + (Math.random() - 0.5) * 0.9,
-      y,
-      wz + (Math.random() - 0.5) * 0.9
-    );
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    mesh.frustumCulled = false;
-    mesh.renderOrder = 10;
-    addDebrisMesh(mesh);
-    debrisMeshes.push(mesh);
-    debrisState.push({
-      vy: -(3 + Math.random() * 4),
-      hitPlayer: false,
-      hx: w * 0.52,
-      hz: d * 0.52,
-      hy: h * 0.55,
-      damage: big ? LEVEL02_BIG_DAMAGE : LEVEL02_DAMAGE,
-      big: big,
-    });
-  }
-
-  function spawnDebrisBurst(px, pz, count, mostlyBig) {
-    var i;
-    for (i = 0; i < count; i++) {
-      spawnDebrisChunk(px, pz, mostlyBig || Math.random() < 0.72);
+  function ensureAssets() {
+    if (!sharedGeo) sharedGeo = new THREE.BoxGeometry(1, 1, 1);
+    if (!tileMat) tileMat = new THREE.MeshBasicMaterial({ color: 0xc6c0b5 });
+    if (!dustMat) {
+      dustMat = new THREE.MeshBasicMaterial({
+        color: 0xa89d8c,
+        transparent: true,
+        opacity: 0.42,
+        depthWrite: false,
+      });
     }
   }
 
-  function disableFallenWallCollider(col, mover, wx, wz) {
-    if (!col || col.fallen) return;
-    col.ghost = true;
-    col.fallen = true;
-    col.minX = 1e9;
-    col.maxX = -1e9;
-    col.minZ = 1e9;
-    col.maxZ = -1e9;
-    if (collidersRef) collidersRef._l02Gen = (collidersRef._l02Gen | 0) + 1;
-    if (!mover || wx == null || wz == null) return;
-    var pr = mover.radius != null ? mover.radius : 0.32;
-    var dx = mover.x - wx;
-    var dz = mover.z - wz;
-    var len = Math.hypot(dx, dz);
-    if (len < pr + 0.5) {
-      if (len < 0.05) {
-        dx = 1;
-        dz = 0;
-        len = 1;
-      }
-      var push = pr + 0.65;
-      mover.x = wx + (dx / len) * push;
-      mover.z = wz + (dz / len) * push;
+  function rootAdd(mesh) {
+    (debrisRoot || hazardParent || scene).add(mesh);
+  }
+
+  function remove(mesh) {
+    if (mesh && mesh.parent) mesh.parent.remove(mesh);
+  }
+
+  function bumpColliderGeneration() {
+    if (colliders) colliders._l02Gen = (colliders._l02Gen | 0) + 1;
+  }
+
+  function spawnDustPuff(x, z, count) {
+    ensureAssets();
+    for (var i = 0; i < count && debris.length < LEVEL02_MAX_DEBRIS; i++) {
+      var puff = new THREE.Mesh(sharedGeo, dustMat);
+      var size = 0.07 + Math.random() * 0.14;
+      puff.scale.set(size, size, size);
+      puff.position.set(x + (Math.random() - 0.5) * 1.4, 0.35 + Math.random() * wallH * 0.7, z + (Math.random() - 0.5) * 1.4);
+      puff.userData.l02Debris = { vy: -0.18 - Math.random() * 0.22, ttl: 1.1 + Math.random() * 1.1, dust: true };
+      rootAdd(puff);
+      debris.push(puff);
     }
   }
 
-  function beginWallFall(w, px, pz, player, survival, onToast) {
+  function spawnTile(x, z, dangerous) {
+    if (debris.length >= LEVEL02_MAX_DEBRIS) return;
+    ensureAssets();
+    var mesh = new THREE.Mesh(sharedGeo, tileMat);
+    mesh.scale.set(0.32 + Math.random() * 0.42, 0.06, 0.32 + Math.random() * 0.42);
+    mesh.position.set(x + (Math.random() - 0.5) * 0.7, wallH - 0.16, z + (Math.random() - 0.5) * 0.7);
+    mesh.userData.l02Debris = {
+      vy: -3.4 - Math.random() * 2.4,
+      ttl: 2.2,
+      dangerous: dangerous,
+      hit: false,
+    };
+    rootAdd(mesh);
+    debris.push(mesh);
+  }
+
+  function queueCeilingWarning(px, pz) {
+    if (warnings.length >= 3) return;
+    warnings.push({ x: px + (Math.random() - 0.5) * 1.2, z: pz + (Math.random() - 0.5) * 1.2, time: 1 + Math.random() * 0.5, kind: "tile" });
+    playCrackSound();
+    spawnDustPuff(px, pz, 4);
+  }
+
+  function queueWallWarning(px, pz) {
+    if (warnings.length >= 3 || !wallTargets.length) return;
+    var candidates = wallTargets.filter(function (w) {
+      if (!w.mesh || !w.mesh.parent || w.collider.fallen) return false;
+      var p = w.mesh.position;
+      var d = Math.hypot(p.x - px, p.z - pz);
+      return d > 1 && d < 10 && !fallen[w.row + "_" + w.col];
+    });
+    if (!candidates.length) return;
+    var target = candidates[Math.floor(Math.random() * candidates.length)];
+    warnings.push({ target: target, x: target.mesh.position.x, z: target.mesh.position.z, time: 1 + Math.random() * 0.5, kind: "wall" });
+    playCrackSound();
+    spawnDustPuff(target.mesh.position.x, target.mesh.position.z, 5);
+  }
+
+  function collapseWall(w, player, survival, onToast) {
+    if (!w || !w.collider || w.collider.fallen) return;
     var key = w.row + "_" + w.col;
-    if (fallenWallKeys[key]) return false;
-    if (!w.collider || w.collider.fallen) return false;
-
-    var worldPos = new THREE.Vector3();
-    w.mesh.getWorldPosition(worldPos);
-    var wx = worldPos.x;
-    var wz = worldPos.z;
-
-    disableFallenWallCollider(w.collider, player, wx, wz);
-    fallenWallKeys[key] = true;
-
-    if (w.mesh.parent) w.mesh.parent.remove(w.mesh);
+    fallen[key] = true;
+    w.collider.fallen = true;
+    w.collider.ghost = true;
+    w.collider.minX = w.collider.minZ = 1e9;
+    w.collider.maxX = w.collider.maxZ = -1e9;
+    bumpColliderGeneration();
+    if (w.mesh.userData.exposedStud) w.mesh.userData.exposedStud.visible = true;
     w.mesh.visible = false;
-
-    if (survival && !survival.dead) {
-      var dist = Math.hypot(px - wx, pz - wz);
-      if (dist < 2.1) {
-        survival.takeDamage(LEVEL02_DAMAGE);
-        if (onToast) onToast("你被墙压到了");
-      }
-    }
-
-    var j;
-    for (j = 0; j < 3; j++) {
-      spawnDebrisAtWorld(
-        wx,
-        wz,
-        wallH * (0.25 + Math.random() * 0.65),
-        true
-      );
-    }
-    return true;
-  }
-
-  function trySpawnWallFalls(px, pz, maxCount, player, survival, onToast) {
-    if (!wallTargetsRef || !maxCount) return;
-    var candidates = [];
-    var i;
-    var worldPos = new THREE.Vector3();
-    for (i = 0; i < wallTargetsRef.length; i++) {
-      var w = wallTargetsRef[i];
-      var key = w.row + "_" + w.col;
-      if (fallenWallKeys[key]) continue;
-      w.mesh.getWorldPosition(worldPos);
-      var dx = worldPos.x - px;
-      var dz = worldPos.z - pz;
-      var dist = Math.hypot(dx, dz);
-      if (dist > 0.5 && dist < 11) {
-        candidates.push({ w: w, dist: dist });
-      }
-    }
-    candidates.sort(function (a, b) {
-      return a.dist - b.dist;
-    });
-    var n = Math.min(maxCount, candidates.length);
-    for (i = 0; i < n; i++) {
-      beginWallFall(candidates[i].w, px, pz, player, survival, onToast);
+    spawnDustPuff(w.mesh.position.x, w.mesh.position.z, 8);
+    var dist = Math.hypot(player.x - w.mesh.position.x, player.z - w.mesh.position.z);
+    if (dist < 1.8 && survival && !survival.dead) {
+      survival.takeDamage(LEVEL02_BIG_DAMAGE);
+      if (onToast) onToast("倒下的墙板擦中了你");
     }
   }
 
-  function start(px, pz, wallTargets, colliders, hazardGroup, debrisRoot) {
+  function setPhase(next, onToast) {
+    phase.setPhase(next);
+    if (next === LEVEL02_PHASES.COLLAPSE_TILES && phase.damageLayer) {
+      phase.damageLayer.visible = true;
+    }
+    if (next === LEVEL02_PHASES.SKELETON_EXPOSED && phase.skeletonLayer) {
+      phase.skeletonLayer.traverse(function (obj) {
+        if (obj.isMesh) obj.visible = true;
+      });
+    }
+    if (colliders && colliders._l02PhaseController) {
+      colliders._l02PhaseController.setPhase(next);
+      colliders._l02PhaseController.dustLevel = phase.dustLevel;
+    }
+    if (!onToast) return;
+    if (next === LEVEL02_PHASES.COLLAPSE_TILES) onToast("天花板开始发出连续的裂响");
+    else if (next === LEVEL02_PHASES.COLLAPSE_WALLS) onToast("白墙正在从木骨架上剥离");
+    else if (next === LEVEL02_PHASES.SKELETON_EXPOSED) onToast("翻修层只剩裸露骨架");
+    else if (next === LEVEL02_PHASES.EXIT_SAFE) onToast("门边的空气暂时没有灰尘");
+  }
+
+  function start(px, pz, targets, colliderList, hazardGroup, visualRoot) {
+    disposeVisuals();
+    ensureAssets();
     active = true;
     hazardParent = hazardGroup || null;
-    debrisVisualRoot = debrisRoot || hazardGroup || null;
-    wallTargetsRef = wallTargets;
-    collidersRef = colliders;
-    fallenWallKeys = Object.create(null);
-    debrisTimeSinceEnter = 0;
-    debrisSpawnCooldown = 0;
-    wallSpawnAcc = 0;
-    debrisMeshes.length = 0;
-    debrisState.length = 0;
-    wallFalls.length = 0;
+    debrisRoot = visualRoot || hazardGroup || null;
+    wallTargets = targets || [];
+    colliders = colliderList || null;
+    phase = colliders && colliders._l02PhaseController
+      ? colliders._l02PhaseController
+      : createPhaseController();
+    phase.reset();
+    exitCenter = phase.exitCenter || ctx.exitCenter || null;
+    elapsed = 0;
+    renovatedDuration = 10 + Math.random() * 10;
+    spawnAcc = wallAcc = dustDamageAcc = 0;
+    fallen = Object.create(null);
   }
 
-  function updateDebrisHit(st, mesh, player, feetY, bodyH, pr, survival, onToast) {
-    if (st.hitPlayer || !survival || survival.dead) return;
-    if (mesh.position.y > feetY + bodyH + 0.25) return;
-    if (mesh.position.y < feetY - 0.35) return;
-
-    var dx = Math.abs(mesh.position.x - player.x);
-    var dz = Math.abs(mesh.position.z - player.z);
-    if (dx > pr + st.hx || dz > pr + st.hz) return;
-
-    st.hitPlayer = true;
-    survival.takeDamage(st.damage);
-    if (onToast) {
-      onToast(st.big ? "你被大块碎片砸到了" : "你被碎片砸到了");
-    }
+  function disposeVisuals() {
+    for (var i = 0; i < debris.length; i++) remove(debris[i]);
+    debris.length = 0;
+    warnings.length = 0;
   }
 
   function update(dt, player, survival, onToast) {
-    if (!active) return;
+    if (!active || !player) return;
+    dt = Math.min(Math.max(dt || 0, 0), 0.1);
+    elapsed += dt;
+    phase.elapsed += dt;
+    phase.phaseElapsed += dt;
 
-    var px = player.x;
-    var pz = player.z;
-    var mover = player.nudge || player;
-    var feetY = player.feetY != null ? player.feetY : 0;
-    var bodyH = player.bodyHeight != null ? player.bodyHeight : 1.78;
-    var pr = player.radius != null ? player.radius : 0.32;
-
-    debrisTimeSinceEnter += dt;
-    if (debrisTimeSinceEnter >= LEVEL02_DEBRIS_DELAY_SEC) {
-      debrisSpawnCooldown += dt;
-      if (debrisSpawnCooldown >= LEVEL02_DEBRIS_INTERVAL_SEC) {
-        debrisSpawnCooldown = 0;
-        spawnDebrisChunk(px, pz, true, true);
+    if (!exitCenter && colliders && colliders._l02PhaseController) exitCenter = colliders._l02PhaseController.exitCenter;
+    if (exitCenter && Math.hypot(player.x - exitCenter.x, player.z - exitCenter.z) <= LEVEL02_EXIT_SAFE_RADIUS) {
+      if (!phase.exitSafe) {
+        phase.exitSafe = true;
+        phase.dustLevel = 0;
+        warnings.length = 0;
+        setPhase(LEVEL02_PHASES.EXIT_SAFE, onToast);
       }
     }
 
-    wallSpawnAcc += dt;
-    if (wallSpawnAcc >= LEVEL02_WALL_INTERVAL_SEC) {
-      wallSpawnAcc = 0;
-      trySpawnWallFalls(px, pz, 1, mover, survival, onToast);
+    if (!phase.exitSafe) {
+      if (phase.phase === LEVEL02_PHASES.RENOVATED && elapsed >= renovatedDuration) {
+        setPhase(LEVEL02_PHASES.COLLAPSE_TILES, onToast);
+      } else if (phase.phase === LEVEL02_PHASES.COLLAPSE_TILES && phase.phaseElapsed >= 5.5) {
+        setPhase(LEVEL02_PHASES.COLLAPSE_WALLS, onToast);
+      } else if (phase.phase === LEVEL02_PHASES.COLLAPSE_WALLS && phase.phaseElapsed >= 8) {
+        setPhase(LEVEL02_PHASES.SKELETON_EXPOSED, onToast);
+      }
+
+      var collapsing = phase.phase !== LEVEL02_PHASES.RENOVATED;
+      if (collapsing) {
+        phase.dustLevel = Math.min(1, phase.dustLevel + dt * (phase.phase === LEVEL02_PHASES.SKELETON_EXPOSED ? 0.045 : 0.08));
+        dustDamageAcc += dt * LEVEL02_DUST_DAMAGE_PER_SEC;
+        if (dustDamageAcc >= 0.25 && survival && !survival.dead) {
+          survival.takeDamage(dustDamageAcc);
+          dustDamageAcc = 0;
+        }
+        spawnAcc += dt;
+        if (spawnAcc >= LEVEL02_DEBRIS_INTERVAL_SEC) {
+          spawnAcc = 0;
+          queueCeilingWarning(player.x, player.z);
+        }
+        if (phase.phase === LEVEL02_PHASES.COLLAPSE_WALLS || phase.phase === LEVEL02_PHASES.SKELETON_EXPOSED) {
+          wallAcc += dt;
+          if (wallAcc >= LEVEL02_WALL_INTERVAL_SEC) {
+            wallAcc = 0;
+            queueWallWarning(player.x, player.z);
+          }
+        }
+      }
     }
 
     var i;
-    for (i = debrisMeshes.length - 1; i >= 0; i--) {
-      var mesh = debrisMeshes[i];
-      var st = debrisState[i];
-      st.vy -= 42 * dt;
-      mesh.position.y += st.vy * dt;
-      mesh.rotation.x += dt * (st.big ? 2.2 : 4.5);
-      mesh.rotation.z += dt * 1.8;
+    for (i = warnings.length - 1; i >= 0; i--) {
+      warnings[i].time -= dt;
+      if (warnings[i].time > 0) continue;
+      if (warnings[i].kind === "wall") collapseWall(warnings[i].target, player, survival, onToast);
+      else spawnTile(warnings[i].x, warnings[i].z, true);
+      warnings.splice(i, 1);
+    }
 
-      updateDebrisHit(st, mesh, player, feetY, bodyH, pr, survival, onToast);
-
-      if (mesh.position.y < -1.2) {
-        if (mesh.parent) mesh.parent.remove(mesh);
-        else scene.remove(mesh);
-        debrisMeshes.splice(i, 1);
-        debrisState.splice(i, 1);
+    var feetY = player.feetY == null ? 0 : player.feetY;
+    var radius = player.radius || 0.32;
+    for (i = debris.length - 1; i >= 0; i--) {
+      var mesh = debris[i];
+      var state = mesh.userData.l02Debris;
+      state.ttl -= dt;
+      state.vy -= state.dust ? 0 : 18 * dt;
+      mesh.position.y += state.vy * dt;
+      mesh.rotation.x += dt * 2.5;
+      if (state.dangerous && !state.hit && Math.abs(mesh.position.x - player.x) < radius + 0.4 &&
+          Math.abs(mesh.position.z - player.z) < radius + 0.4 && mesh.position.y < feetY + 1.8) {
+        state.hit = true;
+        if (survival && !survival.dead) survival.takeDamage(LEVEL02_DAMAGE);
+        if (onToast) onToast("坠落的顶板砸中了你");
+      }
+      if (state.ttl <= 0 || mesh.position.y < -0.4) {
+        remove(mesh);
+        debris.splice(i, 1);
       }
     }
-
-    if (debrisMeshes.length > LEVEL02_MAX_DEBRIS) {
-      var drop = debrisMeshes.shift();
-      debrisState.shift();
-      if (drop.parent) drop.parent.remove(drop);
-      else scene.remove(drop);
+    if (colliders && colliders._l02PhaseController) {
+      colliders._l02PhaseController.dustLevel = phase.dustLevel;
+      colliders._l02PhaseController.exitSafe = phase.exitSafe;
     }
   }
 
-  function isActive() {
-    return active;
+  function drawFx(canvas, now) {
+    if (!canvas || !phase.dustLevel || phase.exitSafe) return;
+    var ctx2d = canvas.getContext && canvas.getContext("2d");
+    if (!ctx2d) return;
+    var w = canvas.width;
+    var h = canvas.height;
+    var amount = phase.dustLevel;
+    ctx2d.save();
+    ctx2d.fillStyle = "rgba(137,122,101," + (amount * 0.16).toFixed(3) + ")";
+    ctx2d.fillRect(0, 0, w, h);
+    var seed = Math.floor((now || 0) / 80);
+    for (var i = 0; i < Math.floor(12 + amount * 32); i++) {
+      var x = ((i * 97 + seed * 29) % 997) / 997 * w;
+      var y = ((i * 53 + seed * 17) % 991) / 991 * h;
+      ctx2d.fillStyle = "rgba(220,208,187," + (0.025 + amount * 0.055) + ")";
+      ctx2d.fillRect(x, y, 1 + (i % 3), 1 + (i % 2));
+    }
+    ctx2d.restore();
   }
+
+  function isActive() { return active; }
+  function getPhase() { return phase.phase; }
+  function getDustLevel() { return phase.dustLevel; }
+  function isExitSafe() { return phase.exitSafe; }
 
   function dispose() {
-    var i;
-    for (i = 0; i < debrisMeshes.length; i++) {
-      removeFromHazardRoot(debrisMeshes[i]);
-    }
-    for (i = 0; i < wallFalls.length; i++) {
-      removeFromHazardRoot(wallFalls[i].pivot);
-    }
-    debrisMeshes.length = 0;
-    debrisState.length = 0;
-    wallFalls.length = 0;
-    wallTargetsRef = null;
-    collidersRef = null;
-    hazardParent = null;
-    debrisVisualRoot = null;
-    fallenWallKeys = Object.create(null);
+    disposeVisuals();
+    if (sharedGeo) sharedGeo.dispose();
+    if (tileMat) tileMat.dispose();
+    if (dustMat) dustMat.dispose();
+    sharedGeo = null;
+    tileMat = null;
+    dustMat = null;
     active = false;
+    hazardParent = null;
+    debrisRoot = null;
+    wallTargets = [];
+    colliders = null;
+    exitCenter = null;
+    fallen = Object.create(null);
+    elapsed = spawnAcc = wallAcc = dustDamageAcc = 0;
   }
 
-  return { start: start, update: update, isActive: isActive, dispose: dispose };
+  return {
+    start: start,
+    update: update,
+    isActive: isActive,
+    dispose: dispose,
+    getPhase: getPhase,
+    getDustLevel: getDustLevel,
+    drawFx: drawFx,
+    isExitSafe: isExitSafe,
+    getVisionParams: function () {
+      var dust = phase.exitSafe ? 0 : phase.dustLevel;
+      return { dust: dust, visibility: 1 - dust * 0.62, fogNear: 0.7 + dust * 0.8, fogFarScale: 1 - dust * 0.68 };
+    },
+  };
 }

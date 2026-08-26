@@ -7,7 +7,13 @@ import * as THREE from "three";
 export const L0_POSTER_WALL_CELL = { row: 1, col: 0 };
 
 const POSTER_TEX_PATH = "img/backrooms/level0/sd-class1.png";
-const VORTEX_CANVAS_SIZE = 512;
+const VORTEX_CANVAS_SIZE =
+  typeof window !== "undefined" &&
+  (window.devicePixelRatio > 1.5 ||
+    new URLSearchParams(window.location.search).get("gfx") === "high")
+    ? 256
+    : 128;
+const VORTEX_FRAME_MS = 1000 / 15;
 
 /** @type {{ tex: THREE.CanvasTexture, canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D } | null} */
 let clipVortexState = null;
@@ -121,14 +127,25 @@ export function createClipWallVortexTexture() {
   paintClipWallVortex(ctx, VORTEX_CANVAS_SIZE, 0);
   var tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  clipVortexState = { tex: tex, canvas: canvas, ctx: ctx };
+  clipVortexState = { tex: tex, canvas: canvas, ctx: ctx, lastPaintMs: -Infinity };
   return tex;
 }
 
 export function updateClipWallVortex(elapsed) {
   if (!clipVortexState) return;
+  var nowMs = elapsed * 1000;
+  if (nowMs - clipVortexState.lastPaintMs < VORTEX_FRAME_MS) return;
+  clipVortexState.lastPaintMs = nowMs;
   paintClipWallVortex(clipVortexState.ctx, VORTEX_CANVAS_SIZE, elapsed);
   clipVortexState.tex.needsUpdate = true;
+}
+
+export function disposeClipWallVortex() {
+  if (!clipVortexState) return;
+  clipVortexState.tex.dispose();
+  clipVortexState.canvas.width = 1;
+  clipVortexState.canvas.height = 1;
+  clipVortexState = null;
 }
 
 function mountDecalOnWall(wallsGroup, wx, wz, walkRow, walkCol, opts, mesh) {

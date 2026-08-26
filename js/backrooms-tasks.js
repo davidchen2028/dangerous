@@ -335,7 +335,14 @@ export const ACHIEVEMENT_DEFS = [
   },
 
   // —— 一、探索成就（常显）——
-  { id: "reshaped_chaos", title: "重塑的混乱", category: "explore", levelId: "0.2", reward: 0, condition: "进入 Level 0.2" },
+  {
+    id: "red_room_turn_away",
+    title: "看见并离开",
+    category: "explore",
+    reward: 0,
+    condition: "看见 Level 0 的红室征兆并离开危险区域",
+  },
+  { id: "reshaped_chaos", title: "重塑的混乱", category: "explore", levelId: "0.2", reward: 0, condition: "活着走出崩塌中的 Level 0.2" },
   { id: "so_cold", title: "好冷", category: "explore", levelId: "0.3", reward: 0, condition: "进入 Level 0.3（本层级无法正常离开）" },
   { id: "lost_warehouse", title: "仓库迷途", category: "explore", levelId: "l1", reward: 0, condition: "进入 Level 1" },
   { id: "many_corridors", title: "多段走廊", category: "explore", levelId: "l1.1", reward: 0, condition: "进入 Level 1.1" },
@@ -984,8 +991,19 @@ export function markLevelEntered(levelId, onToast) {
       break;
     }
   }
-  if (def) unlockAchievement(def.id, onToast);
+  if (def && def.id !== "reshaped_chaos") unlockAchievement(def.id, onToast);
   maybeUnlockSetAchievements(onToast);
+}
+
+/** 仅在玩家存活并通过 Level 0.2 出口门时解锁。 */
+export function markLevel02Survived(onToast) {
+  unlockAchievement("reshaped_chaos", onToast);
+  maybeUnlockSetAchievements(onToast);
+}
+
+/** 看见红室征兆后主动远离，或误入后仍存活离开。 */
+export function markRedRoomSeenAndLeft(onToast) {
+  unlockAchievement("red_room_turn_away", onToast);
 }
 
 /**

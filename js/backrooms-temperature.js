@@ -17,6 +17,12 @@
 const LEVEL_PROFILE = {
   /** 舒适常温 / 室温 18–24°C */
   0: { min: 18, max: 24, base: 21, swing: 2.6 },
+  /** Level 0.1 — 天顶站完好舱 */
+  "0.1": { min: 19, max: 23, base: 21, swing: 0.8 },
+  /** Level 0.1 — 环控故障热舱 */
+  "0.1_hot": { min: 55, max: 68, base: 62, swing: 3, volatile: true },
+  /** Level 0.1 — 环控故障冷舱 */
+  "0.1_cold": { min: -18, max: -12, base: -15, swing: 1.2 },
   /** 偏凉宜居 15–20°C */
   1: { min: 15, max: 20, base: 17.5, swing: 2.2 },
   /** 蒸汽管道：偏高、波动大，常 40°C+，峰值可达 50°C 以上 */

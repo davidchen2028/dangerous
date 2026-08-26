@@ -6,6 +6,8 @@
 /** @type {Record<string | number, SurvivalDifficulty>} */
 export const SURVIVAL_DIFFICULTY = {
   0: 1,
+  "0.1": 0,
+  "0.2": 3,
   1: 1,
   2: 2,
   3: 4,

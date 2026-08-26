@@ -11,12 +11,20 @@ let audio = null;
 let gestureBound = false;
 let fadeFrame = 0;
 let audioFailed = false;
+var musicDucks = { hallucination: 1, level02_entry: 1 };
+
+function getMusicDuck() {
+  var value = 1;
+  var key;
+  for (key in musicDucks) value *= musicDucks[key];
+  return Math.max(0, Math.min(1, value));
+}
 
 function ensureAudio() {
   if (audio) return audio;
   audio = new Audio(MUSIC_SRC);
   audio.loop = true;
-  audio.volume = MUSIC_VOLUME;
+  audio.volume = MUSIC_VOLUME * getMusicDuck();
   audio.preload = "auto";
   audio.addEventListener("error", function () {
     audioFailed = true;
@@ -48,7 +56,7 @@ export function startLevel0Music() {
     cancelAnimationFrame(fadeFrame);
     fadeFrame = 0;
   }
-  el.volume = MUSIC_VOLUME;
+  el.volume = MUSIC_VOLUME * getMusicDuck();
   if (!el.paused) return;
   var p = el.play();
   // 浏览器要求先有用户交互才允许带声播放：被拒绝时等首次交互重试
@@ -114,10 +122,18 @@ export function stopLevel0Music() {
   try {
     audio.pause();
     audio.currentTime = 0;
-    audio.volume = MUSIC_VOLUME;
+    audio.volume = MUSIC_VOLUME * getMusicDuck();
   } catch (err) {
     /* ignore */
   }
+}
+
+/** 幻觉事件使用的可恢复压低接口；1 为正常音量，0 为完全静音。 */
+export function setLevel0MusicDuck(multiplier, channel) {
+  var key = channel || "hallucination";
+  musicDucks[key] = Math.max(0, Math.min(1, Number(multiplier) || 0));
+  if (!audio || fadeFrame) return;
+  audio.volume = MUSIC_VOLUME * getMusicDuck();
 }
 
 export function bindLevel0Music() {

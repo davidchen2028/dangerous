@@ -24,6 +24,67 @@ body {
   z-index: 0;
 }
 
+.backrooms-l0-fx {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.backrooms-dev-jump {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 20;
+  transform: translate(-50%, -50%);
+  width: min(320px, calc(100vw - 32px));
+  padding: 18px;
+  border: 1px solid rgba(255, 232, 164, 0.36);
+  border-radius: 10px;
+  background: rgba(18, 16, 10, 0.96);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.58);
+}
+
+.backrooms-dev-jump[hidden] {
+  display: none;
+}
+
+.backrooms-dev-jump label {
+  display: block;
+  margin-bottom: 10px;
+  color: #f1dfad;
+  font-size: 13px;
+}
+
+.backrooms-dev-jump input {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: #080806;
+  color: #fff7dc;
+  font: inherit;
+}
+
+.backrooms-dev-jump div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.backrooms-dev-jump button {
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: #302919;
+  color: #fff4d2;
+  cursor: pointer;
+}
+
 .backrooms-input {
   position: fixed;
   inset: 0;
