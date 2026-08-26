@@ -358,7 +358,7 @@
   function spikeGroups() {
     if (stage === 2) return [{ t: 0.5, count: 3 }];
     if (stage === 3) {
-      return [{ t: 0.24, count: 1 }, { t: 0.5, count: 1 }, { t: 0.76, count: 1 }];
+      return [{ t: 0.44, count: 1 }, { t: 0.5, count: 1 }, { t: 0.56, count: 1 }];
     }
     if (stage === 9 && !old9BecameGap) {
       if (old9SideOn) {
@@ -431,7 +431,7 @@
   }
 
   function resetHazards(L) {
-    spike.maxH = Math.max(14, Math.round(H * 0.028));
+    spike.maxH = Math.max(12, Math.round(H * 0.022));
     spike.armed = stage === 2 || stage === 3;
     spikeStates = spikeGroups().map(function () {
       return { shown: false, h: 0 };
