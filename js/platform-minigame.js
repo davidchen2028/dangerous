@@ -431,7 +431,7 @@
   }
 
   function resetHazards(L) {
-    spike.maxH = Math.max(12, Math.round(H * 0.022));
+    spike.maxH = Math.max(14, Math.round(H * 0.027));
     spike.armed = stage === 2 || stage === 3;
     spikeStates = spikeGroups().map(function () {
       return { shown: false, h: 0 };
