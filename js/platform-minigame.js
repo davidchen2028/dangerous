@@ -362,7 +362,7 @@
   function spikeGroups() {
     if (stage === 2) return [{ t: 0.5, count: 3 }];
     if (stage === 3) {
-      return [{ t: 0.44, count: 1 }, { t: 0.5, count: 1 }, { t: 0.56, count: 1 }];
+      return [{ t: 0.38, count: 1 }, { t: 0.5, count: 1 }, { t: 0.62, count: 1 }];
     }
     if (stage === 9 && !old9BecameGap) {
       if (old9SideOn) {
