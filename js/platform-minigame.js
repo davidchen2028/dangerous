@@ -2615,6 +2615,8 @@
     var sh = img.naturalHeight || step;
     x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
     if (fit === "tile") {
+      var smoothing = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = false;
       for (var ty = y; ty < y + h; ty += step) {
         for (var tx = x; tx < x + w; tx += step) {
           var rw = Math.min(step, x + w - tx);
@@ -2624,6 +2626,7 @@
           ctx.drawImage(img, 0, 0, cw, ch, tx, ty, rw, rh);
         }
       }
+      ctx.imageSmoothingEnabled = smoothing;
       return;
     }
     ctx.drawImage(img, 0, 0, sw, sh, x, y, w, h);
@@ -2643,10 +2646,13 @@
     y = Math.round(y);
     w = Math.round(w);
     h = Math.round(h);
+    var smoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
     for (var tx = x; tx < x + w; tx += step) {
       var rw = Math.min(step, x + w - tx);
       ctx.drawImage(img, sourceX, 0, sourceW, sourceH, tx, y, rw, h);
     }
+    ctx.imageSmoothingEnabled = smoothing;
   }
 
   function draw() {
