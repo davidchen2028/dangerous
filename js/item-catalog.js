@@ -27,6 +27,19 @@
       reclaimMin: 3600000,
       image: "img/market/keycard-side-entrance.png",
     },
+    keycard_basement_storage: {
+      id: "keycard_basement_storage",
+      name: "地下储藏间",
+      type: "keycard",
+      w: 1,
+      h: 1,
+      maxDurability: 10,
+      access: "basement_storage",
+      minMarketPrice: 3500000,
+      maxMarketPrice: 3500000,
+      reclaimMin: 3150000,
+      image: "img/market/keycard-side-entrance.png",
+    },
     medkit: {
       id: "medkit",
       name: "野战医疗包",
@@ -75,6 +88,23 @@
       type: "loot",
       w: 1,
       h: 1,
+      model3d: "models/futuristic-device.glb",
+    },
+    alloy_plate: {
+      id: "alloy_plate",
+      name: "空间站合金板",
+      type: "loot",
+      w: 2,
+      h: 1,
+      rarity: "rare",
+      rarityLabel: "稀有",
+      rarityIcon: "🔵",
+      category: "industrial",
+      reclaimMin: 4200,
+      minMarketPrice: 6500,
+      maxMarketPrice: 12000,
+      flavor: "从天顶站破损舱壁拆下的轻质耐热合金板。",
+      image: null,
       model3d: "models/futuristic-device.glb",
     },
     sealed_motor_oil: {
@@ -482,6 +512,7 @@
 
   var STASH_TO_ITEM = {
     circuit: "circuit",
+    alplt: "alloy_plate",
     spoil: "sealed_motor_oil",
     hidrl: "heavy_industrial_drill",
     helm1: "helm_basic",
@@ -508,6 +539,7 @@
     c3007: "collectible_3007",
     c3008: "collectible_3008",
     kpoff: "keycard_president_office",
+    kbstor: "keycard_basement_storage",
   };
 
   var SLOT_TYPES = {

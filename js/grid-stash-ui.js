@@ -54,7 +54,7 @@
     if (item.durability != null) data.durability = item.durability;
     if (item.maxDurability != null) data.maxDurability = item.maxDurability;
     if (
-      item.id === "keycard" &&
+      (item.type === "keycard" || item.id === "keycard") &&
       data.durability != null &&
       data.durability <= 0
     ) {
@@ -68,7 +68,7 @@
     opts = opts || {};
     var data;
     if (
-      catItem.id === "keycard" &&
+      (catItem.type === "keycard" || catItem.id === "keycard") &&
       catItem.durability != null &&
       !opts.fresh
     ) {
@@ -77,7 +77,7 @@
       data = catalogToItem(catItem);
     }
     if (!data) return false;
-    if (catItem.id === "keycard") {
+    if (catItem.type === "keycard" || catItem.id === "keycard") {
       if (data.maxDurability == null) data.maxDurability = 10;
       if (opts.fresh || data.durability == null) {
         data.durability = data.maxDurability;
@@ -271,7 +271,7 @@
 
       var slotKey = slotBtn.dataset.slot;
       if (slotKey === "card") {
-        if (cat.id !== "keycard") continue;
+        if (cat.type !== "keycard" && cat.id !== "keycard") continue;
         if (window.ItemCatalog.acceptsSlot(slotKey, cat)) {
           return slotBtn;
         }
@@ -294,7 +294,12 @@
 
     if (slotKey === "card") {
       var cardIndex = parseInt(slotEl.dataset.cardIndex, 10);
-      if (isNaN(cardIndex) || cat.id !== "keycard") return false;
+      if (
+        isNaN(cardIndex) ||
+        (cat.type !== "keycard" && cat.id !== "keycard")
+      ) {
+        return false;
+      }
 
       var existingCard = loadout.cards[cardIndex];
       if (existingCard) {
@@ -545,7 +550,10 @@
 
     var label = document.createElement("span");
     label.className = "inv-item__label";
-    if (inst.itemData.id === "keycard") {
+    if (
+      inst.itemData.type === "keycard" ||
+      inst.itemData.id === "keycard"
+    ) {
       el.classList.add("inv-item--keycard");
       label.classList.add("inv-item__label--dur");
       label.textContent =
@@ -1138,7 +1146,8 @@
       var inst = mgr.items[i];
       if (
         inst.itemData &&
-        inst.itemData.id === "keycard" &&
+        (inst.itemData.type === "keycard" ||
+          inst.itemData.id === "keycard") &&
         inst.itemData.durability != null &&
         inst.itemData.durability <= 0
       ) {

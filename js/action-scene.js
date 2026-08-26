@@ -169,6 +169,18 @@ if (typeof window !== "undefined") {
     ) {
       urls = urls.concat(window.PresidentOfficeFloorLoot.getPreloadUrls());
     }
+    if (
+      window.BasementRedChest &&
+      window.BasementRedChest.getPreloadUrls
+    ) {
+      urls = urls.concat(window.BasementRedChest.getPreloadUrls());
+    }
+    if (
+      window.BasementStorageLoot &&
+      window.BasementStorageLoot.getPreloadUrls
+    ) {
+      urls = urls.concat(window.BasementStorageLoot.getPreloadUrls());
+    }
     if (window.ActionDropLoot && window.ActionDropLoot.getPreloadUrls) {
       urls = urls.concat(window.ActionDropLoot.getPreloadUrls());
     }
@@ -444,9 +456,19 @@ if (typeof window !== "undefined") {
   var TEST_DOWN_STAIRS_DEPTH = 3;
   var TEST_DOWN_STAIRS_DROP = 2.4;
   var TEST_DOWN_STAIRS_STEPS = 10;
+  var TEST_BASEMENT_FLOOR_Y = -TEST_DOWN_STAIRS_DROP;
+  /** 顶棚需低于地表草皮/边缘平面，避免负层顶部与地表面片打架 */
+  var TEST_BASEMENT_WALL_H = 2;
+  var TEST_BASEMENT_WALL_T = 0.22;
+  var TEST_BASEMENT_CORRIDOR_W = 3;
+  var TEST_BASEMENT_FLOOR_T = 0.1;
   var TEST_PALACE_REAR_EVAC_WIDTH = 6;
   var TEST_PALACE_REAR_EVAC_DEPTH = 4;
   var PRESIDENT_OFFICE_KEYCARD_ID = "keycard_president_office";
+  var BASEMENT_STORAGE_KEYCARD_IDS = [
+    "keycard_basement_storage",
+    "keycard_president_office",
+  ];
   var PRESIDENT_OFFICE_DOOR_OPEN_Z = 1.15;
   var testWaitingHall = null;
   var testCollectionRoom = null;
@@ -454,6 +476,8 @@ if (typeof window !== "undefined") {
   var testPresidentOfficeDoor = null;
   var testStairRoomDoor = null;
   var testDownStairs = null;
+  var testBasement = null;
+  var testBasementStorageDoor = null;
   var testPalaceRearEvacRoom = null;
   var MISSILE_GLB_URL = "models/missile.glb";
   var ARMS_GLB_URL = "models/soldier-arms.glb";
@@ -1871,6 +1895,375 @@ if (typeof window !== "undefined") {
     };
   }
 
+  function makeBasementRect(x0, x1, z0, z1) {
+    return {
+      x0: x0,
+      x1: x1,
+      z0: z0,
+      z1: z1,
+      cx: (x0 + x1) * 0.5,
+      cz: (z0 + z1) * 0.5,
+      w: x1 - x0,
+      d: z1 - z0,
+    };
+  }
+
+  /** 地下室全部矩形均由楼梯底口推导，避免与上层布局脱节 */
+  function getTestBasementLayout(house) {
+    var stair = getTestDownStairsLayout(house);
+    var corridorW = TEST_BASEMENT_CORRIDOR_W;
+    var landing = makeBasementRect(
+      stair.x1,
+      stair.x1 + 3.9,
+      stair.z0,
+      stair.z1
+    );
+    var main = makeBasementRect(
+      landing.x1 - corridorW,
+      landing.x1,
+      landing.z1,
+      landing.z1 + 11.35
+    );
+    var branchZ0 = main.z0 + 3.35;
+    var branchZ1 = branchZ0 + corridorW;
+    var left = makeBasementRect(main.x0 - 11, main.x0, branchZ0, branchZ1);
+    var right = makeBasementRect(main.x1, main.x1 + 4, branchZ0, branchZ1);
+    var storage = makeBasementRect(right.x1, right.x1 + 8, main.z1 - 20, main.z1);
+    return {
+      floorY: TEST_BASEMENT_FLOOR_Y,
+      wallH: TEST_BASEMENT_WALL_H,
+      stair: stair,
+      landing: landing,
+      main: main,
+      left: left,
+      right: right,
+      storage: storage,
+      storageDoor: { x: storage.x0, z: right.cz, width: 1.55 },
+      redChest: { x: left.x0 + 1.2, z: left.cz, yaw: Math.PI / 2 },
+      intelCabinet: { x: main.cx, z: main.z1 - 0.6, yaw: Math.PI },
+      ammoCrate: { x: storage.x0 + 1.4, z: storage.z0 + 3.6, yaw: Math.PI / 2 },
+      storageLootSpots: [
+        { id: "northwest", x: storage.x0 + 1.6, z: storage.z1 - 1.8 },
+        { id: "northeast", x: storage.x1 - 1.6, z: storage.z1 - 1.4 },
+        { id: "midwest", x: storage.x0 + 1.8, z: storage.cz - 0.8 },
+        { id: "mideast", x: storage.x1 - 1.4, z: storage.cz + 0.4 },
+        { id: "southwest", x: storage.x0 + 1.5, z: storage.z0 + 1.8 },
+        { id: "southeast", x: storage.x1 - 1.6, z: storage.z0 + 3.2 },
+      ],
+    };
+  }
+
+  function addBasementSlab(parent, rect, color) {
+    addBox(
+      parent,
+      rect.w,
+      TEST_BASEMENT_FLOOR_T,
+      rect.d,
+      rect.cx,
+      TEST_BASEMENT_FLOOR_Y - TEST_BASEMENT_FLOOR_T * 0.5,
+      rect.cz,
+      color,
+      false
+    );
+    addBox(
+      parent,
+      rect.w,
+      TEST_WAITING_HALL_CEILING_THICK,
+      rect.d,
+      rect.cx,
+      TEST_BASEMENT_FLOOR_Y +
+        TEST_BASEMENT_WALL_H +
+        TEST_WAITING_HALL_CEILING_THICK * 0.5,
+      rect.cz,
+      0x20242a,
+      false
+    );
+  }
+
+  function addBasementWall(parent, sx, sz, x, z, color) {
+    addBox(
+      parent,
+      sx,
+      TEST_BASEMENT_WALL_H,
+      sz,
+      x,
+      TEST_BASEMENT_FLOOR_Y + TEST_BASEMENT_WALL_H * 0.5,
+      z,
+      color
+    );
+  }
+
+  function addBasementLight(parent, x, z, color) {
+    var light = new THREE.PointLight(color || 0xffe4a8, 0.72, 10, 2);
+    light.position.set(
+      x,
+      TEST_BASEMENT_FLOOR_Y + TEST_BASEMENT_WALL_H - 0.28,
+      z
+    );
+    parent.add(light);
+    var fixture = new THREE.Mesh(
+      new THREE.BoxGeometry(0.85, 0.06, 0.22),
+      new THREE.MeshBasicMaterial({ color: color || 0xffe4a8 })
+    );
+    fixture.position.copy(light.position);
+    parent.add(fixture);
+  }
+
+  function buildTestBasementShell(parent, house) {
+    var b = getTestBasementLayout(house);
+    var wallColor = 0x30343a;
+    var blueWall = 0x31485c;
+    var rooms = [
+      {
+        rect: b.landing,
+        color: wallColor,
+        /* 西侧整段留给楼梯井，玩家由此下到负层 */
+        openings: [{ side: "west", a0: b.landing.z0, a1: b.landing.z1 }],
+      },
+      { rect: b.main, color: wallColor },
+      { rect: b.left, color: wallColor },
+      { rect: b.right, color: wallColor },
+      { rect: b.storage, color: blueWall },
+    ];
+    var i;
+
+    addBasementSlab(parent, b.landing, 0x55585b);
+    addBasementSlab(parent, b.main, 0x6a633d);
+    addBasementSlab(parent, b.left, 0x6a633d);
+    addBasementSlab(parent, b.right, 0x6a633d);
+    addBasementSlab(parent, b.storage, 0x3c5368);
+
+    for (i = 0; i < rooms.length; i++) {
+      buildBasementRoomWalls(parent, rooms[i], rooms);
+    }
+    buildTestBasementStorageDoor(parent, b);
+
+    addBasementLight(parent, b.landing.cx, b.landing.cz);
+    addBasementLight(parent, b.main.cx, b.main.z0 + 2.5);
+    addBasementLight(parent, b.main.cx, b.main.z1 - 2.5);
+    addBasementLight(parent, b.left.x0 + 3, b.left.cz);
+    addBasementLight(parent, b.right.cx, b.right.cz);
+    addBasementLight(parent, b.storage.cx, b.storage.z0 + 3.5, 0xb9dcff);
+    addBasementLight(parent, b.storage.cx, b.storage.cz, 0xb9dcff);
+    addBasementLight(parent, b.storage.cx, b.storage.z1 - 3.5, 0xb9dcff);
+
+    testBasement = { layout: b, playerInside: false };
+    return b;
+  }
+
+  function basementSideSpan(rect, side) {
+    if (side === "west") {
+      return { line: rect.x0, a0: rect.z0, a1: rect.z1, alongZ: true };
+    }
+    if (side === "east") {
+      return { line: rect.x1, a0: rect.z0, a1: rect.z1, alongZ: true };
+    }
+    if (side === "south") {
+      return { line: rect.z0, a0: rect.x0, a1: rect.x1, alongZ: false };
+    }
+    return { line: rect.z1, a0: rect.x0, a1: rect.x1, alongZ: false };
+  }
+
+  /** 相邻房间在该边上的重叠区间即门洞，其余部分必须砌墙 */
+  function basementNeighborCut(rect, side, other) {
+    var eps = 0.002;
+    if (side === "west" && Math.abs(other.x1 - rect.x0) > eps) return null;
+    if (side === "east" && Math.abs(other.x0 - rect.x1) > eps) return null;
+    if (side === "south" && Math.abs(other.z1 - rect.z0) > eps) return null;
+    if (side === "north" && Math.abs(other.z0 - rect.z1) > eps) return null;
+    var span = basementSideSpan(rect, side);
+    var c0 = Math.max(span.a0, span.alongZ ? other.z0 : other.x0);
+    var c1 = Math.min(span.a1, span.alongZ ? other.z1 : other.x1);
+    return c1 - c0 > eps ? [c0, c1] : null;
+  }
+
+  function subtractBasementCuts(a0, a1, cuts) {
+    var segments = [[a0, a1]];
+    var i;
+    var j;
+    for (i = 0; i < cuts.length; i++) {
+      var next = [];
+      for (j = 0; j < segments.length; j++) {
+        var s0 = segments[j][0];
+        var s1 = segments[j][1];
+        if (cuts[i][1] <= s0 || cuts[i][0] >= s1) {
+          next.push([s0, s1]);
+          continue;
+        }
+        if (cuts[i][0] > s0) next.push([s0, cuts[i][0]]);
+        if (cuts[i][1] < s1) next.push([cuts[i][1], s1]);
+      }
+      segments = next;
+    }
+    return segments;
+  }
+
+  function buildBasementRoomWalls(parent, room, rooms) {
+    var t = TEST_BASEMENT_WALL_T;
+    var sides = ["west", "east", "south", "north"];
+    var s;
+    var i;
+    for (s = 0; s < sides.length; s++) {
+      var side = sides[s];
+      var span = basementSideSpan(room.rect, side);
+      var cuts = [];
+      for (i = 0; i < rooms.length; i++) {
+        if (rooms[i] === room) continue;
+        var cut = basementNeighborCut(room.rect, side, rooms[i].rect);
+        if (cut) cuts.push(cut);
+      }
+      for (i = 0; room.openings && i < room.openings.length; i++) {
+        if (room.openings[i].side !== side) continue;
+        cuts.push([room.openings[i].a0, room.openings[i].a1]);
+      }
+      var segments = subtractBasementCuts(span.a0, span.a1, cuts);
+      for (i = 0; i < segments.length; i++) {
+        var len = segments[i][1] - segments[i][0];
+        if (len < 0.02) continue;
+        var mid = (segments[i][0] + segments[i][1]) * 0.5;
+        if (span.alongZ) {
+          addBasementWall(parent, t, len, span.line, mid, room.color);
+        } else {
+          addBasementWall(parent, len, t, mid, span.line, room.color);
+        }
+      }
+    }
+  }
+
+  function buildTestBasementStorageDoor(parent, basement) {
+    var d = basement.storageDoor;
+    var wallT = TEST_BASEMENT_WALL_T;
+    var doorH = 1.85;
+    var doorW = d.width;
+    var gapZ0 = basement.right.z0;
+    var gapZ1 = basement.right.z1;
+    var sideD = (gapZ1 - gapZ0 - doorW) * 0.5;
+
+    addBasementWall(parent, wallT, sideD, d.x, gapZ0 + sideD * 0.5, 0x31485c);
+    addBasementWall(parent, wallT, sideD, d.x, gapZ1 - sideD * 0.5, 0x31485c);
+    var lintelH = TEST_BASEMENT_WALL_H - doorH;
+    addBox(
+      parent,
+      wallT,
+      lintelH,
+      doorW,
+      d.x,
+      TEST_BASEMENT_FLOOR_Y + doorH + lintelH * 0.5,
+      d.z,
+      0x31485c,
+      false
+    );
+
+    var doorMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(wallT * 0.7, doorH * 0.98, doorW * 0.94),
+      new THREE.MeshLambertMaterial({
+        color: 0x263b50,
+        emissive: 0x07131f,
+        emissiveIntensity: 0.35,
+      })
+    );
+    doorMesh.name = "BasementStorageCardDoor";
+    doorMesh.position.set(d.x, TEST_BASEMENT_FLOOR_Y + doorH * 0.49, d.z);
+    parent.add(doorMesh);
+
+    registerCollider(
+      wallT + 0.08,
+      doorH,
+      doorW,
+      d.x,
+      TEST_BASEMENT_FLOOR_Y + doorH * 0.5,
+      d.z
+    );
+    testBasementStorageDoor = {
+      open: false,
+      animating: false,
+      t: 0,
+      mesh: doorMesh,
+      homeZ: d.z,
+      x: d.x,
+      z: d.z,
+      width: doorW,
+      closedColliders: [colliders[colliders.length - 1]],
+      openCollider: null,
+    };
+  }
+
+  function isNearBasementStorageDoor() {
+    if (!testBasementStorageDoor || testBasementStorageDoor.open) return false;
+    var d = testBasementStorageDoor;
+    return (
+      pos.y < -0.75 &&
+      Math.abs(pos.x - d.x) < 1.6 &&
+      Math.abs(pos.z - d.z) < d.width * 0.75 + 0.65
+    );
+  }
+
+  function tryOpenBasementStorageDoor() {
+    if (!isNearBasementStorageDoor()) return false;
+    if (
+      !window.PlayerLoadout ||
+      !window.PlayerLoadout.findKeycardFromIds ||
+      !window.PlayerLoadout.findKeycardFromIds(BASEMENT_STORAGE_KEYCARD_IDS)
+    ) {
+      showActionTopBanner(
+        "需要钥匙卡「地下储藏间」或「总统办公室」",
+        2600
+      );
+      return true;
+    }
+
+    var used = window.PlayerLoadout.consumeKeycardDurabilityFromIds(
+      1,
+      BASEMENT_STORAGE_KEYCARD_IDS
+    );
+    var d = testBasementStorageDoor;
+    d.open = true;
+    d.animating = true;
+    d.t = 0;
+    removeCollidersFromList(d.closedColliders);
+    if (d.mesh) d.openCollider = addColliderFromObject(d.mesh, 0.04);
+    if (used) showDurabilityBanner(used.remaining, used.max);
+    setInteractHintVisible(false);
+    return true;
+  }
+
+  function updateBasementStorageDoor(dt) {
+    if (!testBasementStorageDoor) return;
+    var d = testBasementStorageDoor;
+    if (d.animating && d.mesh) {
+      d.t += dt;
+      var u = Math.min(1, d.t / 0.55);
+      var ease = u * u * (3 - 2 * u);
+      d.mesh.position.z = d.homeZ + 1.35 * ease;
+      if (d.openCollider) syncColliderFromObject(d.openCollider, d.mesh, 0.04);
+      if (u >= 1) d.animating = false;
+    } else if (d.open && d.openCollider && d.mesh) {
+      syncColliderFromObject(d.openCollider, d.mesh, 0.04);
+    }
+  }
+
+  function pointInBasementRect(px, pz, rect, inset) {
+    inset = inset || 0;
+    return (
+      px >= rect.x0 + inset &&
+      px <= rect.x1 - inset &&
+      pz >= rect.z0 + inset &&
+      pz <= rect.z1 - inset
+    );
+  }
+
+  function isInsideBasementFloor(px, pz) {
+    if (!testBasement || !testBasement.layout) return false;
+    var b = testBasement.layout;
+    return (
+      pointInBasementRect(px, pz, b.landing) ||
+      pointInBasementRect(px, pz, b.main) ||
+      pointInBasementRect(px, pz, b.left) ||
+      pointInBasementRect(px, pz, b.right) ||
+      pointInBasementRect(px, pz, b.storage)
+    );
+  }
+
   function buildRearHouseTopFloorAroundStairs(
     parent,
     house,
@@ -2137,6 +2530,7 @@ if (typeof window !== "undefined") {
     buildPresidentOfficeDoor(parent, house, wallColor);
     buildStairRoomDoor(parent, house, wallColor);
     buildTestDownStairs(parent, house);
+    buildTestBasementShell(parent, house);
     buildTestPalaceRearEvacRoom(
       parent,
       house,
@@ -2462,17 +2856,6 @@ if (typeof window !== "undefined") {
       stair.z1 + wallT * 0.5,
       0x292d32
     );
-    addBox(
-      parent,
-      wallT,
-      wallH,
-      stair.depth + wallT * 2,
-      stair.x1 + wallT * 0.5,
-      wallY,
-      centerZ,
-      0x20242a
-    );
-
     testDownStairs = stair;
   }
 
@@ -2595,6 +2978,7 @@ if (typeof window !== "undefined") {
 
   function buildTestMapNorthRearHouse(parent) {
     var house = getTestNorthRearHouseLayout();
+    var basement = getTestBasementLayout(house);
     testNorthRearHouse = { layout: house, playerInside: false };
     buildTestNorthRearHouseShell(parent, house);
     if (window.PresidentOfficeChests && window.PresidentOfficeChests.build) {
@@ -2605,7 +2989,31 @@ if (typeof window !== "undefined") {
       );
     }
     if (window.AmmoCrate && window.AmmoCrate.build) {
-      window.AmmoCrate.build(parent, getWaitingHallGltfHelpers(), house);
+      window.AmmoCrate.build(
+        parent,
+        getWaitingHallGltfHelpers(),
+        Object.assign({ floorY: basement.floorY }, basement.ammoCrate)
+      );
+    }
+    if (window.BasementRedChest && window.BasementRedChest.build) {
+      window.BasementRedChest.build(
+        parent,
+        getWaitingHallGltfHelpers(),
+        Object.assign({ floorY: basement.floorY }, basement.redChest)
+      );
+    }
+    if (window.IntelCabinet && window.IntelCabinet.build) {
+      window.IntelCabinet.build(
+        parent,
+        getWaitingHallGltfHelpers(),
+        Object.assign({ floorY: basement.floorY }, basement.intelCabinet)
+      );
+    }
+    if (window.BasementStorageLoot && window.BasementStorageLoot.build) {
+      window.BasementStorageLoot.build(parent, getWaitingHallGltfHelpers(), {
+        floorY: basement.floorY,
+        spots: basement.storageLootSpots,
+      });
     }
     if (
       window.PresidentOfficeFloorLoot &&
@@ -4529,6 +4937,12 @@ if (typeof window !== "undefined") {
     if (window.AmmoCrate && window.AmmoCrate.closePanel) {
       window.AmmoCrate.closePanel();
     }
+    if (window.BasementRedChest && window.BasementRedChest.closePanel) {
+      window.BasementRedChest.closePanel();
+    }
+    if (window.IntelCabinet && window.IntelCabinet.closePanel) {
+      window.IntelCabinet.closePanel();
+    }
     if (window.LockpickingQTE && window.LockpickingQTE.close) {
       window.LockpickingQTE.close();
     }
@@ -5358,6 +5772,12 @@ if (typeof window !== "undefined") {
     if (window.AmmoCrate && window.AmmoCrate.updateAim) {
       window.AmmoCrate.updateAim(pos.x, pos.z, camera);
     }
+    if (window.BasementRedChest && window.BasementRedChest.updateAim) {
+      window.BasementRedChest.updateAim(pos.x, pos.z, camera);
+    }
+    if (window.IntelCabinet && window.IntelCabinet.updateAim) {
+      window.IntelCabinet.updateAim(pos.x, pos.z, camera);
+    }
     if (window.WorldLootBox && window.WorldLootBox.updateAim) {
       window.WorldLootBox.updateAim(pos.x, pos.z, camera);
     }
@@ -5382,6 +5802,9 @@ if (typeof window !== "undefined") {
       if (tryOpenStairRoomDoor()) {
         return true;
       }
+      if (tryOpenBasementStorageDoor()) {
+        return true;
+      }
       if (tryOpenPresidentOfficeDoor()) {
         return true;
       }
@@ -5397,6 +5820,12 @@ if (typeof window !== "undefined") {
       if (
         window.PresidentOfficeFloorLoot &&
         window.PresidentOfficeFloorLoot.tryPickup(pos.x, pos.z)
+      ) {
+        return true;
+      }
+      if (
+        window.BasementStorageLoot &&
+        window.BasementStorageLoot.tryPickup(pos.x, pos.z)
       ) {
         return true;
       }
@@ -5460,6 +5889,26 @@ if (typeof window !== "undefined") {
           window.AmmoCrate.updateAim(pos.x, pos.z, camera);
         }
         if (window.AmmoCrate.tryInteract(pos.x, pos.z, relaxAim)) {
+          releasePointerForUi();
+          return true;
+        }
+      }
+      if (window.BasementRedChest) {
+        if (camera && window.BasementRedChest.updateAim) {
+          window.BasementRedChest.updateAim(pos.x, pos.z, camera);
+        }
+        if (
+          window.BasementRedChest.tryInteract(pos.x, pos.z, relaxAim)
+        ) {
+          releasePointerForUi();
+          return true;
+        }
+      }
+      if (window.IntelCabinet) {
+        if (camera && window.IntelCabinet.updateAim) {
+          window.IntelCabinet.updateAim(pos.x, pos.z, camera);
+        }
+        if (window.IntelCabinet.tryInteract(pos.x, pos.z, relaxAim)) {
           releasePointerForUi();
           return true;
         }
@@ -5619,6 +6068,18 @@ if (typeof window !== "undefined") {
         }
         return;
       }
+      if (
+        window.BasementStorageLoot &&
+        window.BasementStorageLoot.shouldShowPickupHint(pos.x, pos.z)
+      ) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = formatInteractHint(
+            "按 E 拾取地下储藏物资"
+          );
+        }
+        return;
+      }
       if (camera && window.CollectionRoomChest) {
         window.CollectionRoomChest.updateAim(pos.x, pos.z, camera);
         if (window.CollectionRoomChest.isAimedAtChest()) {
@@ -5655,6 +6116,30 @@ if (typeof window !== "undefined") {
           return;
         }
       }
+      if (camera && window.BasementRedChest) {
+        window.BasementRedChest.updateAim(pos.x, pos.z, camera);
+        if (window.BasementRedChest.isAimed()) {
+          setInteractHintVisible(true);
+          if (interactHintEl) {
+            interactHintEl.textContent = formatInteractHint(
+              "准星对准地下海盗宝箱 · 按 E 开锁或查看"
+            );
+          }
+          return;
+        }
+      }
+      if (camera && window.IntelCabinet) {
+        window.IntelCabinet.updateAim(pos.x, pos.z, camera);
+        if (window.IntelCabinet.isAimed()) {
+          setInteractHintVisible(true);
+          if (interactHintEl) {
+            interactHintEl.textContent = formatInteractHint(
+              "准星对准机密文件柜 · 按 E 开锁或查看"
+            );
+          }
+          return;
+        }
+      }
       if (isNearTestNorthIronGates()) {
         setInteractHintVisible(true);
         if (interactHintEl) {
@@ -5669,6 +6154,15 @@ if (typeof window !== "undefined") {
         if (interactHintEl) {
           interactHintEl.textContent = formatInteractHint(
             "楼梯间门 · 按 E 打开"
+          );
+        }
+        return;
+      }
+      if (isNearBasementStorageDoor()) {
+        setInteractHintVisible(true);
+        if (interactHintEl) {
+          interactHintEl.textContent = formatInteractHint(
+            "地下储藏间 · 按 E 刷卡开门"
           );
         }
         return;
@@ -5837,6 +6331,8 @@ if (typeof window !== "undefined") {
     testPresidentOfficeDoor = null;
     testStairRoomDoor = null;
     testDownStairs = null;
+    testBasement = null;
+    testBasementStorageDoor = null;
     testPalaceRearEvacRoom = null;
     testNorthCatColliders = [];
     securityDoorOpenCollider = null;
@@ -6789,22 +7285,26 @@ if (typeof window !== "undefined") {
   }
 
   function getGroundYAt(px, pz) {
-    if (currentMapId !== "test" || !testDownStairs) return 0;
+    if (currentMapId !== "test") return 0;
     var stair = testDownStairs;
     if (
-      px < stair.x0 ||
-      px > stair.x1 ||
-      pz < stair.z0 + 0.16 ||
-      pz > stair.z1 - 0.16
+      stair &&
+      px >= stair.x0 &&
+      px <= stair.x1 &&
+      pz >= stair.z0 + 0.16 &&
+      pz <= stair.z1 - 0.16
     ) {
-      return 0;
+      var run = stair.width / stair.steps;
+      var index = Math.min(
+        stair.steps - 1,
+        Math.max(0, Math.floor((px - stair.x0) / run))
+      );
+      return (-stair.drop * index) / (stair.steps - 1);
     }
-    var run = stair.width / stair.steps;
-    var index = Math.min(
-      stair.steps - 1,
-      Math.max(0, Math.floor((px - stair.x0) / run))
-    );
-    return (-stair.drop * index) / (stair.steps - 1);
+    if (pos.y < -0.75 && isInsideBasementFloor(px, pz)) {
+      return TEST_BASEMENT_FLOOR_Y;
+    }
+    return 0;
   }
 
   function updatePhysics(dt) {
@@ -6868,6 +7368,8 @@ if (typeof window !== "undefined") {
       (window.PresidentOfficeChests &&
         window.PresidentOfficeChests.isPanelOpen()) ||
       (window.AmmoCrate && window.AmmoCrate.isPanelOpen()) ||
+      (window.BasementRedChest && window.BasementRedChest.isPanelOpen()) ||
+      (window.IntelCabinet && window.IntelCabinet.isPanelOpen()) ||
       (window.ActionWasteBin && window.ActionWasteBin.isOpen())
     );
   }
@@ -6925,6 +7427,7 @@ if (typeof window !== "undefined") {
     updateTestNorthIronGates(dt);
     updatePresidentOfficeDoor(dt);
     updateStairRoomDoor(dt);
+    updateBasementStorageDoor(dt);
     updateTestNorthSideRooms();
     updateSecurityDoorOpenCollider();
 
@@ -7327,6 +7830,18 @@ if (typeof window !== "undefined") {
     if (window.AmmoCrate && window.AmmoCrate.resetForNewRun) {
       window.AmmoCrate.resetForNewRun();
     }
+    if (window.BasementRedChest && window.BasementRedChest.resetForNewRun) {
+      window.BasementRedChest.resetForNewRun();
+    }
+    if (window.IntelCabinet && window.IntelCabinet.resetForNewRun) {
+      window.IntelCabinet.resetForNewRun();
+    }
+    if (
+      window.BasementStorageLoot &&
+      window.BasementStorageLoot.resetForNewRun
+    ) {
+      window.BasementStorageLoot.resetForNewRun();
+    }
     if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.resetForNewRun) {
       window.CollectionRoomFloorLoot.resetForNewRun();
     }
@@ -7449,6 +7964,18 @@ if (typeof window !== "undefined") {
     if (window.AmmoCrate && window.AmmoCrate.resetForNewRun) {
       window.AmmoCrate.resetForNewRun();
     }
+    if (window.BasementRedChest && window.BasementRedChest.resetForNewRun) {
+      window.BasementRedChest.resetForNewRun();
+    }
+    if (window.IntelCabinet && window.IntelCabinet.resetForNewRun) {
+      window.IntelCabinet.resetForNewRun();
+    }
+    if (
+      window.BasementStorageLoot &&
+      window.BasementStorageLoot.resetForNewRun
+    ) {
+      window.BasementStorageLoot.resetForNewRun();
+    }
     if (window.CollectionRoomFloorLoot && window.CollectionRoomFloorLoot.resetForNewRun) {
       window.CollectionRoomFloorLoot.resetForNewRun();
     }
@@ -7530,6 +8057,14 @@ if (typeof window !== "undefined") {
     }
     if (window.AmmoCrate && window.AmmoCrate.isPanelOpen()) {
       window.AmmoCrate.closePanel();
+      return true;
+    }
+    if (window.BasementRedChest && window.BasementRedChest.isPanelOpen()) {
+      window.BasementRedChest.closePanel();
+      return true;
+    }
+    if (window.IntelCabinet && window.IntelCabinet.isPanelOpen()) {
+      window.IntelCabinet.closePanel();
       return true;
     }
     if (window.WorldLootBox && window.WorldLootBox.isPanelOpen()) {

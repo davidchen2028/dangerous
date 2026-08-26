@@ -186,6 +186,24 @@
     return { remaining: remaining, max: max };
   }
 
+  function findKeycardFromIds(requiredIds) {
+    if (!Array.isArray(requiredIds)) return findKeycard(requiredIds);
+    var i;
+    for (i = 0; i < requiredIds.length; i++) {
+      var found = findKeycard(requiredIds[i]);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function consumeKeycardDurabilityFromIds(amount, requiredIds) {
+    var found = findKeycardFromIds(requiredIds);
+    if (!found || !found.item) return null;
+    var result = consumeKeycardDurability(amount, found.item.id);
+    if (result) result.itemId = found.item.id;
+    return result;
+  }
+
   function ensureTutorialKeycard() {
     if (findKeycard()) return;
     if (!window.ItemCatalog) return;
@@ -815,6 +833,8 @@
     unequipSlot: unequipSlot,
     findKeycard: findKeycard,
     consumeKeycardDurability: consumeKeycardDurability,
+    findKeycardFromIds: findKeycardFromIds,
+    consumeKeycardDurabilityFromIds: consumeKeycardDurabilityFromIds,
     ensureTutorialKeycard: ensureTutorialKeycard,
     getBrassAmmoCount: getBrassAmmoCount,
     consumeBrassAmmo: consumeBrassAmmo,

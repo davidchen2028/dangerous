@@ -27,6 +27,8 @@
   var crateManager = null;
   var crateX = 4;
   var crateZ = 0;
+  var crateFloorY = 0;
+  var crateYaw = 0;
   var raycaster = null;
   var ndc = null;
 
@@ -84,7 +86,8 @@
   function buildProceduralCrate(parent) {
     var root = new THREE.Group();
     root.name = "AmmoCrate";
-    root.position.set(crateX, 0, crateZ);
+    root.position.set(crateX, crateFloorY, crateZ);
+    root.rotation.y = crateYaw;
 
     var green = makeMaterial(0x394b34, 0.68, 0.52);
     var dark = makeMaterial(0x171b18, 0.82, 0.38);
@@ -160,19 +163,29 @@
     return root;
   }
 
-  function build(parent, helpers, house) {
-    if (!parent || !house) return null;
+  function build(parent, helpers, placement) {
+    if (!parent || !placement) return null;
     aimed = false;
-    crateX = house.centerX + house.stemHalfW + 2;
-    crateZ = house.northZ - 1.45;
+    if (placement.x != null) {
+      crateX = placement.x;
+      crateZ = placement.z;
+      crateFloorY = placement.floorY || 0;
+      crateYaw = placement.yaw || 0;
+    } else {
+      crateX = placement.centerX + placement.stemHalfW + 2;
+      crateZ = placement.northZ - 1.45;
+      crateFloorY = 0;
+      crateYaw = 0;
+    }
     var root = buildProceduralCrate(parent);
     if (helpers && helpers.registerCollider) {
+      var turnsQuarter = Math.abs(Math.sin(crateYaw)) > 0.7;
       helpers.registerCollider(
-        CRATE_SIZE.x,
+        turnsQuarter ? CRATE_SIZE.z : CRATE_SIZE.x,
         CRATE_SIZE.y,
-        CRATE_SIZE.z,
+        turnsQuarter ? CRATE_SIZE.x : CRATE_SIZE.z,
         crateX,
-        CRATE_SIZE.y * 0.5,
+        crateFloorY + CRATE_SIZE.y * 0.5,
         crateZ
       );
     }

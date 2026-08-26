@@ -23,8 +23,10 @@ MARKET_PRODUCT_IDS = [
     "pirate_1001",
     "pirate_1003",
     "sealed_motor_oil",
+    "alloy_plate",
     "heavy_industrial_drill",
     "uzi_smg",
     "brass_bullet",
     "keycard_president_office",
+    "keycard_basement_storage",
 ]
