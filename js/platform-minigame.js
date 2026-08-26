@@ -2779,9 +2779,13 @@
       if (sceneSprites.allLoaded && doorSprite.complete && doorSprite.naturalWidth) {
         var visualDoorH = Math.round(door.h * 0.7);
         var visualDoorY = door.y + door.h - visualDoorH;
+        var visualDoorW = Math.round(
+          visualDoorH * (doorSprite.naturalWidth / doorSprite.naturalHeight)
+        );
+        var visualDoorX = Math.round(door.x + (door.w - visualDoorW) * 0.5);
         var smoothing = ctx.imageSmoothingEnabled;
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(doorSprite, door.x, visualDoorY, door.w, visualDoorH);
+        ctx.drawImage(doorSprite, visualDoorX, visualDoorY, visualDoorW, visualDoorH);
         ctx.imageSmoothingEnabled = smoothing;
       } else {
         ctx.fillStyle = "#6b6f74";
