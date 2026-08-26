@@ -2315,8 +2315,8 @@
 
   function drawFloor(L) {
     if (sceneSprites.allLoaded) {
-      drawTile(sceneSprites.brickBrown, 0, L.pathY, W, H - L.pathY, { fit: "tile" });
-      drawTile(sceneSprites.brickBrown, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile" });
+      drawTile(sceneSprites.brickBrown, 0, L.pathY, W, H - L.pathY, { fit: "tile", step: 18 });
+      drawTile(sceneSprites.brickBrown, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile", step: 18 });
       ctx.fillStyle = "#9aa0a6";
       ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
     } else {
@@ -2480,13 +2480,13 @@
     }
     drawSky();
     if (sceneSprites.allLoaded) {
-      drawTile(sceneSprites.brickBrown, 0, L.pathY, W, H - L.pathY, { fit: "tile" });
+      drawTile(sceneSprites.brickBrown, 0, L.pathY, W, H - L.pathY, { fit: "tile", step: 18 });
     } else {
       ctx.fillStyle = "#4a525a";
       ctx.fillRect(0, L.pathY, W, H - L.pathY);
     }
     if (sceneSprites.allLoaded) {
-      drawTile(sceneSprites.brickBrown, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile" });
+      drawTile(sceneSprites.brickBrown, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile", step: 18 });
     } else {
       ctx.fillStyle = "#8d9196";
       ctx.fillRect(L.pathX, L.pathY, L.pathW, L.pathH);
@@ -2609,14 +2609,15 @@
   function drawTile(img, x, y, w, h, opts) {
     opts = opts || {};
     var fit = opts.fit || "stretch";
-    var sw = img.naturalWidth || 64;
-    var sh = img.naturalHeight || 64;
+    var step = opts.step || 64;
+    var sw = img.naturalWidth || step;
+    var sh = img.naturalHeight || step;
     x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
     if (fit === "tile") {
-      for (var ty = y; ty < y + h; ty += 64) {
-        for (var tx = x; tx < x + w; tx += 64) {
-          var rw = Math.min(64, x + w - tx);
-          var rh = Math.min(64, y + h - ty);
+      for (var ty = y; ty < y + h; ty += step) {
+        for (var tx = x; tx < x + w; tx += step) {
+          var rw = Math.min(step, x + w - tx);
+          var rh = Math.min(step, y + h - ty);
           var cw = Math.min(sw, rw);
           var ch = Math.min(sh, rh);
           ctx.drawImage(img, 0, 0, cw, ch, tx, ty, rw, rh);
