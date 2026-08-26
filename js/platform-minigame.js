@@ -2466,14 +2466,21 @@
 
   function drawButton(L) {
     function drawOne(b) {
+      var visualW = Math.max(16, Math.round(b.w * 0.82));
+      var visualH = Math.max(20, Math.round(H * 0.045));
+      var visualX = Math.round(b.x + (b.w - visualW) * 0.5);
+      var visualY = Math.round(b.y + b.h - visualH);
       if (sceneSprites.allLoaded) {
-        drawTile(sceneSprites.switchRed, b.x, b.y, b.w, b.h);
+        var smoothing = ctx.imageSmoothingEnabled;
+        ctx.imageSmoothingEnabled = false;
+        drawTile(sceneSprites.switchRed, visualX, visualY, visualW, visualH);
+        ctx.imageSmoothingEnabled = smoothing;
         return;
       }
       ctx.fillStyle = "#c43b32";
-      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.fillRect(visualX, visualY, visualW, visualH);
       ctx.fillStyle = "#e25a4f";
-      ctx.fillRect(b.x + 2, b.y + 2, b.w - 4, Math.max(2, b.h * 0.4));
+      ctx.fillRect(visualX + 2, visualY + 2, visualW - 4, Math.max(2, visualH * 0.4));
     }
     var oldButton = originalStage8Button(L);
     if (oldButton) drawOne(oldButton);
