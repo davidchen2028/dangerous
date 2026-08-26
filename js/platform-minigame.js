@@ -83,6 +83,7 @@
   var sceneSprites = {
     sky: new Image(),
     brick: new Image(),
+    brickBrown: new Image(),
     spikes: new Image(),
     plank: new Image(),
     green: new Image(),
@@ -93,21 +94,23 @@
   };
   function markSceneLoaded() {
     sceneSprites.loaded += 1;
-    if (sceneSprites.loaded >= 7) sceneSprites.allLoaded = true;
+    if (sceneSprites.loaded >= 8) sceneSprites.allLoaded = true;
   }
   function markSceneError() {
     if (typeof console !== "undefined" && console.warn) {
       console.warn("[platform-minigame] scene sprite failed to load");
     }
   }
-  [sceneSprites.sky, sceneSprites.brick, sceneSprites.spikes,
-   sceneSprites.plank, sceneSprites.green, sceneSprites.red, sceneSprites.blue
+  [sceneSprites.sky, sceneSprites.brick, sceneSprites.brickBrown,
+   sceneSprites.spikes, sceneSprites.plank, sceneSprites.green,
+   sceneSprites.red, sceneSprites.blue
   ].forEach(function (img) {
     img.onload = markSceneLoaded;
     img.onerror = markSceneError;
   });
   sceneSprites.sky.src = "img/platform-scene/background_clouds.png";
   sceneSprites.brick.src = "img/platform-scene/brick_grey.png";
+  sceneSprites.brickBrown.src = "img/platform-scene/brick_brown.png";
   sceneSprites.spikes.src = "img/platform-scene/block_spikes.png";
   sceneSprites.plank.src = "img/platform-scene/block_plank.png";
   sceneSprites.green.src = "img/platform-scene/block_green.png";
@@ -2312,8 +2315,8 @@
 
   function drawFloor(L) {
     if (sceneSprites.allLoaded) {
-      drawTile(sceneSprites.brick, 0, L.pathY, W, H - L.pathY, { fit: "tile" });
-      drawTile(sceneSprites.brick, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile" });
+      drawTile(sceneSprites.brickBrown, 0, L.pathY, W, H - L.pathY, { fit: "tile" });
+      drawTile(sceneSprites.brickBrown, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile" });
       ctx.fillStyle = "#9aa0a6";
       ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
     } else {
@@ -2477,13 +2480,13 @@
     }
     drawSky();
     if (sceneSprites.allLoaded) {
-      drawTile(sceneSprites.brick, 0, L.pathY, W, H - L.pathY, { fit: "tile" });
+      drawTile(sceneSprites.brickBrown, 0, L.pathY, W, H - L.pathY, { fit: "tile" });
     } else {
       ctx.fillStyle = "#4a525a";
       ctx.fillRect(0, L.pathY, W, H - L.pathY);
     }
     if (sceneSprites.allLoaded) {
-      drawTile(sceneSprites.brick, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile" });
+      drawTile(sceneSprites.brickBrown, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile" });
     } else {
       ctx.fillStyle = "#8d9196";
       ctx.fillRect(L.pathX, L.pathY, L.pathW, L.pathH);
