@@ -89,6 +89,7 @@
     plank: new Image(),
     green: new Image(),
     red: new Image(),
+    switchRed: new Image(),
     redSlime: new Image(),
     fallingSlime: new Image(),
     blue: new Image(),
@@ -99,7 +100,7 @@
   };
   function markSceneLoaded() {
     sceneSprites.loaded += 1;
-    if (sceneSprites.loaded >= 13) sceneSprites.allLoaded = true;
+    if (sceneSprites.loaded >= 14) sceneSprites.allLoaded = true;
   }
   function markSceneError() {
     if (typeof console !== "undefined" && console.warn) {
@@ -108,7 +109,7 @@
   }
   [sceneSprites.sky, sceneSprites.brick, sceneSprites.brickBrown,
    sceneSprites.surface, sceneSprites.spikes, sceneSprites.plank,
-   sceneSprites.green, sceneSprites.red, sceneSprites.redSlime, sceneSprites.fallingSlime, sceneSprites.blue,
+   sceneSprites.green, sceneSprites.red, sceneSprites.switchRed, sceneSprites.redSlime, sceneSprites.fallingSlime, sceneSprites.blue,
    sceneSprites.plant124, sceneSprites.plant125
   ].forEach(function (img) {
     img.onload = markSceneLoaded;
@@ -122,6 +123,7 @@
   sceneSprites.plank.src = "img/platform-scene/block_plank.png";
   sceneSprites.green.src = "img/platform-scene/block_green.png";
   sceneSprites.red.src = "img/platform-scene/block_red.png";
+  sceneSprites.switchRed.src = "img/platform-scene/switch_red.svg";
   sceneSprites.redSlime.src = "img/platform-scene/bee_a.svg";
   sceneSprites.fallingSlime.src = "img/platform-scene/slime_block_walk_a.svg";
   sceneSprites.blue.src = "img/platform-scene/block_blue.png";
@@ -2465,7 +2467,7 @@
   function drawButton(L) {
     function drawOne(b) {
       if (sceneSprites.allLoaded) {
-        drawTile(sceneSprites.red, b.x, b.y, b.w, b.h);
+        drawTile(sceneSprites.switchRed, b.x, b.y, b.w, b.h);
         return;
       }
       ctx.fillStyle = "#c43b32";
