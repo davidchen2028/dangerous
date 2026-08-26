@@ -89,6 +89,7 @@
     plank: new Image(),
     green: new Image(),
     red: new Image(),
+    redSlime: new Image(),
     blue: new Image(),
     plant124: new Image(),
     plant125: new Image(),
@@ -97,7 +98,7 @@
   };
   function markSceneLoaded() {
     sceneSprites.loaded += 1;
-    if (sceneSprites.loaded >= 11) sceneSprites.allLoaded = true;
+    if (sceneSprites.loaded >= 12) sceneSprites.allLoaded = true;
   }
   function markSceneError() {
     if (typeof console !== "undefined" && console.warn) {
@@ -106,7 +107,7 @@
   }
   [sceneSprites.sky, sceneSprites.brick, sceneSprites.brickBrown,
    sceneSprites.surface, sceneSprites.spikes, sceneSprites.plank,
-   sceneSprites.green, sceneSprites.red, sceneSprites.blue,
+   sceneSprites.green, sceneSprites.red, sceneSprites.redSlime, sceneSprites.blue,
    sceneSprites.plant124, sceneSprites.plant125
   ].forEach(function (img) {
     img.onload = markSceneLoaded;
@@ -120,6 +121,7 @@
   sceneSprites.plank.src = "img/platform-scene/block_plank.png";
   sceneSprites.green.src = "img/platform-scene/block_green.png";
   sceneSprites.red.src = "img/platform-scene/block_red.png";
+  sceneSprites.redSlime.src = "img/platform-scene/slime_fire_walk_b.svg";
   sceneSprites.blue.src = "img/platform-scene/block_blue.png";
   sceneSprites.plant124.src = "img/platform-scene/tile_0124.png";
   sceneSprites.plant125.src = "img/platform-scene/tile_0125.png";
@@ -2322,7 +2324,7 @@
     for (var i = 0; i < redCrates.length; i++) {
       var red = redCrates[i];
       drawWoodBox(
-        sceneSprites.red,
+        sceneSprites.redSlime,
         Math.round(red.x),
         Math.round(red.y),
         red.w,
@@ -2337,7 +2339,7 @@
   function drawOriginalStage9Red() {
     if (!old9Red.active) return;
     drawWoodBox(
-      sceneSprites.red,
+      sceneSprites.redSlime,
       Math.round(old9Red.x),
       Math.round(old9Red.y),
       old9Red.w,
@@ -2609,7 +2611,7 @@
     for (i = 0; i < trapReds.length; i++) {
       var redBox = trapReds[i];
       drawWoodBox(
-        sceneSprites.red,
+        sceneSprites.redSlime,
         redBox.x,
         redBox.y,
         redBox.w,
