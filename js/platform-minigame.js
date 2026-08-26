@@ -84,6 +84,7 @@
     sky: new Image(),
     brick: new Image(),
     brickBrown: new Image(),
+    surface: new Image(),
     spikes: new Image(),
     plank: new Image(),
     green: new Image(),
@@ -94,7 +95,7 @@
   };
   function markSceneLoaded() {
     sceneSprites.loaded += 1;
-    if (sceneSprites.loaded >= 8) sceneSprites.allLoaded = true;
+    if (sceneSprites.loaded >= 9) sceneSprites.allLoaded = true;
   }
   function markSceneError() {
     if (typeof console !== "undefined" && console.warn) {
@@ -102,15 +103,16 @@
     }
   }
   [sceneSprites.sky, sceneSprites.brick, sceneSprites.brickBrown,
-   sceneSprites.spikes, sceneSprites.plank, sceneSprites.green,
-   sceneSprites.red, sceneSprites.blue
+   sceneSprites.surface, sceneSprites.spikes, sceneSprites.plank,
+   sceneSprites.green, sceneSprites.red, sceneSprites.blue
   ].forEach(function (img) {
     img.onload = markSceneLoaded;
     img.onerror = markSceneError;
   });
   sceneSprites.sky.src = "img/platform-scene/background_clouds.png";
   sceneSprites.brick.src = "img/platform-scene/brick_grey.png";
-  sceneSprites.brickBrown.src = "img/platform-scene/brick_brown.png";
+  sceneSprites.brickBrown.src = "img/platform-scene/tile_dirt.png";
+  sceneSprites.surface.src = "img/platform-scene/tile_surface.png";
   sceneSprites.spikes.src = "img/platform-scene/block_spikes.png";
   sceneSprites.plank.src = "img/platform-scene/block_plank.png";
   sceneSprites.green.src = "img/platform-scene/block_green.png";
@@ -2316,7 +2318,7 @@
   function drawFloor(L) {
     if (sceneSprites.allLoaded) {
       drawTile(sceneSprites.brickBrown, 0, L.pathY, W, H - L.pathY, { fit: "tile", step: 36 });
-      drawTile(sceneSprites.brickBrown, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile", step: 36 });
+      drawTile(sceneSprites.surface, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile", step: 36 });
       ctx.fillStyle = "#9aa0a6";
       ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
     } else {
@@ -2486,7 +2488,7 @@
       ctx.fillRect(0, L.pathY, W, H - L.pathY);
     }
     if (sceneSprites.allLoaded) {
-      drawTile(sceneSprites.brickBrown, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile", step: 36 });
+      drawTile(sceneSprites.surface, L.pathX, L.pathY, L.pathW, L.pathH, { fit: "tile", step: 36 });
     } else {
       ctx.fillStyle = "#8d9196";
       ctx.fillRect(L.pathX, L.pathY, L.pathW, L.pathH);
