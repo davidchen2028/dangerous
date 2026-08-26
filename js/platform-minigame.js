@@ -240,8 +240,9 @@
 
   function layout() {
     var pathH = Math.round(H * 0.26);
-    var pathW = Math.round(W * 0.86);
-    var pathX = Math.round((W - pathW) / 2);
+    // Keep the visual floor and the playable bounds aligned across the full viewport.
+    var pathX = 0;
+    var pathW = W;
     var pathY = Math.round(H * 0.62);
     return { pathX: pathX, pathY: pathY, pathW: pathW, pathH: pathH };
   }
