@@ -93,6 +93,8 @@
     redSlime: new Image(),
     fallingSlime: new Image(),
     blue: new Image(),
+    doorClosed: new Image(),
+    doorOpen: new Image(),
     plant124: new Image(),
     plant125: new Image(),
     loaded: 0,
@@ -100,7 +102,7 @@
   };
   function markSceneLoaded() {
     sceneSprites.loaded += 1;
-    if (sceneSprites.loaded >= 14) sceneSprites.allLoaded = true;
+    if (sceneSprites.loaded >= 16) sceneSprites.allLoaded = true;
   }
   function markSceneError() {
     if (typeof console !== "undefined" && console.warn) {
@@ -110,6 +112,7 @@
   [sceneSprites.sky, sceneSprites.brick, sceneSprites.brickBrown,
    sceneSprites.surface, sceneSprites.spikes, sceneSprites.plank,
    sceneSprites.green, sceneSprites.red, sceneSprites.switchRed, sceneSprites.redSlime, sceneSprites.fallingSlime, sceneSprites.blue,
+   sceneSprites.doorClosed, sceneSprites.doorOpen,
    sceneSprites.plant124, sceneSprites.plant125
   ].forEach(function (img) {
     img.onload = markSceneLoaded;
@@ -127,6 +130,8 @@
   sceneSprites.redSlime.src = "img/platform-scene/bee_a.svg";
   sceneSprites.fallingSlime.src = "img/platform-scene/slime_block_walk_a.svg";
   sceneSprites.blue.src = "img/platform-scene/block_blue.png";
+  sceneSprites.doorClosed.src = "img/platform-scene/door_closed_top.png";
+  sceneSprites.doorOpen.src = "img/platform-scene/door_open_top.png";
   sceneSprites.plant124.src = "img/platform-scene/tile_0124.png";
   sceneSprites.plant125.src = "img/platform-scene/tile_0125.png";
   var spike = { armed: false, maxH: 18 };
@@ -2770,10 +2775,18 @@
       if (stage === 10 && portalSide === "left" && !s9RoundUnlocked) {
         ctx.globalAlpha = 0.18;
       }
-      ctx.fillStyle = "#6b6f74";
-      ctx.fillRect(door.x, door.y, door.w, door.h);
-      ctx.fillStyle = "#5a5e62";
-      ctx.fillRect(door.x + 5, door.y + 8, door.w - 10, door.h - 8);
+      var doorSprite = fadeDir > 0 || entering ? sceneSprites.doorOpen : sceneSprites.doorClosed;
+      if (sceneSprites.allLoaded && doorSprite.complete && doorSprite.naturalWidth) {
+        var smoothing = ctx.imageSmoothingEnabled;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(doorSprite, door.x, door.y, door.w, door.h);
+        ctx.imageSmoothingEnabled = smoothing;
+      } else {
+        ctx.fillStyle = "#6b6f74";
+        ctx.fillRect(door.x, door.y, door.w, door.h);
+        ctx.fillStyle = "#5a5e62";
+        ctx.fillRect(door.x + 5, door.y + 8, door.w - 10, door.h - 8);
+      }
       ctx.restore();
     }
 
