@@ -93,6 +93,7 @@
     redSlime: new Image(),
     fallingSlime: new Image(),
     blue: new Image(),
+    saw: new Image(),
     doorClosed: new Image(),
     doorOpen: new Image(),
     plant124: new Image(),
@@ -102,7 +103,7 @@
   };
   function markSceneLoaded() {
     sceneSprites.loaded += 1;
-    if (sceneSprites.loaded >= 16) sceneSprites.allLoaded = true;
+    if (sceneSprites.loaded >= 17) sceneSprites.allLoaded = true;
   }
   function markSceneError() {
     if (typeof console !== "undefined" && console.warn) {
@@ -111,7 +112,7 @@
   }
   [sceneSprites.sky, sceneSprites.brick, sceneSprites.brickBrown,
    sceneSprites.surface, sceneSprites.spikes, sceneSprites.plank,
-   sceneSprites.green, sceneSprites.red, sceneSprites.switchRed, sceneSprites.redSlime, sceneSprites.fallingSlime, sceneSprites.blue,
+   sceneSprites.green, sceneSprites.red, sceneSprites.switchRed, sceneSprites.redSlime, sceneSprites.fallingSlime, sceneSprites.blue, sceneSprites.saw,
    sceneSprites.doorClosed, sceneSprites.doorOpen,
    sceneSprites.plant124, sceneSprites.plant125
   ].forEach(function (img) {
@@ -130,6 +131,7 @@
   sceneSprites.redSlime.src = "img/platform-scene/bee_a.svg";
   sceneSprites.fallingSlime.src = "img/platform-scene/slime_block_walk_a.svg";
   sceneSprites.blue.src = "img/platform-scene/block_blue.png";
+  sceneSprites.saw.src = "img/platform-scene/fish_blue_swim_a.svg";
   sceneSprites.doorClosed.src = "img/platform-scene/door.png";
   sceneSprites.doorOpen.src = "img/platform-scene/door.png";
   sceneSprites.plant124.src = "img/platform-scene/tile_0124.png";
@@ -572,8 +574,8 @@
   function stage8RedButtons(L) {
     if (stage !== 11) return [];
     var platforms = stage8Platforms(L);
-    var bw = Math.max(22, Math.round(player.w * 1.2));
-    var bh = Math.max(8, Math.round(player.h * 0.2));
+    var bw = Math.max(16, Math.round(player.w * 0.84));
+    var bh = Math.max(5, Math.round(player.h * 0.112));
     return platforms.map(function (platform, index) {
       return {
         index: index,
@@ -601,8 +603,8 @@
     if (stage !== 8 || old8FloorGone) return null;
     var gaps = listGaps(L);
     if (!gaps[2]) return null;
-    var bw = Math.max(22, Math.round(player.w * 1.2));
-    var bh = Math.max(8, Math.round(player.h * 0.2));
+    var bw = Math.max(16, Math.round(player.w * 0.84));
+    var bh = Math.max(5, Math.round(player.h * 0.112));
     return {
       x: gaps[2].x + gaps[2].w + Math.round(player.w * 1.7),
       y: L.pathY - bh,
@@ -617,8 +619,8 @@
     var platform = platforms[index];
     if (!platform) return null;
     if (kind === "green") {
-      var bw = Math.max(24, Math.round(player.w * 1.25));
-      var bh = Math.max(8, Math.round(player.h * 0.22));
+      var bw = Math.max(17, Math.round(player.w * 0.88));
+      var bh = Math.max(6, Math.round(player.h * 0.15));
       return {
         x: platform.x + platform.w * 0.7 - bw * 0.5,
         y: L.pathY - bh,
@@ -873,6 +875,8 @@
     canvas.style.width = W + "px";
     canvas.style.height = H + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    floorCache = null;
+    floorCacheKey = "";
   }
 
   function trapDelayText(value) {
@@ -2285,6 +2289,20 @@
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
   }
 
+  function drawDirectionalSprite(img, x, y, w, h, faceRight) {
+    if (!sceneSprites.allLoaded || !img || !img.complete || !img.naturalWidth) return false;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    if (faceRight) {
+      ctx.translate(Math.round(x + w), 0);
+      ctx.scale(-1, 1);
+      x = 0;
+    }
+    drawTile(img, Math.round(x), Math.round(y), w, h);
+    ctx.restore();
+    return true;
+  }
+
   function drawCrate() {
     if (!crate.active) return;
     drawWoodBox(
@@ -2332,38 +2350,24 @@
   function drawRed() {
     for (var i = 0; i < redCrates.length; i++) {
       var red = redCrates[i];
-      drawWoodBox(
-        sceneSprites.redSlime,
-        Math.round(red.x),
-        Math.round(red.y),
-        red.w,
-        red.h,
-        "#c43b32",
-        "#9a2a24",
-        "#6a1814"
-      );
+      if (!drawDirectionalSprite(sceneSprites.redSlime, red.x, red.y, red.w, red.h, red.vx > 0)) {
+        drawWoodBox(sceneSprites.redSlime, Math.round(red.x), Math.round(red.y), red.w, red.h, "#c43b32", "#9a2a24", "#6a1814");
+      }
     }
   }
 
   function drawOriginalStage9Red() {
     if (!old9Red.active) return;
-    drawWoodBox(
-      sceneSprites.redSlime,
-      Math.round(old9Red.x),
-      Math.round(old9Red.y),
-      old9Red.w,
-      old9Red.h,
-      "#c43b32",
-      "#9a2a24",
-      "#6a1814"
-    );
+    if (!drawDirectionalSprite(sceneSprites.redSlime, old9Red.x, old9Red.y, old9Red.w, old9Red.h, old9Red.vx > 0)) {
+      drawWoodBox(sceneSprites.redSlime, Math.round(old9Red.x), Math.round(old9Red.y), old9Red.w, old9Red.h, "#c43b32", "#9a2a24", "#6a1814");
+    }
   }
 
   function drawBlue() {
     for (var i = 0; i < blueCrates.length; i++) {
       var box = blueCrates[i];
       drawWoodBox(
-        sceneSprites.blue,
+        stage === 1 ? sceneSprites.saw : sceneSprites.blue,
         Math.round(box.x),
         Math.round(box.y),
         box.w,
@@ -2389,10 +2393,51 @@
     );
   }
 
+  var floorCache = null;
+  var floorCacheKey = "";
+
+  function plantSignature() {
+    var p = surfacePlantLayout;
+    var s = "";
+    for (var i = 0; i < p.length; i++) {
+      s += p[i][0].toFixed(3) + p[i][1] + ",";
+    }
+    return s;
+  }
+
+  // The static floor base (underground tiling + surface strip + surface plants)
+  // only changes on resize, sprite load, or plant re-randomization. Render it
+  // once into an offscreen canvas and blit each frame instead of re-tiling.
+  function buildFloorCache(L) {
+    var wp = Math.round(W * dpr);
+    var hp = Math.round(H * dpr);
+    var c = document.createElement("canvas");
+    c.width = wp;
+    c.height = hp;
+    var cc = c.getContext("2d");
+    cc.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cc.imageSmoothingEnabled = false;
+    drawTile(sceneSprites.brickBrown, 0, L.pathY, W, H - L.pathY, { fit: "tile", step: 36 }, cc);
+    drawSurfaceStrip(L.pathX, L.pathY, L.pathW, 36, cc);
+    drawSurfacePlants(L, cc);
+    return c;
+  }
+
+  function drawFloorBase(L) {
+    var key = W + "|" + H + "|" + dpr + "|" + plantSignature();
+    if (!floorCache || key !== floorCacheKey) {
+      floorCacheKey = key;
+      floorCache = buildFloorCache(L);
+    }
+    var prev = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(floorCache, 0, 0, floorCache.width, floorCache.height, 0, 0, W, H);
+    ctx.imageSmoothingEnabled = prev;
+  }
+
   function drawFloor(L) {
     if (sceneSprites.allLoaded) {
-      drawTile(sceneSprites.brickBrown, 0, L.pathY, W, H - L.pathY, { fit: "tile", step: 36 });
-      drawSurfaceStrip(L.pathX, L.pathY, L.pathW, 36);
+      drawFloorBase(L);
     } else {
       ctx.fillStyle = "#4a525a";
       ctx.fillRect(0, L.pathY, W, H - L.pathY);
@@ -2446,10 +2491,10 @@
         );
       }
     }
-    drawSurfacePlants(L);
   }
 
-  function drawSurfacePlants(L) {
+  function drawSurfacePlants(L, targetCtx) {
+    var g = targetCtx || ctx;
     var plants = surfacePlants();
     var images = {
       "124": sceneSprites.plant124,
@@ -2462,17 +2507,17 @@
       var size = Math.max(20, Math.round(H * 0.045));
       var x = Math.round(L.pathX + L.pathW * item[0] - size * 0.5);
       var y = Math.round(L.pathY - size);
-      ctx.save();
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, x, y, size, size);
-      ctx.restore();
+      g.save();
+      g.imageSmoothingEnabled = false;
+      g.drawImage(img, x, y, size, size);
+      g.restore();
     }
   }
 
   function drawButton(L) {
     function drawOne(b) {
       var visualW = Math.max(16, Math.round(b.w * 0.82));
-      var visualH = Math.max(20, Math.round(H * 0.045));
+      var visualH = Math.max(11, Math.round(H * 0.026));
       var visualX = Math.round(b.x + (b.w - visualW) * 0.5);
       var visualY = Math.round(b.y + b.h - visualH);
       if (sceneSprites.allLoaded) {
@@ -2539,6 +2584,20 @@
       ctx.fillRect(box.x + 2, box.y + 2, box.w - 4, Math.max(2, box.h * 0.4));
       return;
     }
+    var doorSprite = sceneSprites.doorClosed;
+    if (sceneSprites.allLoaded && doorSprite.complete && doorSprite.naturalWidth) {
+      var visualDoorH = Math.round(box.h * 0.7);
+      var visualDoorW = Math.round(
+        visualDoorH * (doorSprite.naturalWidth / doorSprite.naturalHeight)
+      );
+      var visualDoorX = Math.round(box.x + (box.w - visualDoorW) * 0.5);
+      var visualDoorY = box.y + box.h - visualDoorH;
+      var smoothing = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(doorSprite, visualDoorX, visualDoorY, visualDoorW, visualDoorH);
+      ctx.imageSmoothingEnabled = smoothing;
+      return;
+    }
     ctx.fillStyle = "rgba(107, 111, 116, 0.55)";
     ctx.fillRect(box.x, box.y, box.w, box.h);
     ctx.fillStyle = "rgba(90, 94, 98, 0.45)";
@@ -2582,18 +2641,13 @@
     }
     drawSky();
     if (sceneSprites.allLoaded) {
-      drawTile(sceneSprites.brickBrown, 0, L.pathY, W, H - L.pathY, { fit: "tile", step: 36 });
+      drawFloorBase(L);
     } else {
       ctx.fillStyle = "#4a525a";
       ctx.fillRect(0, L.pathY, W, H - L.pathY);
-    }
-    if (sceneSprites.allLoaded) {
-      drawSurfaceStrip(L.pathX, L.pathY, L.pathW, 36);
-    } else {
       ctx.fillStyle = "#8d9196";
       ctx.fillRect(L.pathX, L.pathY, L.pathW, L.pathH);
     }
-    drawSurfacePlants(L);
     ctx.fillStyle = "#9aa0a6";
     ctx.fillRect(L.pathX, L.pathY, L.pathW, 6);
 
@@ -2640,7 +2694,7 @@
     for (i = 0; i < trapBlues.length; i++) {
       var blueBox = trapBlues[i];
       drawWoodBox(
-        sceneSprites.blue,
+        sceneSprites.saw,
         blueBox.x,
         blueBox.y,
         blueBox.w,
@@ -2709,34 +2763,36 @@
     ctx.restore();
   }
 
-  function drawTile(img, x, y, w, h, opts) {
+  function drawTile(img, x, y, w, h, opts, targetCtx) {
     opts = opts || {};
+    var g = targetCtx || ctx;
     var fit = opts.fit || "stretch";
     var step = opts.step || 64;
     var sw = img.naturalWidth || step;
     var sh = img.naturalHeight || step;
     x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
     if (fit === "tile") {
-      var smoothing = ctx.imageSmoothingEnabled;
-      ctx.imageSmoothingEnabled = false;
+      var smoothing = g.imageSmoothingEnabled;
+      g.imageSmoothingEnabled = false;
       for (var ty = y; ty < y + h; ty += step) {
         for (var tx = x; tx < x + w; tx += step) {
           var rw = Math.min(step, x + w - tx);
           var rh = Math.min(step, y + h - ty);
           var cw = Math.min(sw, rw);
           var ch = Math.min(sh, rh);
-          ctx.drawImage(img, 0, 0, cw, ch, tx, ty, rw, rh);
+          g.drawImage(img, 0, 0, cw, ch, tx, ty, rw, rh);
         }
       }
-      ctx.imageSmoothingEnabled = smoothing;
+      g.imageSmoothingEnabled = smoothing;
       return;
     }
-    ctx.drawImage(img, 0, 0, sw, sh, x, y, w, h);
+    g.drawImage(img, 0, 0, sw, sh, x, y, w, h);
   }
 
   // The surface sprite has a 2px framing border on its sides and bottom.
   // Crop those edges while keeping the top edge, so grass and dirt meet cleanly.
-  function drawSurfaceStrip(x, y, w, h) {
+  function drawSurfaceStrip(x, y, w, h, targetCtx) {
+    var g = targetCtx || ctx;
     var img = sceneSprites.surface;
     var sw = img.naturalWidth || 18;
     var sh = img.naturalHeight || 18;
@@ -2748,13 +2804,13 @@
     y = Math.round(y);
     w = Math.round(w);
     h = Math.round(h);
-    var smoothing = ctx.imageSmoothingEnabled;
-    ctx.imageSmoothingEnabled = false;
+    var smoothing = g.imageSmoothingEnabled;
+    g.imageSmoothingEnabled = false;
     for (var tx = x; tx < x + w; tx += step) {
       var rw = Math.min(step, x + w - tx);
-      ctx.drawImage(img, sourceX, 0, sourceW, sourceH, tx, y, rw, h);
+      g.drawImage(img, sourceX, 0, sourceW, sourceH, tx, y, rw, h);
     }
-    ctx.imageSmoothingEnabled = smoothing;
+    g.imageSmoothingEnabled = smoothing;
   }
 
   function draw() {
