@@ -130,8 +130,8 @@
   sceneSprites.redSlime.src = "img/platform-scene/bee_a.svg";
   sceneSprites.fallingSlime.src = "img/platform-scene/slime_block_walk_a.svg";
   sceneSprites.blue.src = "img/platform-scene/block_blue.png";
-  sceneSprites.doorClosed.src = "img/platform-scene/door_closed_top.png";
-  sceneSprites.doorOpen.src = "img/platform-scene/door_open_top.png";
+  sceneSprites.doorClosed.src = "img/platform-scene/door.png";
+  sceneSprites.doorOpen.src = "img/platform-scene/door.png";
   sceneSprites.plant124.src = "img/platform-scene/tile_0124.png";
   sceneSprites.plant125.src = "img/platform-scene/tile_0125.png";
   var spike = { armed: false, maxH: 18 };
