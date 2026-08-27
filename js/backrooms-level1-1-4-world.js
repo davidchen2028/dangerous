@@ -1,11 +1,11 @@
 /**
- * Level 1.1-4 — 极暗纯白走廊（7×200）· L1.1-5 灯塔 · 回家结局
+ * Level 1.1-4 — 黑白死区（7×200）· 未证实的区域 5 光标
  */
 import * as THREE from "three";
 import {
   addWallSegment,
   createBlackDoorTexture,
-} from "./backrooms-level1-1-world.js";
+} from "./backrooms-level1-1-world.js?v=2";
 import { createFixedXiaoye } from "./backrooms-level2-xiaoye.js";
 
 export const LEVEL1_1_4_CORRIDOR_LEN = 200;
@@ -30,7 +30,7 @@ function createDarkWhiteMat() {
 
 function buildLighthouse(parent, z) {
   var group = new THREE.Group();
-  group.name = "Level1_1_5Lighthouse";
+  group.name = "Level1_1_5UnverifiedLight";
   group.position.set(0, 0, z);
 
   var stoneMat = new THREE.MeshStandardMaterial({
@@ -51,28 +51,26 @@ function buildLighthouse(parent, z) {
     roughness: 0.2,
   });
 
-  var platform = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.6, 0.35, 16), stoneMat);
-  platform.position.y = 0.175;
+  var platform = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.5, 0.18, 16), stoneMat);
+  platform.position.y = 0.09;
   group.add(platform);
 
-  var tower = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.25, 9.5, 12), stoneMat);
-  tower.position.y = 5.1;
-  group.add(tower);
-
-  var lanternRoom = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 1.35, 10), stoneMat);
-  lanternRoom.position.y = 10.45;
-  group.add(lanternRoom);
-
-  var lens = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 10), lensMat);
-  lens.position.y = 10.55;
+  var lens = new THREE.Mesh(new THREE.SphereGeometry(0.72, 12, 12), lensMat);
+  lens.position.y = 1.85;
   group.add(lens);
 
-  var cap = new THREE.Mesh(new THREE.ConeGeometry(1.15, 0.85, 10), railMat);
-  cap.position.y = 11.45;
-  group.add(cap);
+  for (var ri = 0; ri < 3; ri++) {
+    var ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.2 + ri * 0.48, 0.035, 5, 24),
+      railMat
+    );
+    ring.position.y = 1.85;
+    ring.rotation.x = ri === 1 ? Math.PI * 0.5 : ri === 2 ? Math.PI * 0.25 : 0;
+    group.add(ring);
+  }
 
   var beamPivot = new THREE.Group();
-  beamPivot.position.y = 10.55;
+  beamPivot.position.y = 1.85;
   group.add(beamPivot);
 
   var beam = new THREE.Mesh(
@@ -90,11 +88,11 @@ function buildLighthouse(parent, z) {
   beamPivot.add(beam);
 
   var glow = new THREE.PointLight(0xffdd88, 2.8, 48, 1.6);
-  glow.position.set(0, 10.55, 0);
+  glow.position.set(0, 1.85, 0);
   group.add(glow);
 
   var halo = new THREE.PointLight(0xfff0cc, 0.55, 90, 1.8);
-  halo.position.set(0, 11, 0);
+  halo.position.set(0, 2.1, 0);
   group.add(halo);
 
   parent.add(group);

@@ -9,9 +9,9 @@ import {
   ensureChestTemplate,
   spawnFixedChest,
   sharedWhiteCeilMat,
-  sharedWhiteFloorMat,
+  sharedBlueTileFloorMat,
   sharedWhiteWallMat,
-} from "./backrooms-level1-1-world.js";
+} from "./backrooms-level1-1-world.js?v=2";
 
 export const LEVEL1_1_2_CORRIDOR_LEN = 50;
 export const LEVEL1_1_2_CORRIDOR_W = 7;
@@ -81,7 +81,12 @@ export function buildLevel1_1_2World(parent, opts) {
     return mesh;
   }
 
-  var floorMat = trackGlitchMat(sharedWhiteFloorMat().clone());
+  var floorMat = trackGlitchMat(sharedBlueTileFloorMat().clone());
+  if (floorMat.map) {
+    floorMat.map = floorMat.map.clone();
+    floorMat.map.wrapT = THREE.RepeatWrapping;
+    floorMat.map.repeat.y = len / 30;
+  }
   var floor = new THREE.Mesh(new THREE.BoxGeometry(LEVEL1_1_2_CORRIDOR_W, 0.12, len), floorMat);
   floor.position.set(0, 0.06, len * 0.5);
   corridor.add(floor);

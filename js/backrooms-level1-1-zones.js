@@ -7,16 +7,17 @@ import {
   pointInLevel1_1Aabb,
   LEVEL1_1_WALL_H,
   LEVEL1_1_SPAWN_YAW,
-} from "./backrooms-level1-1-world.js";
-import { buildLevel1_1_2World } from "./backrooms-level1-1-2-world.js";
+} from "./backrooms-level1-1-world.js?v=2";
+import { buildLevel1_1_2World } from "./backrooms-level1-1-2-world.js?v=2";
 import {
   buildLevel1_1_3World,
   LEVEL1_1_3_SANITY_DRAIN,
-} from "./backrooms-level1-1-3-world.js";
+  LEVEL1_1_3_WALL_H,
+} from "./backrooms-level1-1-3-world.js?v=3";
 import {
   buildLevel1_1_4World,
   LEVEL1_1_4_SANITY_DRAIN,
-} from "./backrooms-level1-1-4-world.js";
+} from "./backrooms-level1-1-4-world.js?v=2";
 import { syncLevel1_1ChestEntryOpened } from "./backrooms-level1-1-chests.js";
 import {
   createLevel1_1_2DeathMoth,
@@ -42,6 +43,7 @@ import { markLevelEntered } from "./backrooms-tasks.js";
  * @param {(msg: string) => void} [deps.showToast]
  * @param {THREE.PerspectiveCamera} [deps.camera]
  * @param {() => void} [deps.onHomeEnding]
+ * @param {() => void} [deps.onEmergencyCutToLevel1]
  */
 export function createLevel1_1ZoneManager(deps) {
   /** @type {"corridor" | "corridor2" | "corridor3" | "corridor4" | "outpost" | "outpost2" | "outpost3" | null} */
@@ -73,6 +75,9 @@ export function createLevel1_1ZoneManager(deps) {
   var outpostReenterBlockedUntil = 0;
   var outpost2ReenterBlockedUntil = 0;
   var outpost3ReenterBlockedUntil = 0;
+  var instabilitySurge = false;
+  var instabilityUntil = 0;
+  var nextInstabilityRoll = 0;
 
   var LEVEL1_1_FOG = 0xffffff;
   var savedFog = { color: 0, near: 0, far: 0, bg: null, camFar: 0 };
@@ -135,11 +140,46 @@ export function createLevel1_1ZoneManager(deps) {
     if (subZone === "outpost") deps.onHudTitleChange("Backrooms · L1.1 · M.E.G 前哨 1");
     else if (subZone === "outpost2") deps.onHudTitleChange("Backrooms · L1.1 · M.E.G 前哨 2");
     else if (subZone === "outpost3") deps.onHudTitleChange("Backrooms · L1.1 · M.E.G 前哨 3");
-    else if (subZone === "corridor3") deps.onHudTitleChange("Backrooms · L1.1-3");
-    else if (subZone === "corridor4") deps.onHudTitleChange("Backrooms · L1.1-4 → 灯塔");
-    else if (subZone === "corridor2") deps.onHudTitleChange("Backrooms · L1.1-2");
-    else if (subZone === "corridor") deps.onHudTitleChange("Backrooms · L1.1-1");
+    else if (subZone === "corridor3") deps.onHudTitleChange("Backrooms · Level 1.1 · 区域 3 · 等级 4");
+    else if (subZone === "corridor4") deps.onHudTitleChange("Backrooms · Level 1.1 · 区域 4 · 死区");
+    else if (subZone === "corridor2") deps.onHudTitleChange("Backrooms · Level 1.1 · 区域 2 · 等级 2");
+    else if (subZone === "corridor") deps.onHudTitleChange("Backrooms · Level 1.1 · 区域 1 · 等级 0");
     else deps.onHudTitleChange("Backrooms · Level 1 · 生存难度 1");
+  }
+
+  function updateInstability(now) {
+    var chance =
+      subZone === "corridor2"
+        ? 0.34
+        : subZone === "corridor3"
+          ? 0.58
+          : subZone === "corridor4"
+            ? 0.82
+            : 0;
+    if (chance <= 0) {
+      instabilitySurge = false;
+      nextInstabilityRoll = now + 18000;
+      return;
+    }
+    if (instabilitySurge) {
+      if (now < instabilityUntil) return;
+      instabilitySurge = false;
+      nextInstabilityRoll = now + 16000 + Math.random() * 18000;
+      if (deps.showToast) deps.showToast("走廊的安全读数暂时恢复稳定。");
+      return;
+    }
+    if (now < nextInstabilityRoll) return;
+    nextInstabilityRoll = now + 18000 + Math.random() * 22000;
+    if (Math.random() >= chance) return;
+    instabilitySurge = true;
+    instabilityUntil = now + 5500 + Math.random() * 6500;
+    if (deps.showToast) {
+      deps.showToast(
+        subZone === "corridor4"
+          ? "死区发生剧烈波动：方向与实体读数全部失真。"
+          : "安全度正在异常波动。附近的实体活动突然增加。"
+      );
+    }
   }
 
   function setZoneVisibility() {
@@ -401,8 +441,9 @@ export function createLevel1_1ZoneManager(deps) {
     swapToLevel1_1Colliders();
     teleportTo(world.corridorSpawn);
     syncHudTitle();
-    showEnterLevelBanner("L1.1-1");
+    showEnterLevelBanner("Level 1.1 · 区域 1");
     markLevelEntered("l1.1", deps.showToast);
+    if (deps.showToast) deps.showToast("蓝色瓷砖和白色炉渣砖笔直延伸。这里暂时没有危险实体。");
     return true;
   }
 
@@ -429,6 +470,20 @@ export function createLevel1_1ZoneManager(deps) {
     return true;
   }
 
+  function emergencyCutToLevel1() {
+    if (!subZone || subZone === "corridor4") return false;
+    subZone = null;
+    restoreL1Colliders();
+    restoreAtmosphere();
+    restoreMegWorldVisibility();
+    megReturnSnapshot = null;
+    syncHudTitle();
+    if (deps.ensureMegBase) deps.ensureMegBase();
+    if (deps.onEmergencyCutToLevel1) deps.onEmergencyCutToLevel1();
+    if (deps.showToast) deps.showToast("切行把你抛到了 Level 1 的随机区段。");
+    return true;
+  }
+
   function enterCorridor2() {
     ensureWorld();
     if (!world || !world2 || subZone !== "corridor") return false;
@@ -440,8 +495,9 @@ export function createLevel1_1ZoneManager(deps) {
     applyLevel1_1Atmosphere();
     teleportTo(world2.corridorSpawn);
     syncHudTitle();
-    showEnterLevelBanner("L1.1-2");
+    showEnterLevelBanner("Level 1.1 · 区域 2");
     markLevelEntered("l1.1-2", deps.showToast);
+    if (deps.showToast) deps.showToast("色差开始错位，走廊正在重复。部分墙面可以紧急切出。");
     return true;
   }
 
@@ -472,7 +528,9 @@ export function createLevel1_1ZoneManager(deps) {
     if (deps.scene.fog) deps.scene.fog.color.setHex(0xe8e8ec);
     teleportTo(world3.corridorSpawn);
     syncHudTitle();
-    showEnterLevelBanner("L1.1-3");
+    showEnterLevelBanner("Level 1.1 · 区域 3");
+    markLevelEntered("l1.1-3", deps.showToast);
+    if (deps.showToast) deps.showToast("天花板骤然升高。黑暗中弥漫着淡淡的消毒水味。");
     return true;
   }
 
@@ -496,7 +554,9 @@ export function createLevel1_1ZoneManager(deps) {
     applyCorridor4Atmosphere();
     teleportTo(world4.corridorSpawn);
     syncHudTitle();
-    showEnterLevelBanner("L1.1-4");
+    showEnterLevelBanner("Level 1.1 · 区域 4 · 死区");
+    markLevelEntered("l1.1-4", deps.showToast);
+    if (deps.showToast) deps.showToast("警告：区域 4 无法切回 Level 1，空间正在失去碰撞与方向。");
     return true;
   }
 
@@ -765,24 +825,41 @@ export function createLevel1_1ZoneManager(deps) {
       return homeEndingTriggered;
     },
     getSanityDrainPerSec: function () {
-      if (subZone === "corridor4") return LEVEL1_1_4_SANITY_DRAIN;
-      if (subZone === "corridor3") return LEVEL1_1_3_SANITY_DRAIN;
+      var surgeDrain =
+        instabilitySurge
+          ? subZone === "corridor4"
+            ? 2
+            : subZone === "corridor3"
+              ? 1.15
+              : subZone === "corridor2"
+                ? 0.35
+                : 0
+          : 0;
+      if (subZone === "corridor4") return LEVEL1_1_4_SANITY_DRAIN + surgeDrain;
+      if (subZone === "corridor3") return LEVEL1_1_3_SANITY_DRAIN + surgeDrain;
+      if (subZone === "corridor2") return surgeDrain;
       return 0;
     },
     isWallCutSubZone: function () {
       return (
         subZone === "corridor" ||
         subZone === "corridor2" ||
-        subZone === "corridor3" ||
-        subZone === "corridor4"
+        subZone === "corridor3"
       );
     },
     tryWallCutExit: function () {
       if (!this.isWallCutSubZone()) return false;
-      return exitToMeg();
+      return emergencyCutToLevel1();
     },
     getCeilingY: function () {
+      if (subZone === "corridor3" && world3) return LEVEL1_1_3_WALL_H;
       return LEVEL1_1_WALL_H;
+    },
+    getMovementSpeedMul: function () {
+      if (subZone === "corridor4") return instabilitySurge ? 0.54 : 0.68;
+      if (instabilitySurge && subZone === "corridor3") return 0.8;
+      if (instabilitySurge && subZone === "corridor2") return 0.9;
+      return 1;
     },
     enterFromMeg: enterFromMeg,
     exitToMeg: exitToMeg,
@@ -796,6 +873,7 @@ export function createLevel1_1ZoneManager(deps) {
       ensureWorld();
       syncDoorCollidersToDeps();
       var now = performance.now();
+      updateInstability(now);
       if (subZone === "corridor" && world.updateOutpostDoor(dt)) {
         swapToLevel1_1Colliders();
       }
@@ -831,6 +909,8 @@ export function createLevel1_1ZoneManager(deps) {
       }
       if (subZone === "corridor4" && world4 && !homeEndingTriggered) {
         world4.update(dt);
+        deps.fps.roll = Math.sin(now * 0.0021) * 0.3 + Math.sin(now * 0.0047) * 0.12;
+        deps.fps.pitch += Math.sin(now * 0.0016) * dt * 0.08;
         if (world4.xiaoyes) {
           var xi;
           var surv4 = deps.getSurvival();

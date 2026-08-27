@@ -19,7 +19,9 @@ import {
   buildLevel03Room,
   getBlueHoleTriggerAabb,
   LEVEL03_FOG,
-} from "./backrooms-level0-03.js?v=2";
+} from "./backrooms-level0-03.js?v=3";
+import { buildLevel05World } from "./backrooms-level0-05.js?v=2";
+import { buildLevel07World } from "./backrooms-level0-07.js?v=2";
 import { buildLevel01Station } from "./backrooms-level0-01.js";
 import { setBackroomsTemperatureZone } from "./backrooms-temperature.js";
 import {
@@ -27,9 +29,21 @@ import {
   showEnterLevelBannerIfQueued,
   showEnterLevelBanner,
 } from "./backrooms-level-enter.js";
-import { markLevelEntered, markLevel02Survived } from "./backrooms-tasks.js";
+import {
+  markLevelEntered,
+  markLevel02Survived,
+  markLevel03ReportRecovered,
+  markLevel07ArchiveRecovered,
+} from "./backrooms-tasks.js";
+import {
+  buildTormentBreach,
+  buildTormentGraveyard,
+  pointInTormentTrigger,
+  readTormentState,
+  writeTormentState,
+} from "./backrooms-level0-torment.js?v=1";
 
-/** @typedef {"red" | "01" | "02" | "03"} Level0SubZoneId */
+/** @typedef {"red" | "01" | "02" | "03" | "05" | "07" | "torment"} Level0SubZoneId */
 
 const _survivalEnv = { skipPassiveSanity: false, sanityDrainPerSec: 0 };
 
@@ -44,6 +58,8 @@ const _survivalEnv = { skipPassiveSanity: false, sanityDrainPerSec: 0 };
  * @param {() => number[][]} [deps.getLevel02Snapshot]
  * @param {object} deps.fps
  * @param {() => import('./backrooms-survival.js').BackroomsSurvival | null} deps.getSurvival
+ * @param {() => boolean} [deps.isPlayerMoving]
+ * @param {() => boolean} [deps.canRunMainPhenomena]
  * @param {{ x: number, z: number }} deps.spawnPoint
  * @param {number} deps.gridSize
  * @param {number} deps.wallHeight
@@ -60,8 +76,9 @@ const _survivalEnv = { skipPassiveSanity: false, sanityDrainPerSec: 0 };
  * @param {(row: number) => number} deps.cellCenterZ
  * @param {(msg: string) => void} deps.showToast
  * @param {(title: string) => void} [deps.onHudTitleChange]
- * @param {(id: "red" | "02" | "03") => void} [deps.onEnterSubLevel]
- * @param {(id: "red" | "02" | "03") => void} [deps.onExitSubLevel]
+ * @param {(id: Level0SubZoneId) => void} [deps.onEnterSubLevel]
+ * @param {(id: Level0SubZoneId) => void} [deps.onExitSubLevel]
+ * @param {(destination: "level1" | "level37") => void} [deps.onLevel05Exit]
  */
 export function createLevel0ZoneManager(deps) {
   /** @type {Level0SubZoneId | null} */
@@ -90,6 +107,20 @@ export function createLevel0ZoneManager(deps) {
   var level03State = null;
   /** @type {{ minX: number, maxX: number, minZ: number, maxZ: number } | null} */
   var blueHoleTrigger = null;
+  /** @type {ReturnType<buildLevel05World> | null} */
+  var level05State = null;
+  /** @type {ReturnType<buildLevel07World> | null} */
+  var level07State = null;
+  var level05Infection = 0;
+  var filteredZoneColliders = [];
+
+  /** @type {ReturnType<buildTormentBreach> | null} */
+  var tormentBreach = null;
+  /** @type {ReturnType<buildTormentGraveyard> | null} */
+  var tormentState = null;
+  var tormentEligibleSince = 0;
+  var tormentSpawnAt = 0;
+  var tormentWarningShown = false;
 
   /** L0.2 过滤后的碰撞缓存：仅在墙倒塌 / 重建世界时刷新 */
   /** @type {object[] | null} */
@@ -133,6 +164,14 @@ export function createLevel0ZoneManager(deps) {
     level02ColliderCacheGen = -1;
   }
 
+  function getSolidZoneColliders(source) {
+    filteredZoneColliders.length = 0;
+    for (var i = 0; i < source.length; i++) {
+      if (!source[i].ghost) filteredZoneColliders.push(source[i]);
+    }
+    return filteredZoneColliders;
+  }
+
   function getLevel02FilteredColliders() {
     var raw = level02State.colliders;
     var gen = raw._l02Gen | 0;
@@ -160,6 +199,12 @@ export function createLevel0ZoneManager(deps) {
     if (!deps.onHudTitleChange) return;
     if (activeId === "red") {
       deps.onHudTitleChange("Backrooms · Level 0 · 红室");
+    } else if (activeId === "torment") {
+      deps.onHudTitleChange("Backrooms · Level 0 · 痛楚");
+    } else if (activeId === "05") {
+      deps.onHudTitleChange("Backrooms · Level 0.5 · 渊闭疗舍 · 生存难度 3");
+    } else if (activeId === "07") {
+      deps.onHudTitleChange("Backrooms · Level 0.7 · 忆域");
     } else if (activeId === "03") deps.onHudTitleChange("Backrooms · Level 0.3");
     else if (activeId === "02") {
       deps.onHudTitleChange("Backrooms · Level 0.2 · 生存难度 3");
@@ -209,6 +254,34 @@ export function createLevel0ZoneManager(deps) {
     if (deps.camera) deps.camera.updateProjectionMatrix();
   }
 
+  function applyLevel05Atmosphere(on) {
+    if (!deps.scene || !deps.scene.fog) return;
+    if (on) {
+      deps.scene.background = new THREE.Color(0x111819);
+      deps.scene.fog.color.setHex(0x182223);
+      deps.scene.fog.near = 3;
+      deps.scene.fog.far = 42;
+      if (deps.camera) deps.camera.far = 96;
+    } else {
+      applyL0Atmosphere();
+    }
+    if (deps.camera) deps.camera.updateProjectionMatrix();
+  }
+
+  function applyLevel07Atmosphere(on) {
+    if (!deps.scene || !deps.scene.fog) return;
+    if (on) {
+      deps.scene.background = new THREE.Color(0x27251d);
+      deps.scene.fog.color.setHex(0x3a3729);
+      deps.scene.fog.near = 7;
+      deps.scene.fog.far = 58;
+      if (deps.camera) deps.camera.far = 128;
+    } else {
+      applyL0Atmosphere();
+    }
+    if (deps.camera) deps.camera.updateProjectionMatrix();
+  }
+
   function applyLevel01Atmosphere(on) {
     if (!deps.scene || !deps.scene.fog) return;
     if (on) {
@@ -231,6 +304,21 @@ export function createLevel0ZoneManager(deps) {
       deps.scene.fog.near = 6;
       deps.scene.fog.far = 52;
       if (deps.camera) deps.camera.far = 120;
+    } else {
+      applyL0Atmosphere();
+    }
+    if (deps.camera) deps.camera.updateProjectionMatrix();
+  }
+
+  function applyTormentAtmosphere(on) {
+    if (!deps.scene || !deps.scene.fog) return;
+    if (on && tormentState) {
+      var preset = tormentState.fogPreset;
+      deps.scene.background = new THREE.Color(preset.background);
+      deps.scene.fog.color.setHex(preset.color);
+      deps.scene.fog.near = preset.near;
+      deps.scene.fog.far = preset.far;
+      if (deps.camera) deps.camera.far = 46;
     } else {
       applyL0Atmosphere();
     }
@@ -282,6 +370,173 @@ export function createLevel0ZoneManager(deps) {
       level02FxRoot,
       level02FxRoot
     );
+  }
+
+  function disposeTormentBreach() {
+    if (tormentBreach) tormentBreach.dispose();
+    tormentBreach = null;
+    tormentWarningShown = false;
+  }
+
+  function canPlaceTormentBreach(x, z) {
+    var colliders = getMainColliders();
+    var margin = 0.85;
+    for (var i = 0; i < colliders.length; i++) {
+      var box = colliders[i];
+      if (!box || box.ghost || box.fallen) continue;
+      if (
+        x + margin >= box.minX &&
+        x - margin <= box.maxX &&
+        z + margin >= box.minZ &&
+        z - margin <= box.maxZ
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function trySpawnTormentBreach(now) {
+    if (tormentBreach || activeId !== null || readTormentState().encountered) return;
+    var distanceFromSpawn = Math.hypot(
+      deps.fps.player.x - deps.spawnPoint.x,
+      deps.fps.player.z - deps.spawnPoint.z
+    );
+    if (distanceFromSpawn < 120) {
+      tormentEligibleSince = 0;
+      tormentSpawnAt = 0;
+      return;
+    }
+    if (!tormentEligibleSince) {
+      tormentEligibleSince = now;
+      tormentSpawnAt = now + 45000 + Math.random() * 45000;
+      return;
+    }
+    if (now < tormentSpawnAt) return;
+
+    var offsets = [0, -0.42, 0.42, -0.78, 0.78];
+    var x = 0;
+    var z = 0;
+    var yaw = deps.fps.yaw;
+    var found = false;
+    for (var i = 0; i < offsets.length; i++) {
+      var angle = yaw + offsets[i];
+      x = deps.fps.player.x + Math.sin(angle) * 5.2;
+      z = deps.fps.player.z - Math.cos(angle) * 5.2;
+      if (canPlaceTormentBreach(x, z)) {
+        yaw = angle;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      tormentSpawnAt = now + 5000;
+      return;
+    }
+    tormentBreach = buildTormentBreach(deps.level0WorldRoot, {
+      x: x,
+      z: z,
+      yaw: Math.PI - yaw,
+      lifetimeMs: 16000,
+      seed: Date.now() ^ Math.floor(x * 1000) ^ Math.floor(z * 1000),
+    });
+    writeTormentState({ encountered: true, statueSeen: false });
+    deps.showToast("走廊前方的颜色正在消失。");
+  }
+
+  function enterTorment() {
+    if (!tormentBreach || activeId !== null) return false;
+    var survival = deps.getSurvival();
+    if (!survival || survival.dead) return false;
+    returnSnapshot = {
+      x: deps.fps.player.x,
+      z: deps.fps.player.z,
+      yaw: deps.fps.yaw,
+    };
+    var savedState = readTormentState();
+    tormentState = buildTormentGraveyard(deps.scene, {
+      seed: Date.now() ^ Math.floor(Math.random() * 0x7fffffff),
+    });
+    writeTormentState({
+      encountered: true,
+      statueSeen: savedState.statueSeen,
+    });
+    disposeTormentBreach();
+    activeId = "torment";
+    if (deps.onEnterSubLevel) deps.onEnterSubLevel("torment");
+    setMainWorldVisible(false);
+    var tormentSpawn = tormentState.spawn || { x: 0, z: 17, yaw: Math.PI };
+    deps.fps.player.x = tormentSpawn.x;
+    deps.fps.player.z = tormentSpawn.z;
+    deps.fps.yaw = tormentSpawn.yaw == null ? Math.PI : tormentSpawn.yaw;
+    deps.fps.feetY = 0;
+    deps.fps.velY = 0;
+    applyTormentAtmosphere(true);
+    syncHudTitle();
+    queueEnterPlaceBanner("痛楚");
+    showEnterLevelBannerIfQueued();
+    deps.showToast("这里没有出口。它只会在时间耗尽后归还你。");
+    return true;
+  }
+
+  function updateTormentOpportunity() {
+    if (activeId !== null) return;
+    if (deps.canRunMainPhenomena && !deps.canRunMainPhenomena()) return;
+    var now = performance.now();
+    trySpawnTormentBreach(now);
+    if (!tormentBreach) return;
+    if (tormentBreach.disposed) {
+      tormentBreach = null;
+      return;
+    }
+    var dx = deps.fps.player.x - tormentBreach.group.position.x;
+    var dz = deps.fps.player.z - tormentBreach.group.position.z;
+    var distance = Math.sqrt(dx * dx + dz * dz);
+    var amount = Math.max(0, Math.min(1, 1 - distance / 9));
+    tormentBreach.update(amount, now);
+    if (!tormentBreach || tormentBreach.disposed) {
+      tormentBreach = null;
+      return;
+    }
+    if (!tormentWarningShown && amount > 0.42) {
+      tormentWarningShown = true;
+      deps.showToast("灰白雾气从裂口后方渗出。");
+    }
+    if (
+      pointInTormentTrigger(
+        deps.fps.player.x,
+        deps.fps.player.z,
+        tormentBreach.trigger
+      )
+    ) {
+      enterTorment();
+    }
+  }
+
+  function exitTorment(opts) {
+    opts = opts || {};
+    if (activeId !== "torment") return;
+    activeId = null;
+    if (opts.resumeMusic !== false && deps.onExitSubLevel) {
+      deps.onExitSubLevel("torment");
+    }
+    if (tormentState) tormentState.dispose();
+    tormentState = null;
+    setMainWorldVisible(true);
+    applyTormentAtmosphere(false);
+    syncHudTitle();
+    if (opts.restorePlayer !== false && returnSnapshot) {
+      deps.fps.player.x = returnSnapshot.x;
+      deps.fps.player.z = returnSnapshot.z;
+      deps.fps.yaw = returnSnapshot.yaw;
+      deps.fps.feetY = 0;
+      deps.fps.velY = 0;
+    }
+    returnSnapshot = null;
+    mainTriggerCooldownUntil = performance.now() + 2200;
+    if (opts.showReturn !== false) {
+      deps.showToast("灰雾闭合了。荧光灯的嗡鸣重新出现。");
+    }
   }
 
   /** 离开 0.2 — 必定 dispose hazard，避免野 mesh */
@@ -379,7 +634,10 @@ export function createLevel0ZoneManager(deps) {
     if (opts.resumeMusic !== false && deps.onExitSubLevel) {
       deps.onExitSubLevel("03");
     }
-    if (level03State) disposeObject3D(level03State.group);
+    if (level03State) {
+      if (level03State.dispose) level03State.dispose();
+      else disposeObject3D(level03State.group);
+    }
     level03State = null;
     setMainWorldVisible(true);
     applyLevel03Atmosphere(false);
@@ -394,17 +652,70 @@ export function createLevel0ZoneManager(deps) {
     mainTriggerCooldownUntil = performance.now() + 1800;
   }
 
+  function exitLevel05(opts) {
+    opts = opts || {};
+    if (activeId !== "05") return;
+    activeId = null;
+    if (opts.resumeMusic !== false && deps.onExitSubLevel) {
+      deps.onExitSubLevel("05");
+    }
+    if (level05State) level05State.dispose();
+    level05State = null;
+    level05Infection = 0;
+    setMainWorldVisible(true);
+    applyLevel05Atmosphere(false);
+    setBackroomsTemperatureZone(0);
+    syncHudTitle();
+    if (opts.restorePlayer && returnSnapshot) {
+      deps.fps.player.x = returnSnapshot.x;
+      deps.fps.player.z = returnSnapshot.z;
+      deps.fps.yaw = returnSnapshot.yaw;
+      deps.fps.feetY = 0;
+      deps.fps.velY = 0;
+    }
+    returnSnapshot = null;
+    mainTriggerCooldownUntil = performance.now() + 1800;
+  }
+
+  function exitLevel07(opts) {
+    opts = opts || {};
+    if (activeId !== "07") return;
+    activeId = null;
+    if (opts.resumeMusic !== false && deps.onExitSubLevel) {
+      deps.onExitSubLevel("07");
+    }
+    if (level07State) level07State.dispose();
+    level07State = null;
+    setMainWorldVisible(true);
+    applyLevel07Atmosphere(false);
+    setBackroomsTemperatureZone(0);
+    syncHudTitle();
+    if (opts.restorePlayer !== false && returnSnapshot) {
+      deps.fps.player.x = returnSnapshot.x;
+      deps.fps.player.z = returnSnapshot.z;
+      deps.fps.yaw = returnSnapshot.yaw;
+      deps.fps.feetY = 0;
+      deps.fps.velY = 0;
+    }
+    returnSnapshot = null;
+    mainTriggerCooldownUntil = performance.now() + 1800;
+  }
+
   function leaveActiveSubZone(opts) {
     if (activeId === "02") exitLevel02(opts);
     else if (activeId === "01") exitLevel01(opts);
     else if (activeId === "red") exitRedRoom(opts);
     else if (activeId === "03") exitLevel03(opts);
+    else if (activeId === "05") exitLevel05(opts);
+    else if (activeId === "07") exitLevel07(opts);
+    else if (activeId === "torment") exitTorment(opts);
   }
 
   function enterRedRoom() {
     if (activeId === "red" || !deps.level0WorldRoot) return false;
     var survival = deps.getSurvival();
     if (!survival || survival.dead) return false;
+    disposeTormentBreach();
 
     if (activeId === "03") {
       exitLevel03({ restorePlayer: false, resumeMusic: false });
@@ -442,6 +753,7 @@ export function createLevel0ZoneManager(deps) {
     if (activeId === "01" || !deps.level0WorldRoot) return false;
     var survival = deps.getSurvival();
     if (!survival || survival.dead || activeId !== null) return false;
+    disposeTormentBreach();
     returnSnapshot = {
       x: deps.fps.player.x,
       z: deps.fps.player.z,
@@ -475,6 +787,7 @@ export function createLevel0ZoneManager(deps) {
     var survival = deps.getSurvival();
     if (!survival || survival.dead) return false;
     if (activeId === "red" || activeId === "03") return false;
+    disposeTormentBreach();
 
     rebuildLevel02World();
     level02FxRoot = new THREE.Group();
@@ -513,8 +826,8 @@ export function createLevel0ZoneManager(deps) {
   function enterLevel03() {
     if (activeId === "03" || !deps.level0WorldRoot) return false;
     var survival = deps.getSurvival();
-    if (!survival || survival.dead) return false;
-    if (activeId === "red" || activeId === "02") return false;
+    if (!survival || survival.dead || activeId !== null) return false;
+    disposeTormentBreach();
 
     returnSnapshot = {
       x: deps.fps.player.x,
@@ -527,8 +840,10 @@ export function createLevel0ZoneManager(deps) {
     setMainWorldVisible(false);
     if (redRoomState) redRoomState.group.visible = false;
     level03State.group.visible = true;
-    deps.fps.player.x = 0;
-    deps.fps.player.z = 0;
+    var l03Spawn = level03State.spawn || { x: 0, z: 0, yaw: 0 };
+    deps.fps.player.x = l03Spawn.x;
+    deps.fps.player.z = l03Spawn.z;
+    deps.fps.yaw = l03Spawn.yaw || 0;
     deps.fps.feetY = 0;
     deps.fps.velY = 0;
     setBackroomsTemperatureZone("0.3");
@@ -536,6 +851,71 @@ export function createLevel0ZoneManager(deps) {
     syncHudTitle();
     showEnterLevelBanner("level0.3");
     markLevelEntered("0.3", deps.showToast);
+    return true;
+  }
+
+  function enterLevel05() {
+    if (activeId !== null || !deps.level0WorldRoot) return false;
+    var survival = deps.getSurvival();
+    if (!survival || survival.dead) return false;
+    disposeTormentBreach();
+    returnSnapshot = {
+      x: deps.fps.player.x,
+      z: deps.fps.player.z,
+      yaw: deps.fps.yaw,
+    };
+    level05State = buildLevel05World(deps.scene, {
+      wallHeight: Math.max(2.8, deps.wallHeight + 0.4),
+      enableAudio: true,
+    });
+    activeId = "05";
+    if (deps.onEnterSubLevel) deps.onEnterSubLevel("05");
+    setMainWorldVisible(false);
+    var spawn = level05State.spawn || { x: 0, z: 20, yaw: Math.PI };
+    deps.fps.player.x = spawn.x;
+    deps.fps.player.z = spawn.z;
+    deps.fps.yaw = spawn.yaw == null ? Math.PI : spawn.yaw;
+    deps.fps.feetY = 0;
+    deps.fps.velY = 0;
+    setBackroomsTemperatureZone("0.5");
+    applyLevel05Atmosphere(true);
+    syncHudTitle();
+    showEnterLevelBanner("level0.5 · 渊闭疗舍");
+    markLevelEntered("0.5", deps.showToast);
+    deps.showToast("污水没过膝盖。远处蓝灯下传来滴水声。");
+    return true;
+  }
+
+  function enterLevel07() {
+    if (activeId !== null || !deps.level0WorldRoot) return false;
+    var survival = deps.getSurvival();
+    if (!survival || survival.dead) return false;
+    disposeTormentBreach();
+    returnSnapshot = {
+      x: deps.fps.player.x,
+      z: deps.fps.player.z,
+      yaw: deps.fps.yaw,
+    };
+    level07State = buildLevel07World(deps.scene, {
+      onAllRecords: function () {
+        markLevel07ArchiveRecovered(deps.showToast);
+      },
+    });
+    activeId = "07";
+    if (deps.onEnterSubLevel) deps.onEnterSubLevel("07");
+    setMainWorldVisible(false);
+    var spawn = level07State.spawn || { x: 0, z: 3.8, yaw: Math.PI };
+    deps.fps.player.x = spawn.x;
+    deps.fps.player.z = spawn.z;
+    deps.fps.yaw = spawn.yaw == null ? Math.PI : spawn.yaw;
+    deps.fps.feetY = 0;
+    deps.fps.velY = 0;
+    setBackroomsTemperatureZone("0.7");
+    applyLevel07Atmosphere(true);
+    syncHudTitle();
+    showEnterLevelBanner("level0.7 · 忆域");
+    markLevelEntered("0.7", deps.showToast);
+    deps.showToast("这里保存着 Level 0 曾经存在过的版本。原路仍在身后。");
     return true;
   }
 
@@ -571,13 +951,21 @@ export function createLevel0ZoneManager(deps) {
         rebuild: false,
         resumeMusic: false,
       });
+      disposeTormentBreach();
       stopLevel02Hazards();
       if (level02State && level02State.group && deps.scene) {
         if (level02State.disposeLights) level02State.disposeLights();
         deps.scene.remove(level02State.group);
       }
       if (level03State && level03State.group && deps.scene) {
-        deps.scene.remove(level03State.group);
+        if (level03State.dispose) level03State.dispose();
+        else deps.scene.remove(level03State.group);
+      }
+      if (level05State) {
+        level05State.dispose();
+      }
+      if (level07State) {
+        level07State.dispose();
       }
       if (level01State) {
         if (level01State.dispose) level01State.dispose();
@@ -590,10 +978,14 @@ export function createLevel0ZoneManager(deps) {
       invalidateLevel02ColliderCache();
       level02State = null;
       level03State = null;
+      level05State = null;
+      level07State = null;
       level01State = null;
       redRoomState = null;
+      tormentState = null;
       level02Hazards = null;
       level02FxRoot = null;
+      filteredZoneColliders.length = 0;
       activeId = null;
       returnSnapshot = null;
     },
@@ -612,6 +1004,8 @@ export function createLevel0ZoneManager(deps) {
     enterLevel01: enterLevel01,
     enterLevel02: enterLevel02,
     enterLevel03: enterLevel03,
+    enterLevel05: enterLevel05,
+    enterLevel07: enterLevel07,
     exitLevel02ToSpawn: exitLevel02ToSpawn,
     exitRedRoom: function () {
       exitRedRoom({ restorePlayer: true });
@@ -624,11 +1018,20 @@ export function createLevel0ZoneManager(deps) {
     },
 
     getColliders: function getZoneColliders() {
+      if (activeId === "torment" && tormentState && tormentState.colliders) {
+        return tormentState.colliders;
+      }
       if (activeId === "red" && redRoomState && redRoomState.colliders) {
         return redRoomState.colliders;
       }
       if (activeId === "03" && level03State && level03State.colliders) {
         return level03State.colliders;
+      }
+      if (activeId === "05" && level05State && level05State.colliders) {
+        return getSolidZoneColliders(level05State.colliders);
+      }
+      if (activeId === "07" && level07State && level07State.colliders) {
+        return getSolidZoneColliders(level07State.colliders);
       }
       if (activeId === "01" && level01State && level01State.colliders) {
         return level01State.colliders;
@@ -648,6 +1051,18 @@ export function createLevel0ZoneManager(deps) {
     },
 
     getInteractMeshes: function getZoneInteractMeshes() {
+      if (activeId === "03" && level03State) {
+        return level03State.interactMeshes || [];
+      }
+      if (activeId === "05" && level05State) {
+        return level05State.interactMeshes || [];
+      }
+      if (activeId === "07" && level07State) {
+        return level07State.interactMeshes || [];
+      }
+      if (activeId === "torment" && tormentState) {
+        return tormentState.interactMeshes || [];
+      }
       if (activeId === "01" && level01State) {
         return level01State.interactMeshes || [];
       }
@@ -658,6 +1073,22 @@ export function createLevel0ZoneManager(deps) {
     },
 
     getInteractionHint: function getZoneInteractionHint(data) {
+      if (activeId === "03" && level03State && level03State.getInteractionHint) {
+        return level03State.getInteractionHint(data);
+      }
+      if (activeId === "05" && level05State && level05State.getInteractionHint) {
+        return level05State.getInteractionHint(data);
+      }
+      if (activeId === "07" && level07State && level07State.getInteractionHint) {
+        return level07State.getInteractionHint(data);
+      }
+      if (
+        activeId === "torment" &&
+        tormentState &&
+        tormentState.getInteractionHint
+      ) {
+        return tormentState.getInteractionHint(data);
+      }
       if (activeId === "01" && level01State && level01State.getInteractionHint) {
         return level01State.getInteractionHint(data);
       }
@@ -669,6 +1100,55 @@ export function createLevel0ZoneManager(deps) {
 
     interact: function interactWithActiveZone(data) {
       if (!data) return false;
+      if (activeId === "03" && level03State && level03State.interact) {
+        return level03State.interact(data, {
+          showToast: deps.showToast,
+          onReportRecovered: function () {
+            markLevel03ReportRecovered(deps.showToast);
+          },
+        });
+      }
+      if (activeId === "05" && level05State && level05State.interact) {
+        return level05State.interact(data, {
+          showToast: deps.showToast,
+          grantItem: function (itemId, amount) {
+            var survival = deps.getSurvival();
+            if (!survival) return false;
+            var names = {
+              almond_water: "杏仁水",
+              royal_rations: "最小有效分量皇家口粮",
+            };
+            var count = Math.max(1, amount | 0);
+            for (var itemIndex = 0; itemIndex < count; itemIndex++) {
+              if (
+                !survival.addItem({
+                  id: itemId,
+                  name: names[itemId] || itemId,
+                })
+              ) {
+                return false;
+              }
+            }
+            return true;
+          },
+          onExitRequest: function (request) {
+            if (!request || !deps.onLevel05Exit) return;
+            exitLevel05({ restorePlayer: false, resumeMusic: false });
+            deps.onLevel05Exit(request.destination);
+          },
+        });
+      }
+      if (activeId === "07" && level07State && level07State.interact) {
+        return level07State.interact(data, {
+          showToast: deps.showToast,
+          onAllRecords: function () {
+            markLevel07ArchiveRecovered(deps.showToast);
+          },
+        });
+      }
+      if (activeId === "torment" && tormentState && tormentState.interact) {
+        return tormentState.interact(data, { showToast: deps.showToast });
+      }
       if (activeId === "01" && level01State && level01State.interact) {
         return level01State.interact(data, {
           showToast: deps.showToast,
@@ -741,6 +1221,37 @@ export function createLevel0ZoneManager(deps) {
     },
 
     update: function updateActiveZone(dt) {
+      if (activeId === null) {
+        updateTormentOpportunity();
+        return;
+      }
+      if (activeId === "torment") {
+        var tormentSurvival = deps.getSurvival();
+        if (tormentSurvival && tormentSurvival.dead) {
+          exitTorment({
+            restorePlayer: false,
+            resumeMusic: false,
+            showReturn: false,
+          });
+          return;
+        }
+        if (!tormentState) return;
+        tormentState.update(dt, deps.fps.player, tormentSurvival, {
+          moving: !!deps.isPlayerMoving && deps.isPlayerMoving(),
+          grounded: deps.fps.grounded,
+          onSanityPulse: function (amount) {
+            if (!tormentSurvival || tormentSurvival.dead) return;
+            tormentSurvival.sanity = Math.max(
+              0,
+              tormentSurvival.sanity - amount
+            );
+          },
+        });
+        if (tormentState.isExpired(performance.now())) {
+          exitTorment({ restorePlayer: true });
+        }
+        return;
+      }
       if (activeId === "red") {
         var redSurvival = deps.getSurvival();
         if (redSurvival && redSurvival.dead) {
@@ -753,6 +1264,79 @@ export function createLevel0ZoneManager(deps) {
         }
         if (redRoomState && redRoomState.update) {
           redRoomState.update(dt, deps.fps.player);
+        }
+        return;
+      }
+      if (activeId === "03") {
+        var level03Survival = deps.getSurvival();
+        if (level03Survival && level03Survival.dead) {
+          exitLevel03({ restorePlayer: false, resumeMusic: false });
+          return;
+        }
+        if (level03State && level03State.update) {
+          level03State.update(dt, deps.fps.player, {
+            showToast: deps.showToast,
+            onDamage: function (amount) {
+              if (level03Survival && !level03Survival.dead) {
+                level03Survival.takeDamage(amount);
+              }
+            },
+          });
+        }
+        return;
+      }
+      if (activeId === "05") {
+        var level05Survival = deps.getSurvival();
+        if (level05Survival && level05Survival.dead) {
+          exitLevel05({ restorePlayer: false, resumeMusic: false });
+          return;
+        }
+        if (level05State && level05State.update) {
+          level05State.update(dt, deps.fps.player, {
+            onDamage: function (amount) {
+              if (level05Survival && !level05Survival.dead) {
+                level05Survival.takeDamage(amount);
+              }
+            },
+            onInfectionPressure: function (amount) {
+              level05Infection = Math.min(1.25, level05Infection + amount);
+              if (level05Infection > 0.5 && level05Survival && !level05Survival.dead) {
+                level05Survival.takeDamage(amount * 18);
+              }
+            },
+            onEnvironmentChange: function (state) {
+              if (state && state.zone === "hospital") {
+                deps.showToast("污水退到身后。医院里有什么东西正在移动。");
+              }
+            },
+          });
+        }
+        return;
+      }
+      if (activeId === "07") {
+        var level07Survival = deps.getSurvival();
+        if (level07Survival && level07Survival.dead) {
+          exitLevel07({ restorePlayer: false, resumeMusic: false });
+          return;
+        }
+        if (level07State && level07State.update) {
+          level07State.update(dt, deps.fps.player, {
+            onDamage: function (amount, detail) {
+              if (level07Survival && !level07Survival.dead) {
+                level07Survival.takeDamage(amount);
+              }
+              if (detail && detail.message) deps.showToast(detail.message);
+            },
+            onGrowlerRoar: function () {
+              deps.showToast("石墙深处传来一声不属于任何时代的吼叫。");
+            },
+          });
+          var level07Exit = level07State.getExitRequest
+            ? level07State.getExitRequest()
+            : null;
+          if (level07Exit && level07Exit.destination === "level0") {
+            exitLevel07({ restorePlayer: true });
+          }
         }
         return;
       }
@@ -786,6 +1370,38 @@ export function createLevel0ZoneManager(deps) {
     },
 
     drawFx: function drawActiveZoneFx(canvas, now) {
+      if (
+        activeId === "05" &&
+        level05State &&
+        level05State.drawFx
+      ) {
+        level05State.drawFx(canvas, now);
+        return;
+      }
+      if (
+        activeId === "07" &&
+        level07State &&
+        level07State.drawFx
+      ) {
+        level07State.drawFx(canvas, now);
+        return;
+      }
+      if (
+        activeId === "03" &&
+        level03State &&
+        level03State.drawFx
+      ) {
+        level03State.drawFx(canvas, now);
+        return;
+      }
+      if (
+        activeId === "torment" &&
+        tormentState &&
+        tormentState.drawFx
+      ) {
+        tormentState.drawFx(canvas, now);
+        return;
+      }
       if (
         activeId === "02" &&
         level02Hazards &&
@@ -828,6 +1444,14 @@ export function createLevel0ZoneManager(deps) {
           enterLevel03();
           return;
         }
+        if (type === "05") {
+          enterLevel05();
+          return;
+        }
+        if (type === "07") {
+          enterLevel07();
+          return;
+        }
       }
       if (redChannelTrigger && pointInAabb(deps.fps.player.x, deps.fps.player.z, redChannelTrigger)) {
         enterRedRoom();
@@ -845,10 +1469,7 @@ export function createLevel0ZoneManager(deps) {
         }
         return;
       }
-      if (activeId === "03" && level03State) {
-        if (pointInAabb(deps.fps.player.x, deps.fps.player.z, level03State.exitTrigger)) {
-          exitLevel03({ restorePlayer: true });
-        }
+      if (activeId === "03") {
         return;
       }
       if (activeId === "01" && level01State && level01State.exitTrigger) {
@@ -865,7 +1486,8 @@ export function createLevel0ZoneManager(deps) {
     },
 
     getSurvivalEnv: function getSurvivalEnv() {
-      _survivalEnv.skipPassiveSanity = activeId === "red";
+      _survivalEnv.skipPassiveSanity =
+        activeId === "red" || activeId === "torment";
       if (activeId === "red") {
         var redSeconds = redEnteredAt
           ? Math.max(0, (performance.now() - redEnteredAt) / 1000)
@@ -874,6 +1496,15 @@ export function createLevel0ZoneManager(deps) {
           6,
           Math.max(2.6, RED_ROOM_SANITY_DRAIN_PER_SEC * 0.52 + redSeconds * 0.055)
         );
+      } else if (activeId === "torment" && tormentState) {
+        var tormentEnv = tormentState.getSurvivalEnv();
+        _survivalEnv.sanityDrainPerSec = tormentEnv.sanityDrainPerSec;
+      } else if (activeId === "05" && level05State) {
+        var level05Env = level05State.getSurvivalEnv();
+        _survivalEnv.sanityDrainPerSec = level05Env.sanityDrainPerSec || 0;
+      } else if (activeId === "07" && level07State) {
+        var level07Env = level07State.getSurvivalEnv();
+        _survivalEnv.sanityDrainPerSec = level07Env.sanityDrainPerSec || 0;
       } else {
         _survivalEnv.sanityDrainPerSec = 0;
       }
@@ -881,7 +1512,14 @@ export function createLevel0ZoneManager(deps) {
     },
 
     isColdDamageZone: function isColdDamageZone() {
-      return activeId === "03" || activeTemperatureZone === "0.1_cold";
+      return activeTemperatureZone === "0.1_cold";
+    },
+
+    getMovementSpeedMul: function getMovementSpeedMul() {
+      if (activeId === "05" && level05State) {
+        return level05State.getSurvivalEnv().movementMultiplier || 1;
+      }
+      return 1;
     },
 
     shouldUpdateRedDoorFlicker: function shouldUpdateRedDoorFlicker() {

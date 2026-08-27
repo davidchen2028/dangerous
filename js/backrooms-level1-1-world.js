@@ -21,6 +21,7 @@ var _chestLoadStarted = false;
 var _chestLoadPending = [];
 
 var _whiteFloorMat = null;
+var _blueTileFloorMat = null;
 var _whiteWallMat = null;
 var _whiteCeilMat = null;
 var _chestPickGeo = null;
@@ -37,6 +38,42 @@ function sharedWhiteFloorMat() {
     });
   }
   return _whiteFloorMat;
+}
+
+function sharedBlueTileFloorMat() {
+  if (!_blueTileFloorMat) {
+    var canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 1024;
+    var ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = "#3f7ea2";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "#bdd3dc";
+      ctx.lineWidth = 3;
+      for (var p = 0; p <= 256; p += 32) {
+        ctx.beginPath();
+        ctx.moveTo(p, 0);
+        ctx.lineTo(p, canvas.height);
+        ctx.stroke();
+      }
+      for (var py = 0; py <= canvas.height; py += 32) {
+        ctx.beginPath();
+        ctx.moveTo(0, py);
+        ctx.lineTo(canvas.width, py);
+        ctx.stroke();
+      }
+    }
+    var texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    _blueTileFloorMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: texture,
+      roughness: 0.72,
+      metalness: 0.04,
+    });
+  }
+  return _blueTileFloorMat;
 }
 
 function sharedWhiteWallMat() {
@@ -244,7 +281,7 @@ export function buildLevel1_1World(parent, opts) {
 
   var floor = new THREE.Mesh(
     new THREE.BoxGeometry(LEVEL1_1_CORRIDOR_W, 0.12, len),
-    sharedWhiteFloorMat()
+    sharedBlueTileFloorMat()
   );
   floor.position.set(0, 0.06, len * 0.5);
   corridor.add(floor);
@@ -812,6 +849,7 @@ export {
   spawnFixedChest,
   addWallSegment,
   sharedWhiteFloorMat,
+  sharedBlueTileFloorMat,
   sharedWhiteWallMat,
   sharedWhiteCeilMat,
   createBlackDoorTexture,

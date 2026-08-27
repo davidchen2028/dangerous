@@ -8,15 +8,15 @@ import {
   createBlackDoorTexture,
   ensureChestTemplate,
   spawnFixedChest,
+  sharedBlueTileFloorMat,
   sharedWhiteCeilMat,
-  sharedWhiteFloorMat,
   sharedWhiteWallMat,
-} from "./backrooms-level1-1-world.js";
+} from "./backrooms-level1-1-world.js?v=2";
 import { createFixedXiaoye } from "./backrooms-level2-xiaoye.js";
 
 export const LEVEL1_1_3_CORRIDOR_LEN = 50;
-export const LEVEL1_1_3_CORRIDOR_W = 7;
-export const LEVEL1_1_3_WALL_H = 3.15;
+export const LEVEL1_1_3_CORRIDOR_W = 6;
+export const LEVEL1_1_3_WALL_H = 6;
 export const LEVEL1_1_3_SPAWN_Z = 2.2;
 export const LEVEL1_1_3_SPAWN_YAW = 0;
 export const LEVEL1_1_3_SANITY_DRAIN = 2;
@@ -53,7 +53,8 @@ function createWarningSignTexture() {
   ctx.font = "bold 42px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("警告⚠️！前方危险！！！", w * 0.5, h * 0.5);
+  ctx.font = "bold 31px sans-serif";
+  ctx.fillText("警告！请勿越过此界 · 进入者将面临迫近死亡", w * 0.5, h * 0.5);
   var tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -80,9 +81,16 @@ export function buildLevel1_1_3World(parent, opts) {
   group.add(corridor);
 
   var dimMat = createDimWhiteMat();
+  var floorMat = sharedBlueTileFloorMat().clone();
+  floorMat.color.setHex(0x52616b);
+  if (floorMat.map) {
+    floorMat.map = floorMat.map.clone();
+    floorMat.map.wrapT = THREE.RepeatWrapping;
+    floorMat.map.repeat.y = len / 30;
+  }
   var floor = new THREE.Mesh(
     new THREE.BoxGeometry(LEVEL1_1_3_CORRIDOR_W, 0.12, len),
-    dimMat
+    floorMat
   );
   floor.position.set(0, 0.06, len * 0.5);
   corridor.add(floor);

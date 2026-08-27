@@ -117,6 +117,16 @@ const LEVEL_PROFILE = {
   c1299_1: { min: 23, max: 28, base: 25.5, swing: 1.3 },
   /** Level 0.3 — 极寒 */
   "0.3": { min: -22, max: -18, base: -20, swing: 1.1 },
+  /** Level 0.5 — 浸濡通道与废弃医院，阴冷潮湿 */
+  "0.5": { min: 7, max: 12, base: 9.5, swing: 1.4 },
+  /** Level 0.7 — 不同时代叠合造成温度缓慢漂移 */
+  "0.7": { min: 13, max: 22, base: 17.5, swing: 3.2, swing2: 1.2 },
+  /** Level 1.2 — 繁茂砼苑，温暖且潮湿 */
+  "1.2": { min: 20, max: 27, base: 23.5, swing: 2.4, swing2: 0.8 },
+  /** Level 1.3 — 衰退病房的闷热腐败空气 */
+  "1.3": { min: 22, max: 27, base: 24, swing: 1.4, swing2: 0.5 },
+  /** Level 1.5 — 颠倒现实中的阴冷静滞空气 */
+  "1.5": { min: 8, max: 15, base: 11.5, swing: 2.6, swing2: 1.1 },
 };
 
 /** @type {number | string} */

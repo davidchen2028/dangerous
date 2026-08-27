@@ -113,7 +113,7 @@ export function createBackroomsHorrorSystem(config) {
         if (entry.panelMat && entry.baseEmissive != null && entry.panelMat.emissiveIntensity != null) {
           entry.panelMat.emissiveIntensity = entry.baseEmissive;
         } else if (entry.panelMat && entry.panelMat.color) {
-          entry.panelMat.color.setHex(0xdff9fb);
+          entry.panelMat.color.setHex(entry.baseColor || 0xdff9fb);
         }
       }
     }
@@ -194,6 +194,11 @@ export function createBackroomsHorrorSystem(config) {
 
     isBlackoutActive: function () {
       return blackoutActive;
+    },
+
+    cancelBlackout: function (nowMs) {
+      if (blackoutActive) endBlackout();
+      scheduleNextRoll(nowMs || performance.now());
     },
 
     getQuantumChests: function () {

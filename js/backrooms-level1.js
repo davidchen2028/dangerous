@@ -8,7 +8,7 @@ import {
   saveBackroomsSurvival,
   registerBackroomsSurvivalPersist,
 } from "./backrooms-survival-persist.js";
-import { createBackroomsHorrorSystem } from "./backrooms-horror.js";
+import { createBackroomsHorrorSystem } from "./backrooms-horror.js?v=2";
 import { rollAlmondWaterFromChest } from "./backrooms-chest-loot.js";
 import {
   toggleBackpack,
@@ -54,6 +54,7 @@ import {
 } from "./backrooms-meg-points.js";
 import {
   initBackroomsTemperature,
+  setBackroomsTemperatureZone,
   updateBackroomsTemperature,
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
@@ -61,7 +62,7 @@ import {
   buildBackroomsLevel1World,
   resolveClipEntrySpawn,
   WAREHOUSE_HEIGHT,
-} from "./backrooms-level1-world.js";
+} from "./backrooms-level1-world.js?v=4";
 import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
@@ -100,7 +101,8 @@ import {
   applyMegDeathState,
   MEG_RESPAWN_FLAG,
 } from "./backrooms-meg-checkpoint.js";
-import { createLevel1_1ZoneManager } from "./backrooms-level1-1-zones.js";
+import { createLevel1_1ZoneManager } from "./backrooms-level1-1-zones.js?v=3";
+import { createLevel1SublevelManager } from "./backrooms-level1-sublevels.js?v=4";
 import {
   handleTaskUiKey,
   isTaskUiOpen,
@@ -114,7 +116,7 @@ import {
   markLevel1_1ChestOpened,
   refreshLevel1_1_3OutpostChestsOnFirstL11Visit,
 } from "./backrooms-level1-1-chests.js";
-import { LEVEL1_1_WALL_H } from "./backrooms-level1-1-world.js";
+import { LEVEL1_1_WALL_H } from "./backrooms-level1-1-world.js?v=2";
 import { consumeC101Result } from "./backrooms-c101-state.js";
 
 const CHEST_LOOT_DISTANCE = 2.6;
@@ -152,6 +154,7 @@ const dialogueTextEl = document.getElementById("backroomsDialogueText");
 const dialogueImageEl = document.getElementById("backroomsDialogueImage");
 const dialogueChoicesEl = document.getElementById("backroomsDialogueChoices");
 const homeEndingEl = document.getElementById("backroomsHomeEnding");
+const hudTitleEl = document.querySelector(".backrooms-hud__title");
 
 let lootToastUntil = 0;
 let spawnPoint = { x: 0, z: 0 };
@@ -189,6 +192,8 @@ let firesalt = null;
 let level1World = null;
 /** @type {ReturnType<createLevel1_1ZoneManager> | null} */
 let level1_1Zones = null;
+/** @type {ReturnType<createLevel1SublevelManager> | null} */
+let level1Sublevels = null;
 let c101Return = null;
 /** @type {THREE.Group | null} */
 let level1Root = null;
@@ -203,6 +208,8 @@ let flickerUntil = 0;
 
 const keys = Object.create(null);
 const move = { forward: false, back: false, left: false, right: false };
+/** Level 1.5 的“颠倒”把前后轴反向后写入这里，避免每帧新建对象 */
+const invertedMove = { forward: false, back: false, left: false, right: false };
 let yaw = 0;
 let pitch = 0;
 let roll = 0;
@@ -221,6 +228,30 @@ let megDialogueOpen = false;
 /** @type {"guide" | "trade" | "backdoor" | "level11" | "level11_tour" | null} */
 let megDialogueKind = null;
 let level11TourStep = 0;
+let activeSectionId = "";
+const seenSectionIds = new Set();
+
+function syncLevel1HudTitle(title) {
+  if (hudTitleEl) hudTitleEl.textContent = title;
+}
+
+function updateLevel1SectionHud(notify) {
+  if (!level1World || !level1World.getSectionAt) return;
+  var section = level1World.getSectionAt(player.x, player.z);
+  if (!section || section.id === activeSectionId) return;
+  activeSectionId = section.id;
+  syncLevel1HudTitle("Backrooms · Level 1 · " + section.name + " · 生存难度 1");
+  if (notify && !seenSectionIds.has(section.id)) {
+    seenSectionIds.add(section.id);
+    var notes = {
+      golden: "灯光转暖，结构也更繁复了。你已进入跃金段。",
+      gothic: "直柱逐渐弯成拱形。这里是哥特段。",
+      garden: "混凝土缝里长出了异常植被。不要久留。",
+      legend: "古旧墙面被霓虹与彩色线缆覆盖。传说段正在重现。",
+    };
+    if (notes[section.id]) showLootToast(notes[section.id]);
+  }
+}
 
 const LEVEL1_1_SD_IMAGES = {
   variable: "img/backrooms/level1-1/sd-variable.png",
@@ -246,7 +277,7 @@ const CORRIDOR_L2_PITCH_AMP = 0.85;
 const CORRIDOR_L2_ROLL_AMP = 0.95;
 
 /** 工业灯日常微闪烁（暴盲期间由 horror 系统暂停） */
-function setPanelVisual(panelMat, on, intensityMul) {
+function setPanelVisual(panelMat, on, intensityMul, baseColor) {
   if (!panelMat) return;
   intensityMul = intensityMul == null ? 1 : intensityMul;
   if (panelMat.emissiveIntensity != null) {
@@ -254,7 +285,7 @@ function setPanelVisual(panelMat, on, intensityMul) {
     return;
   }
   if (panelMat.color) {
-    panelMat.color.setHex(on ? 0xdff9fb : 0x2a3540);
+    panelMat.color.setHex(on ? (baseColor || 0xdff9fb) : 0x2a3540);
   }
 }
 
@@ -269,7 +300,7 @@ function runIndustrialMicroFlicker(now) {
     var f = industrialLights[i];
     var mul = flickering ? 0.08 + Math.random() * 0.35 : 1;
     if (f.light) f.light.intensity = f.baseIntensity * mul;
-    setPanelVisual(f.panelMat, !flickering || mul > 0.35, mul);
+    setPanelVisual(f.panelMat, !flickering || mul > 0.35, mul, f.baseColor);
   }
 }
 
@@ -316,6 +347,22 @@ function respawnAtMegBase() {
   roll = 0;
   depenetratePlayer(16);
   if (level1World) level1World.update(player.x, player.z);
+}
+
+function relocateAfterLevel1_1Cut() {
+  var angle = Math.random() * Math.PI * 2;
+  var distance = 72 + Math.random() * 72;
+  player.x = spawnPoint.x + Math.cos(angle) * distance;
+  player.z = spawnPoint.z + Math.sin(angle) * distance;
+  feetY = 0;
+  velY = 0;
+  grounded = true;
+  yaw = angle + Math.PI;
+  pitch = 0.08;
+  roll = 0;
+  activeSectionId = "";
+  if (level1World) level1World.update(player.x, player.z);
+  depenetratePlayer(24);
 }
 
 function initSurvivalHud() {
@@ -381,6 +428,9 @@ function collectAimInteractRoots() {
   if (hubRoute && hubRoute.isActive()) {
     var hubRoots = hubRoute.getAimInteractRoots();
     for (var h = 0; h < hubRoots.length; h++) aimInteractScratch.push(hubRoots[h]);
+  } else if (level1Sublevels && level1Sublevels.isActive()) {
+    var sublevelRoots = level1Sublevels.getAimInteractRoots();
+    for (var s = 0; s < sublevelRoots.length; s++) aimInteractScratch.push(sublevelRoots[s]);
   } else if (level1_1Zones && level1_1Zones.isActive()) {
     var level1_1Roots = level1_1Zones.getAimInteractRoots();
     var k;
@@ -390,7 +440,7 @@ function collectAimInteractRoots() {
     var j;
     for (j = 0; j < base.length; j++) aimInteractScratch.push(base[j]);
   }
-  if (horror) {
+  if (horror && !(level1Sublevels && level1Sublevels.isActive())) {
     var chests = horror.getQuantumChests();
     var px = player.x;
     var pz = player.z;
@@ -425,7 +475,11 @@ function triggerHomeEnding() {
 function refreshAimPick() {
   currentAimPick = null;
   if (!camera || isInventoryOpen() || megDialogueOpen || isHomeEndingActive()) return;
-  if (!level1World && !(level1_1Zones && level1_1Zones.isActive())) return;
+  if (
+    !level1World &&
+    !(level1_1Zones && level1_1Zones.isActive()) &&
+    !(level1Sublevels && level1Sublevels.isActive())
+  ) return;
   if (!survival || survival.dead) return;
 
   var roots = collectAimInteractRoots();
@@ -462,6 +516,7 @@ function isAimKind(kind, role) {
   if (kind === "meg_npc" && currentAimPick.distance > AIM_NPC_MAX) return false;
   if (kind === "meg_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "l1_c101_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
+  if (kind === "l1_sublevel_entry" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "level1_1_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "level1_1_2_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "level1_1_12_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
@@ -1133,6 +1188,15 @@ function isAimingLevel1_1WallForCut() {
 function tryMegQAction() {
   if (megDialogueOpen || isInventoryOpen() || isBaseStorageOpen() || isHomeEndingActive()) return;
   if (!survival || survival.dead) return;
+  if (level1Sublevels && level1Sublevels.isActive()) {
+    if (currentAimPick && currentAimPick.data) level1Sublevels.interact(currentAimPick.data);
+    return;
+  }
+  if (isAimKind("l1_sublevel_entry")) {
+    var entryData = getAimInteractData();
+    if (entryData && level1Sublevels) level1Sublevels.enter(entryData.levelId);
+    return;
+  }
   if (isAimKind("l1_c101_door")) {
     enterLevelC101();
     return;
@@ -1300,6 +1364,19 @@ function updateMegDoorHint() {
     }
     return;
   }
+  if (level1Sublevels && level1Sublevels.isActive()) {
+    var sublevelHint = level1Sublevels.getInteractionHint(getAimInteractData());
+    if (sublevelHint) {
+      doorHintEl.innerHTML =
+        sublevelHint.indexOf("按 Q") >= 0
+          ? sublevelHint.replace("按 Q", '按 <kbd>Q</kbd>')
+          : sublevelHint + ' · 按 <kbd>Q</kbd>';
+      doorHintEl.hidden = false;
+    } else {
+      doorHintEl.hidden = true;
+    }
+    return;
+  }
   if (level1_1Zones && level1_1Zones.isActive()) {
     if (level1_1Zones.getSubZone() === "outpost") {
       if (level1_1Zones.isNearOutpostExit(player.x, player.z)) {
@@ -1422,7 +1499,7 @@ function updateMegDoorHint() {
       }
       var world4 = level1_1Zones.getWorld4();
       if (world4 && world4.isAtLighthouse(player.x, player.z)) {
-        doorHintEl.innerHTML = "灯塔在前方 · 继续靠近";
+        doorHintEl.innerHTML = "未证实的明亮光标正在吸引你 · 继续靠近";
         doorHintEl.hidden = false;
         return;
       }
@@ -1441,6 +1518,18 @@ function updateMegDoorHint() {
   }
   if (isAimKind("l1_c101_door")) {
     doorHintEl.innerHTML = '柱子上的木门 · 按 <kbd>Q</kbd> 打开';
+    doorHintEl.hidden = false;
+    return;
+  }
+  if (isAimKind("l1_sublevel_entry")) {
+    var entry = getAimInteractData();
+    if (entry && entry.levelId === "1.2") {
+      doorHintEl.innerHTML = '藤蔓覆盖的砼苑入口 · 按 <kbd>Q</kbd> 进入';
+    } else if (entry && entry.levelId === "1.5") {
+      doorHintEl.innerHTML = '不应存在的假窗户 · 按 <kbd>Q</kbd> 靠近';
+    } else {
+      doorHintEl.innerHTML = 'M.E.G. 封禁白墙 · 按 <kbd>Q</kbd> 切入 Level 1.3';
+    }
     doorHintEl.hidden = false;
     return;
   }
@@ -1608,6 +1697,32 @@ function tryLootChest() {
     tryLootFixedChest(chest);
     return;
   }
+  var resourceRoll = Math.random() + Math.max(-0.08, Math.min(0.08, luck / 500));
+  if (resourceRoll < 0.07) {
+    survival.takeDamage(8);
+    markChestEmpty(chest, "碎玻璃划伤了手 · −8 血量");
+    return;
+  }
+  if (resourceRoll < 0.24) {
+    if (!addItem({ id: "royal_rations", name: "最小有效分量皇家口粮" })) {
+      showLootToast("背包已满");
+      return;
+    }
+    chest.opened = true;
+    if (chest.glowLight) chest.glowLight.intensity = 0.08;
+    showLootToast("搜索板条箱 · 最小有效分量皇家口粮 ×1");
+    return;
+  }
+  if (resourceRoll < 0.36) {
+    if (!addItem({ id: "fire_salt", name: "火盐" })) {
+      showLootToast("背包已满");
+      return;
+    }
+    chest.opened = true;
+    if (chest.glowLight) chest.glowLight.intensity = 0.08;
+    showLootToast("搜索板条箱 · 火盐 ×1");
+    return;
+  }
   var roll = rollAlmondWaterFromChest();
   var added = survival.addAlmondWater(roll);
   if (added <= 0) {
@@ -1618,10 +1733,13 @@ function tryLootChest() {
   if (chest.glowLight) {
     chest.glowLight.intensity = 0.08;
   }
-  showLootToast("搜索宝箱 · 杏仁水 ×" + added);
+  showLootToast("搜索板条箱 · 杏仁水 ×" + added);
 }
 
 function getMovementColliders() {
+  if (level1Sublevels && level1Sublevels.isActive()) {
+    return wallColliders;
+  }
   if (level1_1Zones && level1_1Zones.isActive()) {
     return wallColliders;
   }
@@ -1764,8 +1882,16 @@ function enterLevelC101() {
 }
 
 function movePlayer(dt, speedMul) {
+  var activeMove = move;
+  if (level1Sublevels && level1Sublevels.isForwardAxisInverted()) {
+    invertedMove.forward = move.back;
+    invertedMove.back = move.forward;
+    invertedMove.left = move.left;
+    invertedMove.right = move.right;
+    activeMove = invertedMove;
+  }
   moveBackroomsPlayer(
-    { move: move, yaw: yaw, player: player },
+    { move: activeMove, yaw: yaw, player: player },
     dt,
     speedMul,
     resolvePlayerCollisions
@@ -2109,7 +2235,7 @@ function init() {
   applyBackroomsToneMapping(renderer);
 
   horror = createBackroomsHorrorSystem({
-    blackoutChance: 0,
+    blackoutChance: 0.38,
   });
   horror.setFlickerHandler(runIndustrialMicroFlicker);
 
@@ -2208,13 +2334,76 @@ function init() {
     },
     horror: horror,
     onHudTitleChange: function (title) {
-      if (hintEl) hintEl.textContent = title;
+      syncLevel1HudTitle(title);
+      if (title === "Backrooms · Level 1 · 生存难度 1") activeSectionId = "";
     },
     showToast: showLootToast,
     camera: camera,
     onHomeEnding: triggerHomeEnding,
+    onEmergencyCutToLevel1: relocateAfterLevel1_1Cut,
     ensureMegBase: function () {
       if (level1World && level1World.ensureMegBase) level1World.ensureMegBase();
+    },
+  });
+
+  level1Sublevels = createLevel1SublevelManager({
+    scene: scene,
+    camera: camera,
+    level1Root: root,
+    wallColliders: wallColliders,
+    fps: {
+      get x() {
+        return player.x;
+      },
+      set x(v) {
+        player.x = v;
+      },
+      get z() {
+        return player.z;
+      },
+      set z(v) {
+        player.z = v;
+      },
+      get yaw() {
+        return yaw;
+      },
+      set yaw(v) {
+        yaw = v;
+      },
+      get pitch() {
+        return pitch;
+      },
+      set pitch(v) {
+        pitch = v;
+      },
+      get roll() {
+        return roll;
+      },
+      set roll(v) {
+        roll = v;
+      },
+      get feetY() {
+        return feetY;
+      },
+      set feetY(v) {
+        feetY = v;
+      },
+    },
+    onHudTitleChange: syncLevel1HudTitle,
+    setTemperatureZone: setBackroomsTemperatureZone,
+    showToast: showLootToast,
+    onDamage: function (amount) {
+      if (survival) survival.takeDamage(amount);
+    },
+    heal: function (amount) {
+      if (!survival || survival.dead) return;
+      survival.hp = Math.min(getHpMax(), survival.hp + Math.max(0, amount || 0));
+      survival.refreshHud();
+    },
+    grantItem: function (itemId, details) {
+      var item = Object.assign({}, details || {}, { id: itemId });
+      if (!item.name) item.name = itemId;
+      if (!addItem(item)) showLootToast("背包已满，无法带走补给");
     },
   });
 
@@ -2256,7 +2445,8 @@ function startLoop() {
     var now = performance.now();
     var moving = isPlayerMoving();
     var sprinting = isSprintHeld() && moving;
-    if (hubRoute && level1World && !hubRoute.isActive()) {
+    var inLevel1Sublevel = !!(level1Sublevels && level1Sublevels.isActive());
+    if (hubRoute && level1World && !hubRoute.isActive() && !inLevel1Sublevel) {
       hubRoute.updateObservation(
         player.x,
         player.z,
@@ -2271,15 +2461,27 @@ function startLoop() {
     var inHubRoute = !!(hubRoute && hubRoute.isActive());
 
     var horrorResult = { blackout: false };
-    if (horror && !inHubRoute) {
+    var inLevel1_1 = !!(level1_1Zones && level1_1Zones.isActive());
+    var inMegShelter = !!(
+      level1World &&
+      level1World.isInsideMegBaseInterior &&
+      level1World.isInsideMegBaseInterior(player.x, player.z)
+    );
+    if (horror && !inHubRoute && !inLevel1_1 && !inLevel1Sublevel && !inMegShelter) {
       horrorResult = horror.update(now, player.x, player.z);
+    } else if (horror && horror.cancelBlackout) {
+      horror.cancelBlackout(now);
     }
 
     if (survival && !survival.dead && !isHomeEndingActive()) {
       var sanityDrain =
-        level1_1Zones && level1_1Zones.isActive()
+        inLevel1Sublevel
+          ? level1Sublevels.getSanityDrainPerSec()
+          : level1_1Zones && level1_1Zones.isActive()
           ? level1_1Zones.getSanityDrainPerSec()
-          : 0;
+          : activeSectionId === "garden"
+            ? 0.32
+            : 0;
       _survCtx.blackout = horrorResult.blackout;
       _survCtx.nearLandmark = false;
       _survCtx.sprinting = sprinting;
@@ -2301,15 +2503,22 @@ function startLoop() {
         survival && sprinting
           ? survival.getSprintSpeedMul(player.speed, sprinting, moving)
           : 1;
+      if (level1_1Zones && level1_1Zones.getMovementSpeedMul) {
+        speedMul *= level1_1Zones.getMovementSpeedMul();
+      }
+      if (inLevel1Sublevel) speedMul *= level1Sublevels.getMovementSpeedMul();
       if (!isCorridorL2SequenceActive()) {
         movePlayer(dt, speedMul);
       }
     }
     updateLootToast(now);
-    if (level1_1Zones && level1_1Zones.isActive()) {
+    if (inLevel1Sublevel) {
+      level1Sublevels.update(dt, now);
+    } else if (level1_1Zones && level1_1Zones.isActive()) {
       level1_1Zones.update(dt);
     } else if (level1World && !inHubRoute) {
       level1World.update(player.x, player.z);
+      updateLevel1SectionHud(true);
       level1World.updateMegDoor(dt);
       level1World.updateMegCorridorVisibility(player.x, player.z);
       level1World.updateC101Entities(dt, player.x, player.z, survival, showLootToast);
@@ -2318,6 +2527,7 @@ function startLoop() {
       survival &&
       level1World &&
       !inHubRoute &&
+      !inLevel1Sublevel &&
       !(level1_1Zones && level1_1Zones.isActive())
     ) {
       updateMegBaseAutoSave(survival, level1World, player.x, player.z);

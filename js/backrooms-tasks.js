@@ -344,8 +344,15 @@ export const ACHIEVEMENT_DEFS = [
   },
   { id: "reshaped_chaos", title: "重塑的混乱", category: "explore", levelId: "0.2", reward: 0, condition: "活着走出崩塌中的 Level 0.2" },
   { id: "so_cold", title: "好冷", category: "explore", levelId: "0.3", reward: 0, condition: "进入 Level 0.3（本层级无法正常离开）" },
+  { id: "frozen_last_report", title: "最后一份报告", category: "explore", reward: 0, condition: "在封闭的 Level 0.3 找到最终重建报告" },
+  { id: "drowned_infirmary", title: "渊闭疗舍", category: "explore", levelId: "0.5", reward: 0, condition: "进入 Level 0.5 的浸濡通道" },
+  { id: "reminiscence_district", title: "忆域", category: "explore", levelId: "0.7", reward: 0, condition: "进入 Level 0.7 的时间泡泡" },
+  { id: "ntg_archive", title: "时间的备份", category: "explore", reward: 0, condition: "找齐忆域中的全部 N.T.G. 记录" },
   { id: "lost_warehouse", title: "仓库迷途", category: "explore", levelId: "l1", reward: 0, condition: "进入 Level 1" },
   { id: "many_corridors", title: "多段走廊", category: "explore", levelId: "l1.1", reward: 0, condition: "进入 Level 1.1" },
+  { id: "concrete_garden", title: "砼苑", category: "explore", levelId: "l1.2", reward: 0, condition: "进入会将人转化为植物的 Level 1.2" },
+  { id: "malignant_tumor", title: "恶性肿瘤", category: "explore", levelId: "l1.3", reward: 0, condition: "穿过封禁白墙，进入衰退后的 Level 1.3" },
+  { id: "upside_down", title: "颠倒", category: "explore", levelId: "l1.5", reward: 0, condition: "误入 Level 1.5 的假窗户" },
   { id: "too_hot", title: "太热了", category: "explore", levelId: "l2", reward: 0, condition: "进入 Level 2" },
   { id: "pipe_maze", title: "管道迷宫", category: "explore", levelId: "l3", reward: 0, condition: "进入 Level 3" },
   { id: "safe_office", title: "安全办公间", category: "explore", levelId: "l4", reward: 0, condition: "进入 Level 4" },
@@ -378,7 +385,7 @@ export const ACHIEVEMENT_DEFS = [
     category: "set",
     hidden: true,
     reward: 45,
-    condition: "通关 / 存活子层级：0.2、0.3、1.1、6.1",
+    condition: "探索子层级：0.2、0.5、0.7、1.1、1.2、1.3、1.5、6.1",
   },
   {
     id: "distant_lost",
@@ -522,7 +529,7 @@ const MAINLINE_LEVELS = [
   "l13",
   "l14",
 ];
-const SUB_LEVELS = ["0.2", "0.3", "l1.1", "l6_1"];
+const SUB_LEVELS = ["0.2", "0.5", "0.7", "l1.1", "l1.2", "l1.3", "l1.5", "l6_1"];
 const FAR_LEVELS = ["l21", "l48", "l57", "l283"];
 
 function getAchievementDef(id) {
@@ -1004,6 +1011,14 @@ export function markLevel02Survived(onToast) {
 /** 看见红室征兆后主动远离，或误入后仍存活离开。 */
 export function markRedRoomSeenAndLeft(onToast) {
   unlockAchievement("red_room_turn_away", onToast);
+}
+
+export function markLevel03ReportRecovered(onToast) {
+  unlockAchievement("frozen_last_report", onToast);
+}
+
+export function markLevel07ArchiveRecovered(onToast) {
+  unlockAchievement("ntg_archive", onToast);
 }
 
 /**

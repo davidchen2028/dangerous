@@ -83,6 +83,75 @@ const FLOOR_COLOR = 0x2c3e50;
 const CEILING_COLOR = 0xbdc3c7;
 const LIGHT_COLOR = 0xdff9fb;
 
+const LEVEL1_SECTIONS = [
+  {
+    id: "eagle",
+    name: "天鹰段",
+    floor: 0x34434c,
+    wall: 0x7f8c8d,
+    ceiling: 0xb9c1c4,
+    light: 0xdff9fb,
+  },
+  {
+    id: "golden",
+    name: "跃金段",
+    floor: 0x594738,
+    wall: 0x9b8062,
+    ceiling: 0xc8ab7b,
+    light: 0xffd68a,
+  },
+  {
+    id: "gothic",
+    name: "哥特段",
+    floor: 0x292c33,
+    wall: 0x56515d,
+    ceiling: 0x77717d,
+    light: 0xb9c7e8,
+  },
+  {
+    id: "garden",
+    name: "花园段",
+    floor: 0x263b32,
+    wall: 0x617565,
+    ceiling: 0x84917f,
+    light: 0xb8d59b,
+  },
+  {
+    id: "legend",
+    name: "传说段",
+    floor: 0x3b2928,
+    wall: 0x77564c,
+    ceiling: 0x806c62,
+    light: 0xff7fd5,
+  },
+];
+
+function sectionHash(cx, cz) {
+  var n = Math.imul(cx ^ 0x45d9f3b, 0x27d4eb2d);
+  n ^= Math.imul(cz ^ 0x119de1f3, 0x165667b1);
+  n ^= n >>> 15;
+  return n >>> 0;
+}
+
+function sectionForChunk(cx, cz) {
+  // Level 0 切入点与 Alpha 基地都属于新人最常抵达的天鹰段。
+  if (Math.abs(cx) <= 2 && Math.abs(cz) <= 2) return LEVEL1_SECTIONS[0];
+  if (Math.abs(cx - MEG_BASE_CHUNK_OFFSET.cx) <= 1 && Math.abs(cz) <= 1) {
+    return LEVEL1_SECTIONS[0];
+  }
+  var regionX = Math.floor(cx / 3);
+  var regionZ = Math.floor(cz / 3);
+  return LEVEL1_SECTIONS[
+    1 + (sectionHash(regionX, regionZ) % (LEVEL1_SECTIONS.length - 1))
+  ];
+}
+
+export function getLevel1SectionAt(wx, wz) {
+  var chunk = worldToChunk(wx, wz);
+  var section = sectionForChunk(chunk.cx, chunk.cz);
+  return { id: section.id, name: section.name };
+}
+
 var _wallGeo = null;
 var _wallMat = null;
 var _floorMat = null;
@@ -564,6 +633,8 @@ var _megLevel11Npc = null;
 var _megPackageReceiverNpc = null;
 /** @type {{ x: number, z: number, talkRadius: number, group: THREE.Object3D } | null} 寄存柜管理员 */
 var _megStorageClerkNpc = null;
+/** @type {THREE.Object3D | null} */
+var _level13Entrance = null;
 function resetMegModuleState() {
   _megBaseCenter = null;
   _megBaseOccluderGroup = null;
@@ -577,6 +648,7 @@ function resetMegModuleState() {
   _megLevel11Npc = null;
   _megPackageReceiverNpc = null;
   _megStorageClerkNpc = null;
+  _level13Entrance = null;
 }
 
 /** 出生区块 M.E.G 引导员 */
@@ -869,6 +941,27 @@ function buildMegAlphaBase(root, ctx) {
   entryLight.position.set(center.x - hx + 0.5, bh - 0.35, center.z);
   entryLight.rotation.y = Math.PI * 0.5;
   group.add(entryLight);
+
+  var level13Tex = createMegSignTexture("Level 1.3 · 封禁");
+  var level13Entrance = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.2, 2.5),
+    new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: level13Tex,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.22,
+      roughness: 0.32,
+    })
+  );
+  level13Entrance.name = "Level13SealedWhiteWall";
+  level13Entrance.position.set(center.x + 1.8, 1.35, center.z - hz - 0.7);
+  level13Entrance.rotation.y = Math.PI;
+  level13Entrance.userData.brInteract = {
+    kind: "l1_sublevel_entry",
+    levelId: "1.3",
+  };
+  root.add(level13Entrance);
+  _level13Entrance = level13Entrance;
 
   var backDoorStaff = buildMegStaffFigure(
     root,
@@ -1471,6 +1564,154 @@ function spawnChestInstance(parent, cx, cz, sourceModel, horror) {
   return entry;
 }
 
+function addSectionDetails(group, record, profile, centerX, centerZ, chunkSize, ctx) {
+  var material;
+  var mesh;
+  function findOpenSectionCell() {
+    for (var row = 0; row < CHUNK_CELLS; row++) {
+      for (var col = 0; col < CHUNK_CELLS; col++) {
+        var globalCol = record.cx * CHUNK_CELLS + col;
+        var globalRow = record.cz * CHUNK_CELLS + row;
+        if (!isWallCell(globalCol, globalRow)) return cellWorldCenter(globalCol, globalRow);
+      }
+    }
+    return { x: centerX, z: centerZ };
+  }
+  if (profile.id === "eagle") {
+    material = new THREE.MeshBasicMaterial({
+      color: 0x566f77,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+    });
+    mesh = new THREE.Mesh(new THREE.CircleGeometry(2.4, 16), material);
+    mesh.rotation.x = -Math.PI * 0.5;
+    mesh.position.set(centerX + 5.5, 0.012, centerZ - 4.5);
+    group.add(mesh);
+    record.materials.push(material);
+    return;
+  }
+  if (profile.id === "golden") {
+    material = new THREE.MeshBasicMaterial({ color: 0xffb84d });
+    for (var gi = -1; gi <= 1; gi++) {
+      mesh = new THREE.Mesh(new THREE.BoxGeometry(chunkSize * 0.62, 0.035, 0.055), material);
+      mesh.position.set(centerX, WAREHOUSE_HEIGHT - 0.13, centerZ + gi * 7);
+      group.add(mesh);
+    }
+    record.materials.push(material);
+    return;
+  }
+  if (profile.id === "gothic") {
+    material = new THREE.MeshStandardMaterial({
+      color: 0x403b47,
+      roughness: 0.95,
+    });
+    for (var gx = -1; gx <= 1; gx += 2) {
+      mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.34, 0.46, WAREHOUSE_HEIGHT - 0.1, 8),
+        material
+      );
+      mesh.position.set(centerX + gx * 8.5, WAREHOUSE_HEIGHT * 0.5, centerZ);
+      group.add(mesh);
+    }
+    var arch = new THREE.Mesh(new THREE.TorusGeometry(8.5, 0.3, 6, 20, Math.PI), material);
+    arch.position.set(centerX, WAREHOUSE_HEIGHT - 0.2, centerZ);
+    arch.rotation.z = Math.PI;
+    group.add(arch);
+    var fakeWindowCenter = findOpenSectionCell();
+    var fakeWindowFrameMat = new THREE.MeshStandardMaterial({
+      color: 0xe5e5e5,
+      emissive: 0x303030,
+      emissiveIntensity: 0.4,
+      roughness: 0.72,
+    });
+    var fakeWindowPaneMat = new THREE.MeshStandardMaterial({
+      color: 0x050505,
+      emissive: 0x000000,
+      roughness: 1,
+    });
+    var fakeWindow = new THREE.Group();
+    fakeWindow.name = "Level15FakeWindow";
+    fakeWindow.position.set(fakeWindowCenter.x, 0, fakeWindowCenter.z);
+    var frame = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.8, 0.24), fakeWindowFrameMat);
+    frame.position.y = 1.55;
+    fakeWindow.add(frame);
+    var pane = new THREE.Mesh(new THREE.BoxGeometry(2.65, 2.25, 0.5), fakeWindowPaneMat);
+    pane.position.set(0, 1.55, -0.02);
+    pane.userData.brInteract = {
+      kind: "l1_sublevel_entry",
+      levelId: "1.5",
+    };
+    fakeWindow.add(pane);
+    group.add(fakeWindow);
+    record.interacts.push(pane);
+    ctx.sublevelInteracts.push(pane);
+    registerChunkCollider(ctx, record, {
+      kind: "wall",
+      minX: fakeWindowCenter.x - 1.6,
+      maxX: fakeWindowCenter.x + 1.6,
+      minZ: fakeWindowCenter.z - 0.18,
+      maxZ: fakeWindowCenter.z + 0.18,
+    });
+    record.materials.push(material, fakeWindowFrameMat, fakeWindowPaneMat);
+    return;
+  }
+  if (profile.id === "garden") {
+    material = new THREE.MeshStandardMaterial({
+      color: 0x315b36,
+      emissive: 0x0c210d,
+      emissiveIntensity: 0.18,
+      roughness: 0.9,
+    });
+    for (var vi = 0; vi < 5; vi++) {
+      var angle = vi * 2.17;
+      mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.13, 2.2 + (vi % 2), 6),
+        material
+      );
+      mesh.position.set(
+        centerX + Math.cos(angle) * 10,
+        mesh.geometry.parameters.height * 0.5,
+        centerZ + Math.sin(angle) * 10
+      );
+      mesh.rotation.z = Math.sin(angle) * 0.16;
+      group.add(mesh);
+    }
+    var entranceMat = new THREE.MeshStandardMaterial({
+      color: 0x294b2f,
+      emissive: 0x112d15,
+      emissiveIntensity: 0.34,
+      roughness: 0.96,
+    });
+    var entrance = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 3.2, 0.22),
+      entranceMat
+    );
+    entrance.name = "Level12OvergrownThreshold";
+    var gardenEntranceCenter = findOpenSectionCell();
+    entrance.position.set(gardenEntranceCenter.x, 1.6, gardenEntranceCenter.z);
+    entrance.userData.brInteract = {
+      kind: "l1_sublevel_entry",
+      levelId: "1.2",
+    };
+    group.add(entrance);
+    record.interacts.push(entrance);
+    ctx.sublevelInteracts.push(entrance);
+    record.materials.push(entranceMat);
+    record.materials.push(material);
+    return;
+  }
+  material = new THREE.MeshBasicMaterial({ color: 0xff4fc5 });
+  var cableMat = new THREE.MeshBasicMaterial({ color: 0x54d9ff });
+  for (var li = -1; li <= 1; li++) {
+    mesh = new THREE.Mesh(new THREE.BoxGeometry(chunkSize * 0.7, 0.045, 0.045), li ? material : cableMat);
+    mesh.position.set(centerX, WAREHOUSE_HEIGHT - 0.22 - Math.abs(li) * 0.08, centerZ + li * 4.5);
+    mesh.rotation.y = li * 0.03;
+    group.add(mesh);
+  }
+  record.materials.push(material, cableMat);
+}
+
 function loadChunk(cx, cz, ctx) {
   var key = chunkKey(cx, cz);
   if (ctx.chunks.has(key)) return;
@@ -1484,13 +1725,27 @@ function loadChunk(cx, cz, ctx) {
   var chunkSize = CHUNK_CELLS * BLOCK_SIZE;
   var centerX = (baseCol + CHUNK_CELLS * 0.5) * BLOCK_SIZE;
   var centerZ = (baseRow + CHUNK_CELLS * 0.5) * BLOCK_SIZE;
+  var section = ctx.sectionMode
+    ? sectionForChunk(cx, cz)
+    : {
+        id: "reconfigured",
+        name: "重构区段",
+        floor: sharedFloorMat().color.getHex(),
+        wall: sharedWallMat().color.getHex(),
+        ceiling: sharedCeilingMat().color.getHex(),
+        light: sharedPanelMat().color.getHex(),
+      };
+  var floorMat = sharedFloorMat().clone();
+  floorMat.color.setHex(section.floor);
+  var ceilingMat = sharedCeilingMat().clone();
+  ceilingMat.color.setHex(section.ceiling);
 
-  var floor = new THREE.Mesh(sharedChunkPlaneGeo(chunkSize), sharedFloorMat());
+  var floor = new THREE.Mesh(sharedChunkPlaneGeo(chunkSize), floorMat);
   floor.rotation.x = -Math.PI * 0.5;
   floor.position.set(centerX, 0, centerZ);
   group.add(floor);
 
-  var ceiling = new THREE.Mesh(sharedChunkPlaneGeo(chunkSize), sharedCeilingMat());
+  var ceiling = new THREE.Mesh(sharedChunkPlaneGeo(chunkSize), ceilingMat);
   ceiling.rotation.x = Math.PI * 0.5;
   ceiling.position.set(centerX, WAREHOUSE_HEIGHT, centerZ);
   group.add(ceiling);
@@ -1502,7 +1757,13 @@ function loadChunk(cx, cz, ctx) {
     colliders: [],
     lights: [],
     chests: [],
+    interacts: [],
+    materials: [floorMat, ceilingMat],
+    section: section,
   };
+  if (ctx.sectionMode) {
+    addSectionDetails(group, record, section, centerX, centerZ, chunkSize, ctx);
+  }
 
   var wallScale = 0.88 * ctx.pillarScale;
   var wallPositions = [];
@@ -1525,7 +1786,11 @@ function loadChunk(cx, cz, ctx) {
       }
 
       if (shouldSpawnLight(gCol, gRow)) {
-        var panel = new THREE.Mesh(sharedPanelGeo(), sharedPanelMat());
+        var panelMat = sharedPanelMat().clone();
+        panelMat.color.setHex(section.light);
+        if (panelMat.emissive) panelMat.emissive.setHex(section.light);
+        record.materials.push(panelMat);
+        var panel = new THREE.Mesh(sharedPanelGeo(), panelMat);
         panel.position.set(center.x, WAREHOUSE_HEIGHT - 0.06, center.z);
         group.add(panel);
         var lightEntry = {
@@ -1533,6 +1798,7 @@ function loadChunk(cx, cz, ctx) {
           panelMat: panel.material,
           baseIntensity: 1,
           baseEmissive: 1,
+          baseColor: section.light,
         };
         record.lights.push(lightEntry);
         ctx.industrialLights.push(lightEntry);
@@ -1563,7 +1829,7 @@ function loadChunk(cx, cz, ctx) {
     var wallCount = wallPositions.length / 3;
     var walls = new THREE.InstancedMesh(
       sharedWallGeo(),
-      sharedWallMat(),
+      sharedWallMat().clone(),
       wallCount
     );
     walls.name = "WallsInstanced";
@@ -1582,6 +1848,8 @@ function loadChunk(cx, cz, ctx) {
     }
     walls.instanceMatrix.needsUpdate = true;
     group.add(walls);
+    walls.material.color.setHex(section.wall);
+    record.materials.push(walls.material);
     record.walls = walls;
   }
 
@@ -1610,9 +1878,19 @@ function unloadChunk(key, ctx) {
   for (i = 0; i < record.chests.length; i++) {
     if (ctx.horror) ctx.horror.unregisterQuantumChest(record.chests[i]);
   }
+  for (i = 0; i < record.interacts.length; i++) {
+    var interactIndex = ctx.sublevelInteracts.indexOf(record.interacts[i]);
+    if (interactIndex >= 0) ctx.sublevelInteracts.splice(interactIndex, 1);
+  }
 
   if (record.group.parent) record.group.parent.remove(record.group);
   disposeChunkMeshResources(record.group);
+  if (record.materials) {
+    for (i = 0; i < record.materials.length; i++) {
+      record.materials[i].dispose();
+    }
+    record.materials.length = 0;
+  }
 
   ctx.chunks.delete(key);
 }
@@ -1705,8 +1983,10 @@ export function buildBackroomsLevel1World(root, opts) {
     chunks: chunks,
     colliders: colliders,
     industrialLights: industrialLights,
+    sublevelInteracts: [],
     pillarScale: pillarScale,
     pillarHeight: pillarHeight,
+    sectionMode: !modConfig,
     onWallCollider: opts.onWallCollider || null,
     onWallColliderRemove: opts.onWallColliderRemove || null,
   };
@@ -1759,6 +2039,11 @@ export function buildBackroomsLevel1World(root, opts) {
     spawnX: spawn.x,
     spawnZ: spawn.z,
     megGuideNpc: megGuideNpc,
+    getSectionAt: function (px, pz) {
+      return modConfig
+        ? { id: "reconfigured", name: "重构区段" }
+        : getLevel1SectionAt(px, pz);
+    },
     getMegBaseCenter: function () {
       return megBaseBuilt ? megBaseWorldCenter() : null;
     },
@@ -1847,6 +2132,10 @@ export function buildBackroomsLevel1World(root, opts) {
       }
       if (c101Entrance && c101Entrance.pickMesh) {
         roots.push(c101Entrance.pickMesh);
+      }
+      if (_level13Entrance) roots.push(_level13Entrance);
+      for (var si = 0; si < ctx.sublevelInteracts.length; si++) {
+        roots.push(ctx.sublevelInteracts[si]);
       }
       return roots;
     },

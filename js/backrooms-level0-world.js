@@ -8,8 +8,10 @@
 import * as THREE from "three";
 import { buildRedChannelWall } from "./backrooms-level0-red-room.js";
 import { buildGrayDoorWall } from "./backrooms-level0-02.js?v=16";
-import { buildBlueHole } from "./backrooms-level0-03.js?v=2";
+import { buildBlueHole } from "./backrooms-level0-03.js?v=3";
 import { buildZenithEntryWall } from "./backrooms-level0-01.js";
+import { buildLevel05Entrance } from "./backrooms-level0-05.js?v=2";
+import { buildLevel07Entry } from "./backrooms-level0-07.js?v=2";
 
 const CELLS_PER_CHUNK = 12;
 const DEFAULT_GRID_SIZE = 2;
@@ -27,6 +29,8 @@ const POI_SPECS = [
   { kind: "03", chance: 0.004, minDistance: 144, spacing: 192, wall: false },
   { kind: "manila", chance: 0.0025, minDistance: 168, spacing: 216, wall: false },
   { kind: "01", chance: 0.003, minDistance: 180, spacing: 228, wall: true },
+  { kind: "05", chance: 0.0013, minDistance: 264, spacing: 336, wall: true },
+  { kind: "07", chance: 0.0009, minDistance: 312, spacing: 408, wall: true },
 ];
 
 function hashString(value) {
@@ -676,6 +680,52 @@ export function createLevel0WorldManager(root, opts) {
       });
       if (pick) pick.userData.brInteract = { kind: "blue_hole", poi: trigger };
       chunk.disposableSpecials.push(blueRoot);
+    } else if (spec.kind === "05") {
+      var level05Root = buildLevel05Entrance(
+        chunk.group,
+        position.x,
+        position.z,
+        gridSize,
+        wallHeight,
+        localColliders
+      );
+      if (level05Root) {
+        level05Root.traverse(function (child) {
+          if (
+            !pick &&
+            child.isMesh &&
+            child.userData.brInteract &&
+            child.userData.brInteract.kind === "level05_entrance"
+          ) {
+            pick = child;
+          }
+        });
+        chunk.disposableSpecials.push(level05Root);
+      }
+      if (pick) pick.userData.brInteract.poi = trigger;
+    } else if (spec.kind === "07") {
+      var level07Root = buildLevel07Entry(
+        chunk.group,
+        position.x,
+        position.z,
+        gridSize,
+        wallHeight,
+        localColliders
+      );
+      if (level07Root) {
+        level07Root.traverse(function (child) {
+          if (
+            !pick &&
+            child.isMesh &&
+            child.userData.brInteract &&
+            child.userData.brInteract.kind === "level07_entrance"
+          ) {
+            pick = child;
+          }
+        });
+        chunk.disposableSpecials.push(level07Root);
+      }
+      if (pick) pick.userData.brInteract.poi = trigger;
     } else if (spec.kind === "manila") {
       var manilaMaterial = new THREE.MeshBasicMaterial({
         color: 0xd8c58e,

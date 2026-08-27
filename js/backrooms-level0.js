@@ -68,8 +68,8 @@ import {
   getGrayDoorPickMesh,
   updateLevel02Entrances,
 } from "./backrooms-level0-02.js?v=16";
-import { BLUE_HOLE_CELL, buildBlueHole } from "./backrooms-level0-03.js?v=2";
-import { createLevel0ZoneManager } from "./backrooms-level0-zones.js";
+import { BLUE_HOLE_CELL, buildBlueHole } from "./backrooms-level0-03.js?v=3";
+import { createLevel0ZoneManager } from "./backrooms-level0-zones.js?v=3";
 import { grantLevelPass, consumeLevel0CarryEntry } from "./backrooms-level-pass.js";
 import {
   handleTaskUiKey,
@@ -83,7 +83,7 @@ import {
   disposeClipWallVortex,
   L0_POSTER_WALL_CELL,
 } from "./backrooms-level0-wall-decor.js";
-import { createLevel0WorldManager } from "./backrooms-level0-world.js";
+import { createLevel0WorldManager } from "./backrooms-level0-world.js?v=2";
 import { createLevel0HallucinationPool } from "./backrooms-level0-hallucinations.js";
 import {
   buildManilaRoom,
@@ -1229,7 +1229,7 @@ function setSpecialWallGhost(ghost) {
 
 function updateClipPrompt() {
   if (!clipHintEl) return;
-  if (level0Zones && (level0Zones.isActive("red") || level0Zones.isActive("03"))) {
+  if (level0Zones && level0Zones.isActive("red")) {
     clipHintEl.hidden = true;
     return;
   }
@@ -1280,6 +1280,16 @@ function updateClipPrompt() {
     clipHintEl.hidden = false;
     return;
   }
+  if (isAimingInteractKind("level05_entrance")) {
+    clipHintEl.innerHTML = '按 <kbd>Q</kbd> 沿熄灯楼梯进入 Level 0.5';
+    clipHintEl.hidden = false;
+    return;
+  }
+  if (isAimingInteractKind("level07_entrance")) {
+    clipHintEl.innerHTML = '按 <kbd>Q</kbd> 触碰时间错位';
+    clipHintEl.hidden = false;
+    return;
+  }
   if (isNearSpecialWall()) {
     clipHintEl.innerHTML = '按 <kbd>Q</kbd> 切出';
     clipHintEl.hidden = false;
@@ -1292,7 +1302,6 @@ function updateCrosshairL0() {
   if (!crosshairEl) return;
   var hide =
     (level0Zones && level0Zones.isActive("red")) ||
-    (level0Zones && level0Zones.isActive("03")) ||
     isInventoryOpen() ||
     !survival ||
     survival.dead ||
@@ -1306,6 +1315,8 @@ function updateCrosshairL0() {
       isAimingLevel01Entry() ||
       isAimingActiveZoneInteraction() ||
       isAimingManilaEntry() ||
+      isAimingInteractKind("level05_entrance") ||
+      isAimingInteractKind("level07_entrance") ||
       isAimingManilaInteraction());
   crosshairEl.classList.toggle("backrooms-crosshair--interact", interact);
 }
@@ -1427,6 +1438,27 @@ function tryPrimaryQAction() {
     if (isAimingManilaInteraction()) manilaRoom.interact(currentAimPickL0.data);
     return;
   }
+  if (level0Zones && level0Zones.isActive("torment")) {
+    if (isAimingActiveZoneInteraction()) {
+      level0Zones.interact(currentAimPickL0.data);
+    }
+    return;
+  }
+  if (level0Zones && level0Zones.isActive("03")) {
+    if (isAimingActiveZoneInteraction()) {
+      level0Zones.interact(currentAimPickL0.data);
+    }
+    return;
+  }
+  if (
+    level0Zones &&
+    (level0Zones.isActive("05") || level0Zones.isActive("07"))
+  ) {
+    if (isAimingActiveZoneInteraction()) {
+      level0Zones.interact(currentAimPickL0.data);
+    }
+    return;
+  }
   if (level0Zones && level0Zones.isActive("02")) {
     if (isAimingLevel02Exit()) tryLevel02ExitDoor();
     else if (isAimingActiveZoneInteraction()) {
@@ -1450,6 +1482,14 @@ function tryPrimaryQAction() {
   }
   if (isAimingManilaEntry()) {
     enterManilaRoom();
+    return;
+  }
+  if (isAimingInteractKind("level05_entrance")) {
+    if (level0Zones) level0Zones.enterLevel05();
+    return;
+  }
+  if (isAimingInteractKind("level07_entrance")) {
+    if (level0Zones) level0Zones.enterLevel07();
     return;
   }
   if (isAimingLevel01Entry()) {
@@ -1508,6 +1548,21 @@ function goToLevel1FromL0() {
   queueEnterLevelNumber(1);
   fadeOutLevel0Music(MUSIC_FADE_OUT_MS).then(function () {
     window.location.href = "backrooms-level1.html";
+  });
+}
+
+function goToLevel37FromL0() {
+  if (clipState === "done") return;
+  clipState = "done";
+  if (hallucinations) hallucinations.dispose();
+  hallucinations = null;
+  fps.move.forward = false;
+  if (clipHintEl) clipHintEl.hidden = true;
+  saveBackroomsSurvival(survival);
+  grantLevelPass("l37", fps.yaw);
+  queueEnterLevelNumber(37);
+  fadeOutLevel0Music(MUSIC_FADE_OUT_MS).then(function () {
+    window.location.href = "backrooms-level37.html";
   });
 }
 
@@ -1795,6 +1850,10 @@ function init() {
     getSurvival: function () {
       return survival;
     },
+    isPlayerMoving: isPlayerMoving,
+    canRunMainPhenomena: function () {
+      return !manilaRoom && clipState === "idle";
+    },
     spawnPoint: spawnPoint,
     gridSize: GRID_SIZE,
     wallHeight: WALL_HEIGHT,
@@ -1830,6 +1889,10 @@ function init() {
     },
     onLevel01Clip: function () {
       goToLevel1FromL0();
+    },
+    onLevel05Exit: function (destination) {
+      if (destination === "level37") goToLevel37FromL0();
+      else goToLevel1FromL0();
     },
   });
   level0Zones.init();
@@ -1945,6 +2008,9 @@ function startLoop() {
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
           : 1;
+      if (level0Zones && level0Zones.getMovementSpeedMul) {
+        speedMul *= level0Zones.getMovementSpeedMul();
+      }
       if (clipState === "dashing") {
         updateClipDash(dt);
       } else {
