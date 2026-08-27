@@ -202,6 +202,7 @@
     doorState: "locked",
     doorTimer: 0,
     rainCooldown: 0,
+    rainWarning: 0,
     spikes: [],
     gaps: [],
   };
@@ -824,15 +825,25 @@
     }
   }
 
-  var STAGE13_WAVE_BUDGETS = [12, 20, 28, 38, 60];
+  var STAGE13_WAVE_BUDGETS = [12, 20, 35, 47, 60];
   var STAGE13_COSTS = {
     spike: 2,
-    gap: 4,
+    gap: 3,
     green: 2,
     red: 2,
     blue: 2,
-    rain: 10,
+    rain: 5,
   };
+  /** 地刺/绿/红/蓝各 12.5%，缝 29.5%，刺雨 20.5%（1–5 波相同，刺雨无次数上限）。 */
+  var STAGE13_KIND_WEIGHTS = [
+    ["spike", 25],
+    ["green", 25],
+    ["red", 25],
+    ["blue", 25],
+    ["gap", 59],
+    ["rain", 41],
+  ];
+  var STAGE13_KIND_WEIGHT_TOTAL = 200;
 
   function resetStage13() {
     s13.wave = 0;
@@ -843,20 +854,29 @@
     s13.doorState = "locked";
     s13.doorTimer = 0;
     s13.rainCooldown = 0;
+    s13.rainWarning = 0;
     s13.spikes = [];
     s13.gaps = [];
+  }
+
+  function pickStage13Kind() {
+    var roll = Math.random() * STAGE13_KIND_WEIGHT_TOTAL;
+    var acc = 0;
+    for (var i = 0; i < STAGE13_KIND_WEIGHTS.length; i++) {
+      acc += STAGE13_KIND_WEIGHTS[i][1];
+      if (roll < acc) return STAGE13_KIND_WEIGHTS[i][0];
+    }
+    return "spike";
   }
 
   function makeStage13Wave(wave) {
     var budget = STAGE13_WAVE_BUDGETS[wave - 1] || 60;
     var left = budget;
     var queue = [];
-    var choices = ["spike", "green", "red", "blue", "gap", "gap", "gap"];
-    if (wave >= 3) choices.push("rain");
     while (left >= 2) {
-      var kind = choices[Math.floor(Math.random() * choices.length)];
+      var kind = pickStage13Kind();
       var cost = STAGE13_COSTS[kind];
-      if (cost > left || (kind === "rain" && queue.indexOf("rain") >= 0)) {
+      if (cost > left) {
         kind = "spike";
         cost = STAGE13_COSTS.spike;
       }
@@ -927,7 +947,8 @@
       return;
     }
     if (kind === "rain") {
-      if (!s8SpikeRain.active) startStage8SpikeRain(L);
+      // 先亮红边预警，1.5 秒后刺雨才真正落下。
+      if (!s8SpikeRain.active && s13.rainWarning <= 0) s13.rainWarning = 1.5;
       return;
     }
     if (kind === "gap") {
@@ -1022,7 +1043,8 @@
       redCrates.length === 0 &&
       airGreenCrates.length === 0 &&
       blueCrates.length === 0 &&
-      !s8SpikeRain.active
+      !s8SpikeRain.active &&
+      s13.rainWarning <= 0
     );
   }
 
@@ -1057,6 +1079,11 @@
       rainJustEnded = true;
     }
     if (s8SpikeRain.active) return;
+    if (s13.rainWarning > 0) {
+      s13.rainWarning = Math.max(0, s13.rainWarning - dt);
+      if (s13.rainWarning <= 0) startStage8SpikeRain(L);
+      return;
+    }
     if (s13.rainCooldown > 0 && !rainJustEnded) {
       s13.rainCooldown = Math.max(0, s13.rainCooldown - dt);
     }
@@ -1076,7 +1103,10 @@
       if (s13.spawnTimer <= 0) {
         var nextKind = s13.queue[0];
         // 刺雨只在所有箱子离场后触发；结束后一秒内禁止刷新新箱子。
-        if (nextKind === "rain" && !stage13BoxesClear()) {
+        if (
+          nextKind === "rain" &&
+          (!stage13BoxesClear() || s8SpikeRain.active || s13.rainWarning > 0)
+        ) {
           s13.spawnTimer = 0.12;
           return;
         }
@@ -2941,6 +2971,40 @@
     ctx.restore();
   }
 
+  /** 刺雨落下前的全屏红边预警，画在抖动变换之外以覆盖整个画面。 */
+  function drawStage13RainWarning() {
+    if (stage !== 13 || s13.rainWarning <= 0) return;
+    var band = Math.max(18, Math.round(Math.min(W, H) * 0.09));
+    var pulse = 0.4 + Math.abs(Math.sin(s13.rainWarning * 11)) * 0.6;
+    var edges = [
+      [0, 0, band, H, band, 0, "x"],
+      [W - band, 0, band, H, W - band, W, "x"],
+      [0, 0, W, band, band, 0, "y"],
+      [0, H - band, W, band, H - band, H, "y"],
+    ];
+    ctx.save();
+    for (var i = 0; i < edges.length; i++) {
+      var e = edges[i];
+      var grad =
+        e[6] === "x"
+          ? ctx.createLinearGradient(e[4], 0, e[5], 0)
+          : ctx.createLinearGradient(0, e[4], 0, e[5]);
+      grad.addColorStop(0, "rgba(198, 24, 20, 0)");
+      grad.addColorStop(1, "rgba(198, 24, 20, " + 0.72 * pulse + ")");
+      ctx.fillStyle = grad;
+      ctx.fillRect(e[0], e[1], e[2], e[3]);
+    }
+    ctx.strokeStyle = "rgba(236, 60, 48, " + 0.85 * pulse + ")";
+    ctx.lineWidth = Math.max(2, Math.round(H * 0.008));
+    ctx.strokeRect(
+      ctx.lineWidth * 0.5,
+      ctx.lineWidth * 0.5,
+      W - ctx.lineWidth,
+      H - ctx.lineWidth
+    );
+    ctx.restore();
+  }
+
   function drawStage8Progress(L) {
     var kind = s8Phase === 2 ? "fake1" : s8Phase === 4 ? "green" : s8Phase === 6 ? "fake2" : "";
     if (!kind) return;
@@ -3241,6 +3305,8 @@
     canvas.style.cursor = stage === 12 ? (drag.on ? "grabbing" : "grab") : "";
 
     ctx.restore();
+
+    drawStage13RainWarning();
 
     if (dead) {
       ctx.fillStyle = "rgba(120, 8, 8, " + Math.min(0.45, deadT * 1.2) + ")";

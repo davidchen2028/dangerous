@@ -328,6 +328,9 @@ const seenRedEntrances = new WeakSet();
 const completedRedEntrances = new WeakSet();
 let redTinnitusAudio = null;
 let failedClipAttempts = 0;
+/** 与切出墙 minDistance 一致：走出主区域后才可能刷切出墙 */
+const MAIN_AREA_RADIUS = 96;
+let leftMainAreaHintShown = false;
 const CLIP_DASH_SPEED = 13;
 const CLIP_DASH_TIME = 0.55;
 
@@ -1011,6 +1014,17 @@ function getActiveColliders() {
   if (level0Zones) return level0Zones.getColliders();
   if (level0World) return level0World.getColliders();
   return wallColliders;
+}
+
+function maybeHintLeftMainArea() {
+  if (leftMainAreaHintShown) return;
+  if (survival && survival.dead) return;
+  if (manilaRoom) return;
+  if (level0Zones && level0Zones.isInSubZone()) return;
+  var dist = Math.hypot(fps.player.x - spawnPoint.x, fps.player.z - spawnPoint.z);
+  if (dist < MAIN_AREA_RADIUS) return;
+  leftMainAreaHintShown = true;
+  showBackroomsToast("你已离开了主区域");
 }
 
 function showBackroomsToast(msg) {
@@ -1941,6 +1955,7 @@ function startLoop() {
         else if (!manilaRoom && clipState === "idle") level0Zones.checkMainTriggers();
       }
       checkManilaTriggers();
+      maybeHintLeftMainArea();
       if (
         level0World &&
         !manilaRoom &&
