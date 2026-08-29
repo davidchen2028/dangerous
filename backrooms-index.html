@@ -6,12 +6,97 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <title>backrooms（3.0）</title>
-  <link rel="stylesheet" href="css/backrooms-index.css?v=3">
+  <link rel="stylesheet" href="css/backrooms-index.css?v=5">
 </head>
 <body>
   <main class="br-home">
     <h1 class="br-home__title">backrooms（<span class="br-home__version">3.0</span>）</h1>
-    <a class="br-home__start" href="backrooms-level0.html">开始游戏</a>
+    <a class="br-home__start" id="brHomeStart" href="backrooms-level0.html">开始游戏</a>
+    <p class="br-home__pack" id="brHomePack" hidden></p>
   </main>
+
+  <div class="br-auth" id="brAuthDialog" hidden role="dialog" aria-modal="true" aria-labelledby="brAuthTitle">
+    <div class="br-auth__backdrop" data-auth-close></div>
+    <section class="br-auth__panel">
+      <button class="br-auth__close" type="button" data-auth-close aria-label="关闭">×</button>
+      <h2 class="br-auth__title" id="brAuthTitle">身份验证</h2>
+      <p class="br-auth__intro">进入后室前，请先使用昵称和密码登录。</p>
+      <div class="br-auth__tabs" role="tablist" aria-label="登录方式">
+        <button type="button" data-auth-mode="login" role="tab">登录</button>
+        <button type="button" data-auth-mode="register" role="tab">注册</button>
+      </div>
+      <form class="br-auth__form" id="brAuthForm">
+        <label>
+          <span>昵称</span>
+          <input id="brAuthNickname" type="text" minlength="2" maxlength="16" autocomplete="username" required>
+        </label>
+        <label>
+          <span>密码</span>
+          <input id="brAuthPassword" type="password" minlength="6" maxlength="64" autocomplete="current-password" required>
+        </label>
+        <p class="br-auth__error" id="brAuthError" aria-live="polite"></p>
+        <button class="br-auth__submit" id="brAuthSubmit" type="submit">登录并进入</button>
+      </form>
+    </section>
+  </div>
+
+  <script src="js/backrooms-client-pack.js?v=2"></script>
+  <script src="js/backrooms-auth.js?v=1"></script>
+  <script>
+    (function () {
+      var start = document.getElementById("brHomeStart");
+      var status = document.getElementById("brHomePack");
+      if (!start || !window.BackroomsClientPack || !window.BackroomsAuth) return;
+
+      function setStatus(text) {
+        if (!status) return;
+        status.hidden = !text;
+        status.textContent = text || "";
+      }
+
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.addEventListener("message", function (ev) {
+          var data = ev.data || {};
+          if (data.type !== "jiwei-pack-progress") return;
+          if (!start.classList.contains("is-packing")) return;
+          if (data.total) {
+            setStatus("正在把后室资源打包到本机… " + data.done + "/" + data.total);
+          }
+        });
+      }
+
+      function packAndEnter() {
+        if (start.dataset.packed === "1") {
+          window.location.href = start.getAttribute("href");
+          return;
+        }
+        start.classList.add("is-packing");
+        setStatus("正在把后室资源打包到本机…");
+        window.BackroomsClientPack.ensurePacked({ timeoutMs: 90000 }).then(function (result) {
+          start.dataset.packed = "1";
+          start.classList.remove("is-packing");
+          if (result && result.timedOut) {
+            setStatus("打包未完成，仍可进入（下次会继续）");
+          } else if (result && result.skipped) {
+            setStatus("");
+          } else {
+            setStatus("已缓存到本机，正在进入");
+          }
+          window.location.href = start.getAttribute("href");
+        });
+      }
+
+      var auth = window.BackroomsAuth.mount({
+        startId: "brHomeStart",
+        onAuthorized: packAndEnter
+      });
+
+      start.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        if (start.classList.contains("is-packing")) return;
+        auth.authorize();
+      });
+    })();
+  </script>
 </body>
 </html>

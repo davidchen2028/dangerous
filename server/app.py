@@ -26,6 +26,7 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
+import client_pack
 
 ROOT = Path(__file__).resolve().parent.parent
 LOBBY_ROOM = "lobby"
@@ -81,6 +82,16 @@ def _no_cache(resp: Any) -> Any:
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
     resp.headers["Expires"] = "0"
+    return resp
+
+
+def _immutable_cache(resp: Any) -> Any:
+    resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return resp
+
+
+def _short_cache(resp: Any) -> Any:
+    resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
 
 
@@ -525,6 +536,76 @@ def api_admin_delete_user() -> Any:
     if not ok:
         return jsonify({"ok": False, "message": msg}), 500
     return jsonify({"ok": True, "message": f"已注销账号：{nickname}"})
+
+
+# --------------------------- Client pack (Service Worker) ---------------------------
+
+@app.route("/api/client-pack")
+def api_client_pack() -> Any:
+    if app.config.get("ADMIN_ONLY"):
+        return make_response("Not Found", 404)
+    files = client_pack.list_client_pack_files(ROOT)
+    return jsonify(
+        {
+            "ok": True,
+            "version": client_pack.CLIENT_PACK_VERSION,
+            "files": files,
+            "count": len(files),
+        }
+    )
+
+
+@app.route("/api/backrooms/auth", methods=["POST"])
+def api_backrooms_auth() -> Any:
+    """后室入口的轻量注册/登录；与大厅共用用户、密码和会话 token。"""
+    data = request.get_json(silent=True) or {}
+    mode = str(data.get("mode") or "login").strip().lower()
+    nickname = str(data.get("nickname") or "").strip()
+    password = str(data.get("password") or "")
+
+    ip_err = _ip_ban_error()
+    if ip_err:
+        return jsonify({"ok": False, "message": ip_err}), 403
+    if mode not in {"login", "register"}:
+        return jsonify({"ok": False, "message": "无效的登录方式"}), 400
+
+    if mode == "register":
+        err = _validate_nickname(nickname)
+        if err:
+            return jsonify({"ok": False, "message": err}), 400
+        err = _validate_password(password)
+        if err:
+            return jsonify({"ok": False, "message": err}), 400
+        if db.get_user_by_nickname(nickname):
+            return jsonify({"ok": False, "message": "昵称已被注册"}), 409
+        user_id = db.create_user(nickname, generate_password_hash(password))
+        user = db.get_user_by_id(user_id)
+        message = "注册成功"
+    else:
+        if _validate_nickname(nickname) or not password:
+            return jsonify({"ok": False, "message": "昵称或密码错误"}), 401
+        user = db.get_user_by_nickname(nickname)
+        if not user or not check_password_hash(user["password_hash"], password):
+            return jsonify({"ok": False, "message": "昵称或密码错误"}), 401
+        ban_msg = db.get_active_ban_message(int(user["id"]))
+        if ban_msg:
+            return jsonify({"ok": False, "message": ban_msg}), 403
+        user_id = int(user["id"])
+        message = "登录成功"
+
+    token = secrets.token_urlsafe(32)
+    db.create_session(int(user_id), token)
+    return jsonify(
+        {
+            "ok": True,
+            "message": message,
+            "token": token,
+            "user": {
+                "id": int(user["id"]),
+                "nickname": user["nickname"],
+            },
+        }
+    )
 
 
 # --------------------------- Backrooms M.E.G. governance ---------------------------
@@ -1155,8 +1236,27 @@ def static_files(path: str) -> Any:
     resp = make_response(
         send_from_directory(ROOT, path, mimetype=mimetype)
     )
-    if path.endswith((".html", ".js", ".css")):
+    if path == "sw.js":
         return _no_cache(resp)
+    if path.endswith(".html"):
+        return _no_cache(resp)
+    if path.endswith((".js", ".css")):
+        if request.query_string:
+            return _immutable_cache(resp)
+        return _no_cache(resp)
+    if suffix in {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp",
+        ".svg",
+        ".glb",
+        ".gltf",
+        ".mp4",
+        ".mp3",
+        ".woff2",
+    }:
+        return _short_cache(resp)
     return resp
 
 
