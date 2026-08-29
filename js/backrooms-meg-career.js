@@ -98,9 +98,10 @@ function emptyCareerStub() {
     rank: "none",
     department: "",
     contribution: 0,
-    online: true,
-    local: true,
-    authorityActive: true,
+    online: false,
+    local: false,
+    locked: true,
+    authorityActive: false,
   };
 }
 
@@ -120,9 +121,7 @@ export function getNextMegRank(rank) {
 
 export function hasMegPermission(permission, profile) {
   var p = profile || getMegCareerProfile();
-  if (p.online === false && (permission === "c101_submit" || permission === "review_low_cases")) {
-    return false;
-  }
+  if (p.locked || p.online !== true) return false;
   if (p.authorityActive === false && (permission === "c101_submit" || permission === "review_low_cases")) {
     return false;
   }
@@ -131,6 +130,7 @@ export function hasMegPermission(permission, profile) {
 
 export function formatMegCareer(profile) {
   var p = profile || getMegCareerProfile();
+  if (p.locked || p.online !== true) return "🔒 职务锁定（需连接服务器）";
   var text = MEG_RANK_LABELS[p.rank] || MEG_RANK_LABELS.none;
   if (p.department && MEG_DEPARTMENT_LABELS[p.department]) {
     text += " · " + MEG_DEPARTMENT_LABELS[p.department];
@@ -150,9 +150,9 @@ function renderMounted() {
     }
     el.textContent = formatMegCareer(profile);
     el.title =
-      "职业贡献 " +
-      Math.max(0, Number(profile.contribution) || 0) +
-      (profile.local ? " · 单机档案" : "");
+      profile.locked || profile.online !== true
+        ? "单机模式不启用 M.E.G. 职务档案"
+        : "服务器职业贡献 " + Math.max(0, Number(profile.contribution) || 0);
   }
 }
 
@@ -194,6 +194,9 @@ function requirementText(profile) {
 
 export function describeMegCareer() {
   var profile = getMegCareerProfile();
+  if (profile.locked || profile.online !== true) {
+    return "🔒 M.E.G. 职务系统在单机模式下锁定。请从已连接的游戏服务器进入后室。";
+  }
   var next = getNextMegRank(profile.rank);
   var text =
     "档案 #" +

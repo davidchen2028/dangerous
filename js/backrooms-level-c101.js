@@ -434,9 +434,6 @@ async function init() {
   await initMegCareer({
     levelId: "c101",
     hudAnchor: megPointsEl ? megPointsEl.closest(".backrooms-points") : null,
-    onError: function () {
-      showToast("M.E.G 单机编制档案读取失败：受保护权限暂不可用");
-    },
   });
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x020405);

@@ -34,6 +34,14 @@ function rankRouteHtml() {
 
 function profileHtml() {
   var profile = getMegCareerProfile();
+  if (profile.locked || profile.online !== true) {
+    return (
+      '<section class="backrooms-meg-guide__profile">' +
+      "<h2>你的编制档案</h2>" +
+      "<p><strong>🔒 职务锁定</strong></p>" +
+      "<p>单机模式不创建或晋升 M.E.G. 编制档案；连接游戏服务器后自动解锁。</p></section>"
+    );
+  }
   var stats = profile.stats || {};
   return (
     '<section class="backrooms-meg-guide__profile">' +
@@ -102,9 +110,9 @@ function guideHtml() {
     "</ul><p>完成与职务匹配的任务会获得 10% 额外积分点，但不会额外增加职业贡献。</p></section>" +
     "<section><h2>权限与纪律</h2>" +
     "<p>正式队员起可使用编制寄存柜；领队和主管逐步获得高级任务及管理权限；数据库授权员可阅读 C-101 受保护档案；监督者可提交 C-101 指令。</p>" +
-    "<p>处分、停权或调查会冻结晋升，并可能暂停高密级权限。举报和全服监督者席位需要联机玩家档案，单机模式暂不处理其他玩家案件。</p></section>" +
+    "<p>处分、停权或调查会冻结晋升，并可能暂停高密级权限。职务、贡献、举报和全服监督者席位均使用服务器档案；单机模式下职务系统锁定。</p></section>" +
     "<section><h2>监督者编号</h2>" +
-    "<p>A–D 已由既有监督者占用，Z 为永久保留编号。玩家编号从 E 开始；正式联机后由全服席位和管理员审批决定。当前单机档案满足全部条件后使用本地编号 E。</p>" +
+    "<p>A–D 已由既有监督者占用，Z 为永久保留编号。玩家编号从 E 开始，由全服席位和管理员审批决定。</p>" +
     "</section></div></div>"
   );
 }

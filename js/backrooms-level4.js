@@ -530,7 +530,7 @@ function submitL4Report() {
       openL4CareerDialogue(result.message || "举报已立案。");
     })
     .catch(function (err) {
-      openL4CareerDialogue("无法立案：" + (err.message || "单机档案拒绝请求"));
+      openL4CareerDialogue("无法立案：" + (err.message || "服务器档案拒绝请求"));
     });
 }
 
@@ -773,9 +773,6 @@ function init() {
   initMegCareer({
     levelId: "l4",
     hudAnchor: megPointsEl ? megPointsEl.closest(".backrooms-points") : null,
-    onError: function () {
-      showLootToast("M.E.G 单机编制档案读取失败");
-    },
   });
   scene = new THREE.Scene();
   scene.background = new THREE.Color(FOG_COLOR);

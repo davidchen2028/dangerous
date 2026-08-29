@@ -908,7 +908,7 @@ function recruiterResultText(message) {
 }
 
 function applyRecruiterPromotion(department) {
-  if (dialogueTextEl) dialogueTextEl.textContent = "人事终端正在核验单机编制档案…";
+  if (dialogueTextEl) dialogueTextEl.textContent = "人事终端正在核验服务器编制档案…";
   if (dialogueChoicesEl) dialogueChoicesEl.hidden = true;
   applyForNextMegRank(department, {
     hp: survival ? survival.hp : 0,
@@ -952,7 +952,7 @@ function submitRecruiterReport() {
       recruiterResultText(result.message || "举报已记入单机纪律档案。");
     })
     .catch(function (err) {
-      recruiterResultText("无法立案：" + (err.message || "单机档案拒绝请求"));
+      recruiterResultText("无法立案：" + (err.message || "服务器档案拒绝请求"));
     });
 }
 
@@ -2506,9 +2506,6 @@ function init() {
   initMegCareer({
     levelId: "l1",
     hudAnchor: megPointsEl ? megPointsEl.closest(".backrooms-points") : null,
-    onError: function () {
-      showLootToast("M.E.G 单机编制档案读取失败");
-    },
   });
   validateMatrix();
   scene = new THREE.Scene();

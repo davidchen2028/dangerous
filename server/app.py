@@ -528,9 +528,9 @@ def api_backrooms_status() -> Any:
         {
             "ok": True,
             "megOnline": True,
-            "localCareerAvailable": True,
+            "localCareerAvailable": False,
             "locked": False,
-            "message": "",
+            "message": "M.E.G. 职务档案已连接服务器",
         }
     )
 

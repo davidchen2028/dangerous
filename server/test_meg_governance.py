@@ -272,7 +272,7 @@ class MegGovernanceTest(unittest.TestCase):
         status = self.client.get("/api/backrooms/status")
         self.assertEqual(status.status_code, 200)
         self.assertFalse(status.get_json()["locked"])
-        self.assertTrue(status.get_json()["localCareerAvailable"])
+        self.assertFalse(status.get_json()["localCareerAvailable"])
 
 
 if __name__ == "__main__":
