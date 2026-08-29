@@ -1,10 +1,32 @@
 .git
 .gitignore
+.dockerignore
+Dockerfile
+
+# 编辑器/系统产物
+.cursor/
+.idea/
+.DS_Store
+**/.DS_Store
+*.bak
+
+# 本地运行环境与数据
 server/.venv
+server/lobby.db
 **/__pycache__
 **/*.pyc
+
+# 本地脚本与说明（线上不需要）
 Unity/
+docs/
+*.md
 复制到终端.txt
 get-ip.sh
 run.sh
-README.md
+run-admin.sh
+serve.py
+
+# 本地机密与大体积试验资源（线上不使用）
+admin-local.txt
+models/military-soldier.glb
+models/missile.glb

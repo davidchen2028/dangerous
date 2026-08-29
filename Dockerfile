@@ -11,14 +11,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY server/requirements.txt server/requirements.txt
 RUN pip install --no-cache-dir -r server/requirements.txt
 
-# 静态页 + 后端
-COPY index.html .
-COPY css/ css/
-COPY js/ js/
-COPY img/ img/
-COPY models/ models/
-COPY server/ server/
-COPY admin/ admin/
+# 静态页 + 后端（逐项 COPY 容易漏掉新增页面，改为整体拷贝，排除项见 .dockerignore）
+COPY . .
 
 EXPOSE 8080
 
