@@ -39,7 +39,7 @@ import {
   applyBackroomsToneMapping,
 } from "./backrooms-gfx-profile.js";
 import { pickCrosshairInteract, getCameraAimRay } from "./backrooms-interact-aim.js";
-import { buildLevel8World, L8_WALL_H } from "./backrooms-level8-world.js";
+import { buildLevel8World, L8_WALL_H } from "./backrooms-level8-world.js?v=2";
 import { createLevel8Chickens } from "./backrooms-level8-chickens.js";
 import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
 import {
@@ -235,6 +235,7 @@ function interactLabel(data) {
   if (!data) return "";
   if (data.kind === "l8_plank") return "腐朽木板 · 按 <kbd>Q</kbd> 跌穿";
   if (data.kind === "l8_silver_pipe") return "银色管道 · 按 <kbd>Q</kbd> 爬入";
+  if (data.kind === "l8_level2_vent") return "足以容身的通风管 · 按 <kbd>Q</kbd> 爬入";
   return "";
 }
 
@@ -299,6 +300,10 @@ function tryQAction() {
   }
   if (data.kind === "l8_silver_pipe") {
     exitTo("l75", 75, "backrooms-level75.html", "你爬进银色管道…");
+    return;
+  }
+  if (data.kind === "l8_level2_vent") {
+    exitTo("l2", 2, "backrooms-level2.html", "你挤进石壁上的通风管，前方传来机器的低鸣…");
   }
 }
 

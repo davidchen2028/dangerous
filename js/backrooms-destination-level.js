@@ -84,7 +84,7 @@ import {
   DEFAULT_LOOK_SENS,
   DEFAULT_GRAVITY,
 } from "./backrooms-fps-controller.js";
-import { buildLevel11World } from "./backrooms-level11-world.js";
+import { buildLevel11World } from "./backrooms-level11-world.js?v=2";
 import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
 import { updatePastoralStareClip } from "./backrooms-c1298-stare.js";
 
@@ -378,6 +378,19 @@ function exitLevel11ToL119() {
   }, 450);
 }
 
+function exitLevel11ToL2() {
+  if (transitionLock) return;
+  transitionLock = true;
+  endPetrifyOnExit();
+  showToast("空楼门后没有房间，只有一条布满管线的狭窄隧道…");
+  if (survival) saveBackroomsSurvival(survival);
+  grantLevelPass("l2", fps.yaw);
+  queueEnterLevelNumber(2);
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level2.html";
+  }, 550);
+}
+
 /**
  * L11 左侧街的三栋异常建筑 → C-129x 死区。
  * @param {"c1291"} pass
@@ -522,6 +535,8 @@ function updateInteractUi() {
         interactHintEl.innerHTML = "B.N.T.G 收购员 · 按 <kbd>Q</kbd> 出售物资";
       } else if (data.kind === "l11_bntg_storage") {
         interactHintEl.innerHTML = "B.N.T.G 寄存柜 · 按 <kbd>Q</kbd> 存取物品";
+      } else if (data.kind === "l11_level2_empty_door") {
+        interactHintEl.innerHTML = "没有内部陈设的建筑门 · 按 <kbd>Q</kbd> 进入";
       } else {
         interactHintEl.innerHTML = "B.N.T.G 员工 · 按 <kbd>Q</kbd> 交易";
       }
@@ -916,6 +931,7 @@ function tryQAction() {
   if (data && data.kind === "l11_bntg_vendor") openBntgVendor();
   else if (data && data.kind === "l11_bntg_buyer") openBntgBuyer();
   else if (data && data.kind === "l11_bntg_storage") openBaseStorage({ toast: true });
+  else if (data && data.kind === "l11_level2_empty_door") exitLevel11ToL2();
 }
 
 function isChoiceKey(e, letter) {

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>M.E.G. 治理台 · 极危行动</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0b1015;--panel:#151c24;--line:#2b3947;--text:#d4e1ec;--muted:#8194a5;--ok:#72d49a;--warn:#e6b56f;--bad:#ed8077}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,"PingFang SC",sans-serif;padding:24px}
+    header,main{max-width:1280px;margin:auto}header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+    h1{font-size:22px;margin:0}h2{font-size:16px;margin:0 0 12px}.muted{color:var(--muted)}
+    a{color:#8cccf0}button,select,input{font:inherit;color:var(--text);background:#101820;border:1px solid var(--line);border-radius:4px;padding:6px 9px}
+    button{cursor:pointer}button.approve{color:var(--ok)}button.danger{color:var(--bad)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(390px,1fr));gap:16px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;overflow:auto}
+    table{width:100%;border-collapse:collapse}th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:8px 6px}th{font-size:12px;color:var(--muted)}
+    .tag{display:inline-block;border:1px solid var(--line);border-radius:10px;padding:1px 7px;font-size:12px}.valid{color:var(--ok)}.invalid{color:var(--warn)}
+    .evidence{margin:5px 0;padding:6px;background:#0e151c;border-radius:4px;white-space:pre-wrap}.actions{display:flex;gap:6px;flex-wrap:wrap}
+    #message{min-height:20px;margin-left:auto}.error{color:var(--bad)}.success{color:var(--ok)}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>M.E.G. 治理台</h1>
+    <a id="onlineLink" href="#">在线统计</a>
+    <button id="refresh">刷新</button>
+    <span id="summary" class="muted">加载中…</span>
+    <span id="message"></span>
+  </header>
+  <main class="grid">
+    <section class="panel">
+      <h2>监督者申请与资格</h2>
+      <div id="applications"></div>
+    </section>
+    <section class="panel">
+      <h2>监督者席位（A–D、Z 保留，玩家从 E 起）</h2>
+      <div id="slots"></div>
+    </section>
+    <section class="panel">
+      <h2>生效中的处分</h2>
+      <div id="sanctions"></div>
+    </section>
+    <section class="panel" style="grid-column:1/-1">
+      <h2>案件、证据与推荐处罚</h2>
+      <div id="cases"></div>
+    </section>
+  </main>
+  <script>
+  (() => {
+    const key=new URLSearchParams(location.search).get("key")||"";
+    const $=id=>document.getElementById(id);
+    $("onlineLink").href="/admin/online-stats?key="+encodeURIComponent(key);
+    const esc=s=>{const d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML};
+    const msg=(s,bad=false)=>{$("message").textContent=s;$("message").className=bad?"error":"success"};
+    async function json(url,options){
+      const r=await fetch(url+(url.includes("?")?"&":"?")+"key="+encodeURIComponent(key),options);
+      const data=await r.json();if(!r.ok||data.ok===false)throw Error(data.message||data.error||("HTTP "+r.status));return data;
+    }
+    async function post(path,body){return json(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})}
+    function applications(items){
+      if(!items.length)return '<p class="muted">暂无待审批申请</p>';
+      return '<table><thead><tr><th>申请人</th><th>资格</th><th>操作</th></tr></thead><tbody>'+items.map(a=>{
+        const p=a.profile||{}, reasons=p.reasons||[];
+        return `<tr><td>${esc(a.display_name)}<br><span class="muted">#${a.id} · 贡献 ${a.contribution}</span></td>
+          <td>${reasons.length?`<span class="invalid">${esc(reasons.join("；"))}</span>`:`<span class="valid">当前合格</span>`}<br><span class="muted">${esc(JSON.stringify(p.stats||{}))}</span></td>
+          <td class="actions"><button class="approve" data-super="${a.id}" data-decision="approve">批准</button><button class="danger" data-super="${a.id}" data-decision="reject">拒绝</button></td></tr>`;
+      }).join("")+'</tbody></table>';
+    }
+    function slots(items){
+      if(!items.length)return '<p class="muted">尚未分配玩家席位</p>';
+      return '<table><thead><tr><th>编号</th><th>人员</th><th>状态</th><th>时间</th></tr></thead><tbody>'+items.map(s=>
+        `<tr><td><strong>${esc(s.code)}</strong></td><td>${esc(s.display_name)}</td><td>${esc(s.status)}</td><td class="muted">${esc(s.assigned_at)}</td></tr>`
+      ).join("")+'</tbody></table>';
+    }
+    function sanctions(items){
+      if(!items.length)return '<p class="muted">暂无生效处分</p>';
+      return '<table><thead><tr><th>人员</th><th>处分</th><th>操作</th></tr></thead><tbody>'+items.map(s=>
+        `<tr><td>${esc(s.display_name)}<br><span class="muted">${esc(s.rank)} ${esc(s.supervisor_code||"")}</span></td><td>${esc(s.action)}<br><span class="muted">${esc(s.reason)}</span></td><td><button data-sanction="${s.id}">解除处分</button></td></tr>`
+      ).join("")+'</tbody></table>';
+    }
+    function cases(items){
+      if(!items.length)return '<p class="muted">暂无案件</p>';
+      return '<table><thead><tr><th>案件</th><th>内容与证据</th><th>裁决</th></tr></thead><tbody>'+items.map(c=>{
+        const actions=["warning","freeze_promotion","suspend_role","demote"];
+        if(c.target_rank==="clearance"||c.target_rank==="supervisor")actions.push("revoke_clearance");
+        if(c.target_rank==="supervisor")actions.push("suspend_supervisor","revoke_supervisor");
+        const evidence=(c.evidence||[]).map(e=>`<div class="evidence"><span class="tag ${e.serverValidated?"valid":"invalid"}">${e.serverValidated?"服务端校验记录":"未独立证实"}</span> ${esc(e.content||e.eventId||"（空）")}</div>`).join("");
+        return `<tr><td>#${c.id}<br>${esc(c.reporter_name)} → ${esc(c.target_name)}<br><span class="tag">${esc(c.target_rank)}</span> ${c.requiresAdmin?'<span class="tag invalid">强制管理员队列</span>':""}<br><span class="muted">${esc(c.status)}</span></td>
+          <td><strong>${esc(c.reason)}</strong><br>${esc(c.details)}${evidence}</td>
+          <td>推荐：<strong>${esc(c.recommendation)}</strong><br><select id="action-${c.id}">${actions.map(a=>`<option ${a===c.recommendation?"selected":""}>${a}</option>`).join("")}</select>
+          <div class="actions"><button data-case="${c.id}" data-decision="sanction">执行处罚</button><button data-case="${c.id}" data-decision="investigate">要求补证</button><button class="danger" data-case="${c.id}" data-decision="dismiss">驳回</button></div></td></tr>`;
+      }).join("")+'</tbody></table>';
+    }
+    async function load(){try{
+      if(!key)throw Error("URL 缺少 key");
+      const d=await json("/api/admin/backrooms/overview");
+      $("summary").textContent=`席位 ${d.activeSupervisorCount}/${d.supervisorCap} · 待审申请 ${d.supervisorApplications.length} · 案件 ${d.cases.length}`;
+      $("applications").innerHTML=applications(d.supervisorApplications||[]);
+      $("slots").innerHTML=slots(d.slots||[]);
+      $("sanctions").innerHTML=sanctions(d.activeSanctions||[]);
+      $("cases").innerHTML=cases(d.cases||[]);
+    }catch(e){msg(e.message,true)}}
+    document.addEventListener("click",async e=>{
+      const b=e.target.closest("button[data-super],button[data-case],button[data-sanction]");if(!b)return;
+      try{
+        if(b.dataset.super) {const note=prompt(b.dataset.decision==="approve"?"批准备注（可留空）":"拒绝理由（将触发 7 天重申冷却）","")||"";await post("/api/admin/backrooms/supervisor-review",{applicationId:+b.dataset.super,decision:b.dataset.decision,note})}
+        else if(b.dataset.case) {const id=+b.dataset.case;const action=$("action-"+id).value;const note=prompt("裁决备注（可留空）","")||"";await post("/api/admin/backrooms/case-review",{caseId:id,decision:b.dataset.decision,action,note})}
+        else if(confirm("解除这条处分？降职和已封存的监督者编号不会恢复。")) await post("/api/admin/backrooms/sanction-lift",{sanctionId:+b.dataset.sanction});
+        msg("操作成功");await load();
+      }catch(err){msg(err.message,true)}
+    });
+    $("refresh").addEventListener("click",load);load();
+  })();
+  </script>
+</body>
+</html>

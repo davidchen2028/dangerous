@@ -81,6 +81,15 @@ import {
   DEFAULT_GRAVITY,
   DEFAULT_BODY_HEIGHT,
 } from "./backrooms-fps-controller.js";
+import {
+  applyForNextMegRank,
+  describeMegCareer,
+  getMegCareerProfile,
+  getNextMegRank,
+  hasMegPermission,
+  initMegCareer,
+  submitMegReport,
+} from "./backrooms-meg-career.js";
 
 const FOG_COLOR = 0xe8ebf0;
 const FOG_NEAR = 6;
@@ -376,7 +385,7 @@ function updateInteractHint() {
   }
   if (isAimMegMember()) {
     interactHintEl.hidden = false;
-    interactHintEl.innerHTML = "按 <kbd>Q</kbd> 与 M.E.G 成员交谈";
+    interactHintEl.innerHTML = "按 <kbd>Q</kbd> 与 M.E.G. 成员交谈";
     return;
   }
   if (isAimStorageClerk()) {
@@ -441,7 +450,8 @@ function openMegDialogue() {
     openDialogue(
       "meg",
       "任务板就在墙上，自己挑吧。",
-      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 知道了</button>' +
+      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="c"><kbd>C</kbd> 办理 M.E.G 人事业务</button>' +
+        '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 知道了</button>' +
         aiChoiceHtml("l4_meg")
     );
     return;
@@ -451,8 +461,64 @@ function openMegDialogue() {
     "你想做任务吗？",
     '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="a"><kbd>A</kbd> 想</button>' +
       '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 不想</button>' +
+      '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="c"><kbd>C</kbd> 办理 M.E.G 人事业务</button>' +
       aiChoiceHtml("l4_meg")
   );
+}
+
+function openL4CareerDialogue(text) {
+  var choices =
+    '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="a"><kbd>A</kbd> 申请加入 / 晋升</button>' +
+    '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="b"><kbd>B</kbd> 查询进度</button>' +
+    '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="c"><kbd>C</kbd> 提交纪律举报</button>' +
+    '<button type="button" class="backrooms-dialogue__choice" data-bntg-choice="d"><kbd>D</kbd> 离开</button>';
+  openDialogue("meg_career", text || describeMegCareer(), choices);
+  if (dialogueSpeakerEl) dialogueSpeakerEl.textContent = "M.E.G Level 4 人事联络员";
+}
+
+function applyL4Promotion() {
+  var profile = getMegCareerProfile();
+  var next = getNextMegRank(profile.rank);
+  if (next !== "volunteer" && next !== "senior") {
+    openL4CareerDialogue("本前哨只能办理志愿者登记和资深队员确认；其余认证须前往 Level 1 Alpha。");
+    return;
+  }
+  applyForNextMegRank("", {
+    hp: survival ? survival.hp : 0,
+    sanity: survival ? survival.sanity : 0,
+    dead: !survival || survival.dead,
+  })
+    .then(function (result) {
+      openL4CareerDialogue(result.message || "编制手续已提交：" + describeMegCareer());
+    })
+    .catch(function (err) {
+      openL4CareerDialogue("申请未通过：" + (err.message || "条件不足"));
+    });
+}
+
+function submitL4Report() {
+  var target = window.prompt("被举报者的后室玩家 ID");
+  if (!target) return openL4CareerDialogue("已取消举报。");
+  var reason = window.prompt(
+    "举报原因：base_assault / task_sabotage / c101_abuse / rank_forgery / harassment"
+  );
+  if (!reason) return openL4CareerDialogue("已取消举报。");
+  var statement = window.prompt("补充说明（玩家陈述不会标为已证实）") || "";
+  submitMegReport(target.trim(), reason.trim(), statement, [])
+    .then(function (result) {
+      openL4CareerDialogue(result.message || "举报已立案。");
+    })
+    .catch(function (err) {
+      openL4CareerDialogue("无法立案：" + (err.message || "单机档案拒绝请求"));
+    });
+}
+
+function openL4MegStorage() {
+  if (!hasMegPermission("storage")) {
+    showLootToast("寄存柜仅向通过资质认证的 M.E.G 正式队员开放");
+    return;
+  }
+  openBaseStorage({ toast: true });
 }
 
 /** 同意做任务：墙上挂出任务白板 */
@@ -505,6 +571,16 @@ function handleBntgChoice(choice) {
   // 先关闭对话再执行后续逻辑：任何一步抛错都不会把玩家永久锁在
   // dialogueOpen 状态里（那会同时吞掉所有按键并冻结移动）。
   closeBntgDialogue();
+  if (kind === "meg_career") {
+    if (choice === "a") applyL4Promotion();
+    else if (choice === "b") openL4CareerDialogue(describeMegCareer());
+    else if (choice === "c") submitL4Report();
+    return;
+  }
+  if (kind === "meg" && choice === "c") {
+    openL4CareerDialogue();
+    return;
+  }
   if (choice !== "a") return;
 
   if (kind === "meg_reward") {
@@ -605,6 +681,16 @@ function bindControls() {
           handleBntgChoice("b");
           return true;
         }
+        if (e.code === "KeyC" && !e.repeat) {
+          e.preventDefault();
+          handleBntgChoice("c");
+          return true;
+        }
+        if (e.code === "KeyD" && !e.repeat && dialogueKind === "meg_career") {
+          e.preventDefault();
+          handleBntgChoice("d");
+          return true;
+        }
         return true;
       }
       if (e.code === "KeyB" && !e.repeat) {
@@ -624,7 +710,7 @@ function bindControls() {
         else if (isAimVendingL61()) tryVendingQ();
         else if (isAimBntgLiaison()) openBntgDialogue();
         else if (isAimMegMember()) openMegDialogue();
-        else if (isAimStorageClerk()) openBaseStorage({ toast: true });
+        else if (isAimStorageClerk()) openL4MegStorage();
         else tryWaterCoolerQ();
         return true;
       }
@@ -652,6 +738,13 @@ function init() {
   loadDrainedCoolers();
   showEnterLevelBannerIfQueued();
   markLevelEntered("l4", showLootToast);
+  initMegCareer({
+    levelId: "l4",
+    hudAnchor: megPointsEl ? megPointsEl.closest(".backrooms-points") : null,
+    onError: function () {
+      showLootToast("M.E.G 单机编制档案读取失败");
+    },
+  });
   scene = new THREE.Scene();
   scene.background = new THREE.Color(FOG_COLOR);
   scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);

@@ -831,6 +831,23 @@ function addBntgStorageNpc(root, interactRoots, x, z) {
   interactRoots.push(pick);
 }
 
+/** 普通空楼的无陈设入口；按 Wiki 规则可能直接通往 Level 2。 */
+function addLevel2EmptyBuildingDoor(root, interactRoots) {
+  var mats = materials();
+  var x = -BUILDING_X + BUILDING_W * 0.5 - 0.11;
+  var z = 16;
+  var door = addBox(root, mats.darkDoor, x, 1.55, z, 0.24, 3.1, 2.45);
+  door.name = "Level11EmptyBuildingDoorToLevel2";
+  var pick = new THREE.Mesh(
+    new THREE.BoxGeometry(0.72, 3.25, 2.75),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  pick.position.set(x + 0.32, 1.58, z);
+  pick.userData.brInteract = { kind: "l11_level2_empty_door" };
+  root.add(pick);
+  interactRoots.push(pick);
+}
+
 export function buildLevel11World(root) {
   var chunksRoot = new THREE.Group();
   chunksRoot.name = "Level11InfiniteCity";
@@ -881,6 +898,7 @@ export function buildLevel11World(root) {
 
   // 常驻结构（房子/NPC）先建，静态碰撞随后并入 activeColliders。
   addBntgHouse(root, staticColliders, interactRoots);
+  addLevel2EmptyBuildingDoor(root, interactRoots);
   updateStreaming(0);
   rebuildColliders();
   return {

@@ -633,6 +633,8 @@ var _megLevel11Npc = null;
 var _megPackageReceiverNpc = null;
 /** @type {{ x: number, z: number, talkRadius: number, group: THREE.Object3D } | null} 寄存柜管理员 */
 var _megStorageClerkNpc = null;
+/** @type {{ x: number, z: number, talkRadius: number, group: THREE.Object3D } | null} 人事招募员 */
+var _megRecruiterNpc = null;
 /** @type {THREE.Object3D | null} */
 var _level13Entrance = null;
 function resetMegModuleState() {
@@ -648,6 +650,7 @@ function resetMegModuleState() {
   _megLevel11Npc = null;
   _megPackageReceiverNpc = null;
   _megStorageClerkNpc = null;
+  _megRecruiterNpc = null;
   _level13Entrance = null;
 }
 
@@ -1034,6 +1037,21 @@ function buildMegAlphaBase(root, ctx) {
     z: storageClerk.z,
     talkRadius: 2.8,
     group: storageClerk.group,
+  };
+
+  var recruiter = buildMegStaffFigure(
+    root,
+    center.x - 2.05,
+    center.z + 1.75,
+    "MegRecruiter",
+    "recruiter",
+    0x674a87
+  );
+  _megRecruiterNpc = {
+    x: recruiter.x,
+    z: recruiter.z,
+    talkRadius: 2.8,
+    group: recruiter.group,
   };
 
   root.add(group);
@@ -1969,7 +1987,9 @@ export function buildBackroomsLevel1World(root, opts) {
   var industrialLights = [];
   var colliders = [];
   var chunks = new Map();
-  var c101Entrance = buildC101Entrance(root, 0.88 * pillarScale);
+  // Level C-101 的公开入口已按 Wiki 改为 Level 0 随机切出；
+  // 保留构建函数供未来 M.E.G. 监督者权限支线使用。
+  var c101Entrance = null;
   var c101Entities = buildC101Entities(
     root,
     modConfig && modConfig.entities ? modConfig.entities : [],
@@ -2113,6 +2133,9 @@ export function buildBackroomsLevel1World(root, opts) {
       }
       if (_megStorageClerkNpc && _megStorageClerkNpc.group) {
         roots.push(_megStorageClerkNpc.group);
+      }
+      if (_megRecruiterNpc && _megRecruiterNpc.group) {
+        roots.push(_megRecruiterNpc.group);
       }
       if (
         _megDoorState &&

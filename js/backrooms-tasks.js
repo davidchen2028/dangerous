@@ -5,6 +5,32 @@ import { addItem, countItem, removeFirstItem } from "./backrooms-inventory.js";
 import { addMegPoints, getMegPoints } from "./backrooms-meg-points.js";
 import { showBackroomsLootToast } from "./backrooms-fps-controller.js";
 import { grantItemListOrStore } from "./backrooms-base-storage.js?v=4";
+import { recordMegCareerEvent } from "./backrooms-online-profile.js";
+import { getMegCareerProfile } from "./backrooms-meg-career.js";
+import { isMegHighRiskTaskId } from "./backrooms-meg-local-store.js";
+
+function publishCareerEvent(type, data, eventId) {
+  recordMegCareerEvent(type, data, eventId).catch(function () {
+    /* 后室允许离线游玩；联网职业记录将在下一次有效事件继续累计。 */
+  });
+}
+
+function isHighRiskTask(task) {
+  if (!task || !task.id) return false;
+  // 以服务端 / 单机白名单为准，避免客户端宽松判定导致高危事件被静默丢弃。
+  return isMegHighRiskTaskId(task.id);
+}
+
+function careerTaskReward(task) {
+  var reward = Math.max(0, Number(task && task.reward) || 0);
+  var department = getMegCareerProfile().department || "";
+  var matched =
+    (department === "explore" && (task.type === "map" || task.type === "recon")) ||
+    (department === "research" && (task.type === "recon" || task.type === "rubbing")) ||
+    (department === "logistics" && task.type === "package") ||
+    (department === "security" && task.type === "inspect");
+  return matched ? Math.ceil(reward * 1.1) : reward;
+}
 
 const ACCEPTED_KEY = "backrooms_tasks_accepted_v1";
 const COMPLETED_KEY = "backrooms_tasks_completed_v1";
@@ -369,6 +395,8 @@ export const ACHIEVEMENT_DEFS = [
   { id: "beach_holiday", title: "沙滩度假", category: "explore", levelId: "l48", reward: 0, condition: "进入 Level 48" },
   { id: "painting", title: "画", category: "explore", levelId: "l57", reward: 0, condition: "进入 Level 57" },
   { id: "have_fun", title: "尽情欢乐吧", category: "explore", levelId: "l283", reward: 0, condition: "进入 Level 283" },
+  { id: "protected_processes", title: "受保护的进程", category: "explore", levelId: "c101", reward: 0, condition: "进入 Level C-101 的服务器机房" },
+  { id: "combination_connection", title: "组合、连接", category: "explore", levelId: "c102", reward: 0, condition: "从 Level C-101 的楼梯抵达 Level C-102" },
 
   // —— 二、合集成就（隐藏）——
   {
@@ -744,7 +772,8 @@ export function claimTaskReward(id) {
     return { ok: false, reason: "奖励已经领取" };
   }
 
-  addMegPoints(task.reward);
+  var paidReward = careerTaskReward(task);
+  addMegPoints(paidReward);
   clearTaskDeadline(id);
   clearReconProgress(id);
   clearInspectProgress(id);
@@ -797,13 +826,28 @@ export function claimTaskReward(id) {
     }
   }
   var cooldownNote = noteTaskCompletion(id);
+  publishCareerEvent(
+    "task_complete",
+    {
+      taskId: id,
+      taskType: task.type || "other",
+      reward: paidReward,
+      highRisk: isHighRiskTask(task),
+    }
+  );
+  if (isHighRiskTask(task)) {
+    publishCareerEvent("high_risk_complete", {
+      taskId: id,
+      taskType: task.type || "other",
+    });
+  }
   publishNewlyUnlockedTasks();
   renderTaskPanel();
   if (boardOpen) renderBoard("");
   return {
     ok: true,
     task: task,
-    reward: task.reward,
+    reward: paidReward,
     cooldownNote: cooldownNote,
     stored: rewardGrant.stored,
   };
@@ -978,6 +1022,11 @@ export function markLevelEntered(levelId, onToast) {
   writeFlag(CRIT_SAN_KEY, false);
   recordVisit(levelId);
   recordFastingVisit(levelId);
+  publishCareerEvent(
+    "level_enter",
+    { levelId: String(levelId) },
+    "level_enter:" + String(levelId)
+  );
   // 每次踏进 Level 4：重掷「进层刷新」的委托；间隔类委托另行计时。
   if (levelId === "l4") {
     // 有次数上限的任务视为可重复：清掉旧的永久完成标记，避免卡死接取。
@@ -1872,6 +1921,12 @@ function failTask(task, reasonText, onToast) {
   clearInspectProgress(task.id);
   var penalty = task.deathPenalty || 0;
   if (penalty > 0) addMegPoints(-penalty);
+  publishCareerEvent("task_failed", {
+    taskId: task.id,
+    taskType: task.type || "other",
+    reason: reasonText || "failed",
+    highRisk: isHighRiskTask(task),
+  });
   toast(
     "任务失败：" +
       task.title +
@@ -1951,6 +2006,7 @@ export function checkTaskDeadlines(onToast) {
 export function failTasksOnDeath(onToast) {
   // 死亡打断「断粮巡航」连续性（无论有没有接取的任务）。
   noteFastingBroken();
+  publishCareerEvent("death", { source: "task_death_hook" });
   var accepted = getAcceptedTaskIds();
   if (!accepted.length) return;
   var toast = typeof onToast === "function" ? onToast : defaultToast;

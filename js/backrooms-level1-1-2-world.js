@@ -3,6 +3,7 @@
  */
 import * as THREE from "three";
 import { syncLevel1_1ChestEntryOpened } from "./backrooms-level1-1-chests.js";
+import { buildMegOutpostRecruiter } from "./backrooms-meg-npc-model.js";
 import {
   addWallSegment,
   createBlackDoorTexture,
@@ -348,7 +349,6 @@ export function buildLevel1_1_2World(parent, opts) {
       })
     );
   });
-
   var outpostHalfW = 5;
   var outpostHalfD = 5;
   var outpostCenterX = halfW + wallT + outpostHalfW + 0.5;
@@ -496,6 +496,12 @@ export function buildLevel1_1_2World(parent, opts) {
       })
     );
   });
+  var recruiter = buildMegOutpostRecruiter(
+    outpost,
+    outpostCenterX + 1.55,
+    outpostCenterZ - 0.3,
+    "MegOutpost2Recruiter"
+  );
 
   var corridor23EnterTrigger = {
     minX: -corridor23HalfGapZ,
@@ -613,6 +619,7 @@ export function buildLevel1_1_2World(parent, opts) {
       var roots = [];
       if (outpostDoorState.pickMesh) roots.push(outpostDoorState.pickMesh);
       if (corridor23DoorState.pickMesh) roots.push(corridor23DoorState.pickMesh);
+      if (recruiter && recruiter.visible) roots.push(recruiter);
       return roots;
     },
     updateGlitch: updateGlitch,

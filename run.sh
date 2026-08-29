@@ -82,6 +82,7 @@ if [ -n "$JIWEI_ADMIN_KEY" ]; then
   echo "  在线统计(8082): http://127.0.0.1:8082/admin/online-stats?key=<你的密钥>"
   echo "               （另开终端运行 ./run-admin.sh）"
 fi
+echo "  M.E.G 编制：单机本地档案已开启"
 echo "  按 Ctrl+C 停止服务器"
 echo "======================================"
 echo ""

@@ -7,13 +7,13 @@ import {
   pointInLevel1_1Aabb,
   LEVEL1_1_WALL_H,
   LEVEL1_1_SPAWN_YAW,
-} from "./backrooms-level1-1-world.js?v=2";
-import { buildLevel1_1_2World } from "./backrooms-level1-1-2-world.js?v=2";
+} from "./backrooms-level1-1-world.js?v=3";
+import { buildLevel1_1_2World } from "./backrooms-level1-1-2-world.js?v=3";
 import {
   buildLevel1_1_3World,
   LEVEL1_1_3_SANITY_DRAIN,
   LEVEL1_1_3_WALL_H,
-} from "./backrooms-level1-1-3-world.js?v=3";
+} from "./backrooms-level1-1-3-world.js?v=4";
 import {
   buildLevel1_1_4World,
   LEVEL1_1_4_SANITY_DRAIN,
@@ -43,6 +43,8 @@ import { markLevelEntered } from "./backrooms-tasks.js";
  * @param {(msg: string) => void} [deps.showToast]
  * @param {THREE.PerspectiveCamera} [deps.camera]
  * @param {() => void} [deps.onHomeEnding]
+ * @param {() => void} [deps.onBeforeEnter]
+ * @param {() => void} [deps.onResetPhysics]
  * @param {() => void} [deps.onEmergencyCutToLevel1]
  */
 export function createLevel1_1ZoneManager(deps) {
@@ -81,6 +83,28 @@ export function createLevel1_1ZoneManager(deps) {
 
   var LEVEL1_1_FOG = 0xffffff;
   var savedFog = { color: 0, near: 0, far: 0, bg: null, camFar: 0 };
+  var L1_1_WORLD_NAMES = {
+    Level1_1World: true,
+    Level1_1_2World: true,
+    Level1_1_3World: true,
+    Level1_1_4World: true,
+  };
+
+  function hideMainLevelContent() {
+    if (!deps.level1Root) return;
+    deps.level1Root.visible = true;
+    deps.level1Root.children.forEach(function (child) {
+      if (!L1_1_WORLD_NAMES[child.name]) child.visible = false;
+    });
+  }
+
+  function showMainLevelContent() {
+    if (!deps.level1Root) return;
+    deps.level1Root.visible = true;
+    deps.level1Root.children.forEach(function (child) {
+      if (!L1_1_WORLD_NAMES[child.name]) child.visible = true;
+    });
+  }
 
   function saveAtmosphere() {
     if (!deps.scene) return;
@@ -287,16 +311,7 @@ export function createLevel1_1ZoneManager(deps) {
     if (world3) world3.group.visible = false;
     if (world4) world4.group.visible = false;
     restoreCorridor4Camera();
-    deps.level1Root.children.forEach(function (child) {
-      if (
-        child.name !== "Level1_1World" &&
-        child.name !== "Level1_1_2World" &&
-        child.name !== "Level1_1_3World" &&
-        child.name !== "Level1_1_4World"
-      ) {
-        child.visible = true;
-      }
-    });
+    showMainLevelContent();
   }
 
   function forceExitL1_1() {
@@ -354,9 +369,10 @@ export function createLevel1_1ZoneManager(deps) {
     deps.fps.x = sp.x;
     deps.fps.z = sp.z;
     deps.fps.yaw = sp.yaw;
-    if (sp.pitch != null) deps.fps.pitch = sp.pitch;
-    if (sp.roll != null) deps.fps.roll = sp.roll;
-    if (sp.feetY != null) deps.fps.feetY = sp.feetY;
+    deps.fps.pitch = sp.pitch != null ? sp.pitch : 0;
+    deps.fps.roll = sp.roll != null ? sp.roll : 0;
+    deps.fps.feetY = sp.feetY != null ? sp.feetY : 0;
+    if (deps.onResetPhysics) deps.onResetPhysics();
   }
 
   function ensureWorld1() {
@@ -371,36 +387,46 @@ export function createLevel1_1ZoneManager(deps) {
     return world;
   }
 
-  function ensureWorld() {
+  function ensureWorld2() {
     var chestCb = function (entry) {
       syncLevel1_1ChestEntryOpened(entry);
     };
     ensureWorld1();
-    if (!world2) {
-      world2 = buildLevel1_1_2World(deps.level1Root, {
-        horror: deps.horror,
-        onChest: chestCb,
-      });
-      corridor2DeathMoth = createLevel1_1_2DeathMoth(world2.corridor, world2.colliders, {
-        x: 0,
-        z: 24,
-        y: 1.65,
-      });
-    }
-    if (!world3) {
-      world3 = buildLevel1_1_3World(deps.level1Root, {
-        horror: deps.horror,
-        onChest: chestCb,
-      });
-      corridor3DeathMoths = createLevel1_1_3DeathMoths(world3.corridor, world3.colliders);
-      corridor3Clump = createLevel1_1_3Clump(world3.corridor, world3.colliders);
-    }
-    if (!world4) {
-      world4 = buildLevel1_1_4World(deps.level1Root);
-      corridor4DeathMoths = createLevel1_1_4DeathMoths(world4.corridor, world4.colliders);
-      corridor4Clumps = createLevel1_1_4Clumps(world4.corridor, world4.colliders);
-    }
-    return world;
+    if (world2) return world2;
+    world2 = buildLevel1_1_2World(deps.level1Root, {
+      horror: deps.horror,
+      onChest: chestCb,
+    });
+    corridor2DeathMoth = createLevel1_1_2DeathMoth(world2.corridor, world2.colliders, {
+      x: 0,
+      z: 24,
+      y: 1.65,
+    });
+    return world2;
+  }
+
+  function ensureWorld3() {
+    var chestCb = function (entry) {
+      syncLevel1_1ChestEntryOpened(entry);
+    };
+    ensureWorld2();
+    if (world3) return world3;
+    world3 = buildLevel1_1_3World(deps.level1Root, {
+      horror: deps.horror,
+      onChest: chestCb,
+    });
+    corridor3DeathMoths = createLevel1_1_3DeathMoths(world3.corridor, world3.colliders);
+    corridor3Clump = createLevel1_1_3Clump(world3.corridor, world3.colliders);
+    return world3;
+  }
+
+  function ensureWorld4() {
+    ensureWorld3();
+    if (world4) return world4;
+    world4 = buildLevel1_1_4World(deps.level1Root);
+    corridor4DeathMoths = createLevel1_1_4DeathMoths(world4.corridor, world4.colliders);
+    corridor4Clumps = createLevel1_1_4Clumps(world4.corridor, world4.colliders);
+    return world4;
   }
 
   function syncAllChestStates() {
@@ -411,6 +437,7 @@ export function createLevel1_1ZoneManager(deps) {
 
   function enterFromMeg() {
     if (subZone) forceExitL1_1();
+    if (deps.onBeforeEnter) deps.onBeforeEnter();
     ensureWorld1();
     if (!world) return false;
 
@@ -425,11 +452,7 @@ export function createLevel1_1ZoneManager(deps) {
 
     saveAtmosphere();
     applyLevel1_1Atmosphere();
-    deps.level1Root.children.forEach(function (child) {
-      if (child.name !== "Level1_1World" && child.name !== "Level1_1_2World" && child.name !== "Level1_1_3World" && child.name !== "Level1_1_4World") {
-        child.visible = false;
-      }
-    });
+    hideMainLevelContent();
     world.group.visible = true;
     if (world2) world2.group.visible = false;
     if (world3) world3.group.visible = false;
@@ -457,11 +480,7 @@ export function createLevel1_1ZoneManager(deps) {
     if (world3) world3.group.visible = false;
     if (world4) world4.group.visible = false;
     restoreCorridor4Camera();
-    deps.level1Root.children.forEach(function (child) {
-      if (child.name !== "Level1_1World" && child.name !== "Level1_1_2World" && child.name !== "Level1_1_3World" && child.name !== "Level1_1_4World") {
-        child.visible = true;
-      }
-    });
+    showMainLevelContent();
     teleportTo(megReturnSnapshot);
     megReturnSnapshot = null;
     syncHudTitle();
@@ -485,7 +504,7 @@ export function createLevel1_1ZoneManager(deps) {
   }
 
   function enterCorridor2() {
-    ensureWorld();
+    ensureWorld2();
     if (!world || !world2 || subZone !== "corridor") return false;
     if (!world.isCorridor12DoorPassable()) return false;
     subZone = "corridor2";
@@ -513,7 +532,7 @@ export function createLevel1_1ZoneManager(deps) {
   }
 
   function enterCorridor3() {
-    ensureWorld();
+    ensureWorld3();
     if (!world2 || !world3 || subZone !== "corridor2") {
       if (deps.showToast) deps.showToast("无法进入 L1.1-3");
       return false;
@@ -546,6 +565,7 @@ export function createLevel1_1ZoneManager(deps) {
   }
 
   function enterCorridor4() {
+    ensureWorld4();
     if (!world3 || !world4 || subZone !== "corridor3") return false;
     if (!world3.isCorridor14DoorPassable()) return false;
     subZone = "corridor4";
@@ -659,7 +679,7 @@ export function createLevel1_1ZoneManager(deps) {
 
   function tryEnterCorridor3AtDoor() {
     if (!world2 || subZone !== "corridor2") return false;
-    ensureWorld();
+    ensureWorld3();
     if (!world3) {
       if (deps.showToast) deps.showToast("L1.1-3 加载失败");
       return false;
@@ -682,7 +702,7 @@ export function createLevel1_1ZoneManager(deps) {
 
   function tryAutoEnterCorridor3AfterDoorOpen() {
     if (!world2 || subZone !== "corridor2") return false;
-    ensureWorld();
+    ensureWorld3();
     if (!world3 || !world2.isCorridor23DoorPassable()) return false;
     if (!isNearCorridor23Link(deps.fps.x, deps.fps.z)) return false;
     return enterCorridor3();
@@ -870,7 +890,6 @@ export function createLevel1_1ZoneManager(deps) {
     checkTriggers: checkTriggers,
     update: function (dt) {
       if (!subZone || !world) return;
-      ensureWorld();
       syncDoorCollidersToDeps();
       var now = performance.now();
       updateInstability(now);

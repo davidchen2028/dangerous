@@ -13,6 +13,7 @@ import {
   sharedWhiteWallMat,
 } from "./backrooms-level1-1-world.js?v=2";
 import { createFixedXiaoye } from "./backrooms-level2-xiaoye.js";
+import { buildMegOutpostRecruiter } from "./backrooms-meg-npc-model.js";
 
 export const LEVEL1_1_3_CORRIDOR_LEN = 50;
 export const LEVEL1_1_3_CORRIDOR_W = 6;
@@ -477,6 +478,12 @@ export function buildLevel1_1_3World(parent, opts) {
       })
     );
   });
+  var recruiter = buildMegOutpostRecruiter(
+    outpost,
+    outpostCenterX + 1.65,
+    outpostCenterZ + 0.75,
+    "MegOutpost3Recruiter"
+  );
 
   var corridor22ReturnTrigger = {
     minX: -returnHalfGapZ,
@@ -567,6 +574,7 @@ export function buildLevel1_1_3World(parent, opts) {
       var roots = [];
       if (outpostDoorState.pickMesh) roots.push(outpostDoorState.pickMesh);
       if (corridor14DoorState.pickMesh) roots.push(corridor14DoorState.pickMesh);
+      if (recruiter && recruiter.visible) roots.push(recruiter);
       return roots;
     },
     updateCorridor14Door: function (dt) {

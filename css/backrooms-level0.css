@@ -686,9 +686,158 @@ body.backrooms-pack-open .backrooms-crosshair {
 }
 
 body.backrooms-dialogue-open .backrooms-hud__prompt,
-body.backrooms-pack-open .backrooms-hud__prompt {
+body.backrooms-pack-open .backrooms-hud__prompt,
+body.backrooms-meg-guide-open .backrooms-hud__prompt {
   opacity: 0;
   pointer-events: none;
+}
+
+.backrooms-meg-guide {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: clamp(12px, 3vw, 36px);
+  background: rgba(2, 7, 13, 0.88);
+  backdrop-filter: blur(5px);
+}
+
+.backrooms-meg-guide[hidden] {
+  display: none;
+}
+
+.backrooms-meg-guide__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(920px, 96vw);
+  max-height: min(88vh, 820px);
+  overflow: hidden;
+  border: 1px solid rgba(126, 184, 232, 0.5);
+  border-radius: 12px;
+  background: #07101b;
+  color: #dceeff;
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.7);
+}
+
+.backrooms-meg-guide__panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(126, 184, 232, 0.25);
+  background: linear-gradient(100deg, rgba(20, 54, 82, 0.75), rgba(7, 16, 27, 0.96));
+}
+
+.backrooms-meg-guide__panel h1,
+.backrooms-meg-guide__panel h2,
+.backrooms-meg-guide__panel p {
+  margin-top: 0;
+}
+
+.backrooms-meg-guide__panel h1 {
+  margin-bottom: 0;
+  font-size: clamp(22px, 4vw, 34px);
+}
+
+.backrooms-meg-guide__eyebrow {
+  margin-bottom: 5px;
+  color: #83c7ff;
+  font-size: 12px;
+  letter-spacing: 0.13em;
+}
+
+.backrooms-meg-guide__panel button {
+  flex: none;
+  padding: 8px 12px;
+  border: 1px solid rgba(126, 184, 232, 0.4);
+  border-radius: 7px;
+  background: rgba(126, 184, 232, 0.1);
+  color: #dceeff;
+  cursor: pointer;
+}
+
+.backrooms-meg-guide__body {
+  overflow: auto;
+  padding: 20px 24px 30px;
+  line-height: 1.7;
+}
+
+.backrooms-meg-guide__body section {
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(126, 184, 232, 0.13);
+}
+
+.backrooms-meg-guide__body section:last-child {
+  border-bottom: 0;
+}
+
+.backrooms-meg-guide__body h2 {
+  margin-bottom: 9px;
+  color: #9bd1ff;
+  font-size: 18px;
+}
+
+.backrooms-meg-guide__body p,
+.backrooms-meg-guide__body li {
+  color: #c8d9e8;
+}
+
+.backrooms-meg-guide__body ul {
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.backrooms-meg-guide__profile {
+  padding: 15px 18px !important;
+  border: 1px solid rgba(114, 212, 154, 0.3) !important;
+  border-radius: 9px;
+  background: rgba(46, 102, 70, 0.12);
+}
+
+.backrooms-meg-guide__route {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 13px;
+}
+
+.backrooms-meg-guide__route span {
+  padding: 4px 8px;
+  border: 1px solid rgba(126, 184, 232, 0.25);
+  border-radius: 999px;
+  background: rgba(126, 184, 232, 0.07);
+}
+
+.backrooms-meg-guide__route b {
+  color: #5f91ba;
+}
+
+.backrooms-meg-guide__requirements {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+}
+
+.backrooms-meg-guide__requirements p {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+@media (max-width: 640px) {
+  .backrooms-meg-guide__requirements {
+    grid-template-columns: 1fr;
+  }
+
+  .backrooms-meg-guide__panel > header,
+  .backrooms-meg-guide__body {
+    padding-left: 15px;
+    padding-right: 15px;
+  }
 }
 
 .backrooms-dialogue {

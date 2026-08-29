@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import { isLevel1_1ChestOpened, syncLevel1_1ChestEntryOpened } from "./backrooms-level1-1-chests.js";
+import { buildMegOutpostRecruiter } from "./backrooms-meg-npc-model.js";
 
 export const LEVEL1_1_CORRIDOR_LEN = 30;
 export const LEVEL1_1_CORRIDOR_W = 7;
@@ -675,6 +676,12 @@ export function buildLevel1_1World(parent, opts) {
     { id: "level1_1_outpost_1", x: outpostCenterX + 2.2, z: outpostCenterZ - 2 },
     { id: "level1_1_outpost_2", x: outpostCenterX, z: outpostCenterZ + 2.2 },
   ];
+  var recruiter = buildMegOutpostRecruiter(
+    outpost,
+    outpostCenterX + 1.45,
+    outpostCenterZ + 0.25,
+    "MegOutpost1Recruiter"
+  );
 
   ensureChestTemplate(function (template) {
     var i;
@@ -764,6 +771,7 @@ export function buildLevel1_1World(parent, opts) {
       var roots = [];
       if (outpostDoorState.pickMesh) roots.push(outpostDoorState.pickMesh);
       if (corridor12DoorState.pickMesh) roots.push(corridor12DoorState.pickMesh);
+      if (recruiter && recruiter.visible) roots.push(recruiter);
       return roots;
     },
     updateOutpostDoor: function (dt) {

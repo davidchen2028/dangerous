@@ -62,7 +62,7 @@ import {
   buildBackroomsLevel1World,
   resolveClipEntrySpawn,
   WAREHOUSE_HEIGHT,
-} from "./backrooms-level1-world.js?v=4";
+} from "./backrooms-level1-world.js?v=7";
 import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
@@ -101,7 +101,7 @@ import {
   applyMegDeathState,
   MEG_RESPAWN_FLAG,
 } from "./backrooms-meg-checkpoint.js";
-import { createLevel1_1ZoneManager } from "./backrooms-level1-1-zones.js?v=3";
+import { createLevel1_1ZoneManager } from "./backrooms-level1-1-zones.js?v=5";
 import { createLevel1SublevelManager } from "./backrooms-level1-sublevels.js?v=4";
 import {
   handleTaskUiKey,
@@ -118,6 +118,19 @@ import {
 } from "./backrooms-level1-1-chests.js";
 import { LEVEL1_1_WALL_H } from "./backrooms-level1-1-world.js?v=2";
 import { consumeC101Result } from "./backrooms-c101-state.js";
+import {
+  MEG_DEPARTMENT_LABELS,
+  applyForNextMegRank,
+  describeMegCareer,
+  getMegCareerProfile,
+  getReviewableMegCases,
+  getNextMegRank,
+  hasMegPermission,
+  initMegCareer,
+  reviewMegCase,
+  submitMegReport,
+} from "./backrooms-meg-career.js";
+import { openMegCareerGuide } from "./backrooms-meg-guide.js";
 
 const CHEST_LOOT_DISTANCE = 2.6;
 const AIM_INTERACT_MAX = 4.5;
@@ -225,8 +238,9 @@ let grounded = true;
 /** @type {{ x: number, z: number, talkRadius: number } | null} */
 let megGuideNpc = null;
 let megDialogueOpen = false;
-/** @type {"guide" | "trade" | "backdoor" | "level11" | "level11_tour" | null} */
+/** @type {"guide" | "trade" | "backdoor" | "level11" | "level11_tour" | "recruiter" | "recruiter_department" | null} */
 let megDialogueKind = null;
+let megRecruiterIsAlpha = true;
 let level11TourStep = 0;
 let activeSectionId = "";
 const seenSectionIds = new Set();
@@ -590,6 +604,18 @@ function isNearMegStorageClerk() {
   return isAimKind("meg_npc", "storage");
 }
 
+function isNearMegRecruiter() {
+  return isAimKind("meg_npc", "recruiter") || isAimKind("meg_npc", "recruiter_outpost");
+}
+
+function openMegCareerStorage() {
+  if (!hasMegPermission("storage")) {
+    showLootToast("寄存柜仅向通过资质认证的 M.E.G 正式队员开放");
+    return;
+  }
+  openBaseStorage({ toast: true });
+}
+
 function syncPackageReceiverNpc() {
   if (!level1World || !level1World.setPackageReceiverVisible) return;
   level1World.setPackageReceiverVisible(
@@ -772,6 +798,9 @@ function advanceLevel11Tour() {
 
 function megDialogueChooseLevel11(choice) {
   if (choice === "a") {
+    if (level1Sublevels && level1Sublevels.isActive()) {
+      level1Sublevels.exit();
+    }
     var entered = false;
     var enterError = false;
     try {
@@ -783,7 +812,12 @@ function megDialogueChooseLevel11(choice) {
       closeMegDialogue();
     }
     if (entered) {
+      feetY = 0;
+      velY = 0;
+      grounded = true;
       for (var i = 0; i < 16; i++) depenetratePlayer(20);
+      syncLookUi();
+      showLootToast("已进入 Level 1.1 · 点击画面或拖动以恢复视角");
       return;
     }
     showLootToast(enterError ? "进入 1.1 失败，请重试" : "无法进入 1.1");
@@ -800,12 +834,165 @@ function megDialogueChooseLevel11(choice) {
 
 function handleMegDialogueChoice(choice) {
   if (!megDialogueOpen || !choice || isAiChatOpen()) return;
+  if (megDialogueKind === "recruiter" || megDialogueKind === "recruiter_department") {
+    handleRecruiterChoice(choice);
+    return;
+  }
   if (megDialogueKind === "level11" || megDialogueKind === "level11_tour") {
     megDialogueChooseLevel11(choice);
     return;
   }
   if (choice === "a") megDialogueChoose(true);
   else if (choice === "b") megDialogueChoose(false);
+}
+
+function setRecruiterChoices() {
+  if (!dialogueChoicesEl) return;
+  dialogueChoicesEl.hidden = false;
+  dialogueChoicesEl.innerHTML =
+    renderDialogueChoice("a", "申请加入 / 晋升") +
+    renderDialogueChoice("b", "查询编制进度") +
+    renderDialogueChoice("c", "提交纪律举报") +
+    (hasMegPermission("review_low_cases")
+      ? renderDialogueChoice("e", "审阅普通纪律案件")
+      : "") +
+    renderDialogueChoice("d", "离开");
+}
+
+function openMegRecruiterDialogue() {
+  if (!dialogueEl || !dialogueTextEl) return;
+  megDialogueOpen = true;
+  megDialogueKind = "recruiter";
+  megRecruiterIsAlpha = isAimKind("meg_npc", "recruiter");
+  document.body.classList.add("backrooms-dialogue-open");
+  dialogueEl.hidden = false;
+  if (dialogueSpeakerEl) {
+    dialogueSpeakerEl.textContent = megRecruiterIsAlpha
+      ? "M.E.G Alpha 人事员"
+      : "M.E.G 前哨人事员";
+  }
+  dialogueTextEl.textContent = describeMegCareer();
+  setDialogueImage(null);
+  setRecruiterChoices();
+  if (interiorTalkHintEl) interiorTalkHintEl.hidden = true;
+  if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+  focusMegDialogue();
+}
+
+function recruiterResultText(message) {
+  if (!dialogueTextEl) return;
+  dialogueTextEl.textContent = message;
+  megDialogueKind = "recruiter";
+  setRecruiterChoices();
+}
+
+function applyRecruiterPromotion(department) {
+  if (dialogueTextEl) dialogueTextEl.textContent = "人事终端正在核验单机编制档案…";
+  if (dialogueChoicesEl) dialogueChoicesEl.hidden = true;
+  applyForNextMegRank(department, {
+    hp: survival ? survival.hp : 0,
+    sanity: survival ? survival.sanity : 0,
+    dead: !survival || survival.dead,
+  })
+    .then(function (result) {
+      var msg =
+        result.message ||
+        (result.pending
+          ? "监督者申请已提交。"
+          : "编制手续已完成：" + describeMegCareer());
+      recruiterResultText(msg);
+    })
+    .catch(function (err) {
+      recruiterResultText("申请未通过：" + (err.message || "条件不足"));
+    });
+}
+
+function startDepartmentCertification() {
+  megDialogueKind = "recruiter_department";
+  dialogueTextEl.textContent = "资质认证要求选定职务。职务变更只能回 Alpha 办理。";
+  dialogueChoicesEl.hidden = false;
+  dialogueChoicesEl.innerHTML =
+    renderDialogueChoice("a", MEG_DEPARTMENT_LABELS.explore) +
+    renderDialogueChoice("b", MEG_DEPARTMENT_LABELS.research) +
+    renderDialogueChoice("c", MEG_DEPARTMENT_LABELS.logistics) +
+    renderDialogueChoice("d", MEG_DEPARTMENT_LABELS.security);
+}
+
+function submitRecruiterReport() {
+  var target = window.prompt("被举报者的后室玩家 ID（可在其名片或案件信息中查看）");
+  if (!target) return recruiterResultText("已取消举报。");
+  var reason = window.prompt(
+    "举报原因：base_assault / task_sabotage / c101_abuse / rank_forgery / harassment"
+  );
+  if (!reason) return recruiterResultText("已取消举报。");
+  var statement = window.prompt("补充说明（玩家陈述不会标记为已证实）") || "";
+  submitMegReport(target.trim(), reason.trim(), statement, [])
+    .then(function (result) {
+      recruiterResultText(result.message || "举报已记入单机纪律档案。");
+    })
+    .catch(function (err) {
+      recruiterResultText("无法立案：" + (err.message || "单机档案拒绝请求"));
+    });
+}
+
+function reviewRecruiterCase() {
+  recruiterResultText("正在读取可审阅案件…");
+  getReviewableMegCases()
+    .then(function (cases) {
+      if (!cases.length) {
+        recruiterResultText("当前没有可由数据库授权员处理的普通案件。高层案件只会进入管理员后台。");
+        return;
+      }
+      var summary = cases
+        .slice(0, 8)
+        .map(function (item) {
+          return "#" + item.id + " " + item.target_name + "：" + item.reason;
+        })
+        .join("\n");
+      var selected = window.prompt("待审普通案件：\n" + summary + "\n\n输入案件编号");
+      if (!selected) return recruiterResultText("已退出案件审阅。");
+      var decision = window.prompt("输入 sanction（处罚）或 dismiss（驳回）", "sanction");
+      if (!decision) return recruiterResultText("已退出案件审阅。");
+      var action =
+        decision === "sanction"
+          ? window.prompt("处罚：warning / freeze_promotion / suspend_role / demote", "warning")
+          : "";
+      var note = window.prompt("裁决备注") || "";
+      return reviewMegCase(Number(selected), decision, action || "", note).then(function (result) {
+        recruiterResultText(result.message || "案件处理完毕。");
+      });
+    })
+    .catch(function (err) {
+      recruiterResultText("无法审阅：" + (err.message || "数据库权限不足"));
+    });
+}
+
+function handleRecruiterChoice(choice) {
+  if (megDialogueKind === "recruiter_department") {
+    var deps = { a: "explore", b: "research", c: "logistics", d: "security" };
+    if (deps[choice]) applyRecruiterPromotion(deps[choice]);
+    return;
+  }
+  if (choice === "a") {
+    var profile = getMegCareerProfile();
+    if (!megRecruiterIsAlpha && profile.rank !== "none") {
+      recruiterResultText("前哨只能办理志愿者登记。培训、认证及高级晋升须前往 Level 1 Alpha 基地。");
+      return;
+    }
+    if (getNextMegRank(profile.rank) === "member" && !profile.department) {
+      startDepartmentCertification();
+    } else {
+      applyRecruiterPromotion("");
+    }
+  } else if (choice === "b") {
+    recruiterResultText(describeMegCareer());
+  } else if (choice === "c") {
+    submitRecruiterReport();
+  } else if (choice === "e" && hasMegPermission("review_low_cases")) {
+    reviewRecruiterCase();
+  } else if (choice === "d") {
+    closeMegDialogue();
+  }
 }
 
 function setDialogueChoicesGuide() {
@@ -1205,6 +1392,10 @@ function tryMegQAction() {
     if (hubRoute.handleDoor(getAimInteractData())) return;
   }
   if (level1_1Zones && level1_1Zones.isActive()) {
+    if (isAimKind("meg_npc", "recruiter_outpost")) {
+      openMegRecruiterDialogue();
+      return;
+    }
     if (isAimingLevel1_1WallForCut()) {
       if (level1_1Zones.tryWallCutExit()) return;
     }
@@ -1283,7 +1474,11 @@ function tryMegQAction() {
     return;
   }
   if (isNearMegStorageClerk()) {
-    openBaseStorage({ toast: true });
+    openMegCareerStorage();
+    return;
+  }
+  if (isNearMegRecruiter()) {
+    openMegRecruiterDialogue();
     return;
   }
   if (isNearMegGuide()) {
@@ -1327,7 +1522,14 @@ function tryMegTalk() {
 function updateMegTalkHint() {
   if (!talkHintEl || megDialogueOpen) return;
   if (level1_1Zones && level1_1Zones.isActive()) {
-    talkHintEl.hidden = true;
+    // 前哨人事员（紫衣）单独提示；避免与其它 HUD 叠字。
+    if (isAimKind("meg_npc", "recruiter_outpost")) {
+      talkHintEl.innerHTML =
+        "前哨人事员 · 按 <kbd>Q</kbd> 办理编制 · 按 <kbd>E</kbd> 阅读编制介绍";
+      talkHintEl.hidden = false;
+    } else {
+      talkHintEl.hidden = true;
+    }
     return;
   }
   if (isInventoryOpen() || !survival || survival.dead) {
@@ -1338,7 +1540,11 @@ function updateMegTalkHint() {
     talkHintEl.hidden = true;
     return;
   }
+  // Alpha 基地内人事员由 interiorTalkHint 负责，避免两层提示重叠。
   talkHintEl.hidden = !isNearMegGuide();
+  if (!talkHintEl.hidden) {
+    talkHintEl.innerHTML = "按 <kbd>Q</kbd> 与 M.E.G 人员对话";
+  }
 }
 
 function updateMegDoorHint() {
@@ -1539,7 +1745,8 @@ function updateMegDoorHint() {
     isNearMegBackDoorStaff() ||
     isNearMegLevel11Staff() ||
     isNearMegPackageReceiver() ||
-    isNearMegStorageClerk()
+    isNearMegStorageClerk() ||
+    isNearMegRecruiter()
   ) {
     doorHintEl.hidden = true;
     return;
@@ -1584,6 +1791,12 @@ function updateMegInteriorTalkHint() {
   if (isNearMegStorageClerk()) {
     interiorTalkHintEl.hidden = false;
     interiorTalkHintEl.innerHTML = "寄存柜管理员 · 按 <kbd>Q</kbd> 存取物品";
+    return;
+  }
+  if (isNearMegRecruiter()) {
+    interiorTalkHintEl.hidden = false;
+    interiorTalkHintEl.innerHTML =
+      "M.E.G Alpha 人事员 · 按 <kbd>Q</kbd> 办理编制 · 按 <kbd>E</kbd> 阅读编制介绍";
     return;
   }
   interiorTalkHintEl.hidden = !(
@@ -2095,6 +2308,30 @@ function bindControls() {
           megDialogueChoose(false);
           return;
         }
+        if (
+          (megDialogueKind === "recruiter" || megDialogueKind === "recruiter_department") &&
+          isDialogueChoiceKey(e, "c")
+        ) {
+          e.preventDefault();
+          handleMegDialogueChoice("c");
+          return;
+        }
+        if (
+          megDialogueKind === "recruiter" &&
+          isDialogueChoiceKey(e, "e")
+        ) {
+          e.preventDefault();
+          handleMegDialogueChoice("e");
+          return;
+        }
+        if (
+          (megDialogueKind === "recruiter" || megDialogueKind === "recruiter_department") &&
+          isDialogueChoiceKey(e, "d")
+        ) {
+          e.preventDefault();
+          handleMegDialogueChoice("d");
+          return;
+        }
       }
       if (e.code === "Escape" && !e.repeat) {
         e.preventDefault();
@@ -2117,6 +2354,11 @@ function bindControls() {
     if (e.code === "KeyB" && !e.repeat) {
       e.preventDefault();
       toggleBackpack();
+    }
+    if (e.code === "KeyE" && !e.repeat && isNearMegRecruiter()) {
+      e.preventDefault();
+      openMegCareerGuide();
+      return;
     }
     if (e.code === "KeyQ" && !e.repeat) {
       e.preventDefault();
@@ -2217,6 +2459,13 @@ function init() {
   }
   showEnterLevelBannerIfQueued();
   markLevelEntered("l1", showLootToast);
+  initMegCareer({
+    levelId: "l1",
+    hudAnchor: megPointsEl ? megPointsEl.closest(".backrooms-points") : null,
+    onError: function () {
+      showLootToast("M.E.G 单机编制档案读取失败");
+    },
+  });
   validateMatrix();
   scene = new THREE.Scene();
   var fogConfig = c101Return && c101Return.ok ? c101Return.config.fog : null;
@@ -2341,6 +2590,13 @@ function init() {
     camera: camera,
     onHomeEnding: triggerHomeEnding,
     onEmergencyCutToLevel1: relocateAfterLevel1_1Cut,
+    onBeforeEnter: function () {
+      if (level1Sublevels && level1Sublevels.isActive()) level1Sublevels.exit();
+    },
+    onResetPhysics: function () {
+      velY = 0;
+      grounded = true;
+    },
     ensureMegBase: function () {
       if (level1World && level1World.ensureMegBase) level1World.ensureMegBase();
     },
@@ -2515,7 +2771,11 @@ function startLoop() {
     if (inLevel1Sublevel) {
       level1Sublevels.update(dt, now);
     } else if (level1_1Zones && level1_1Zones.isActive()) {
-      level1_1Zones.update(dt);
+      try {
+        level1_1Zones.update(dt);
+      } catch (err) {
+        console.error("[Backrooms L1.1 update]", err);
+      }
     } else if (level1World && !inHubRoute) {
       level1World.update(player.x, player.z);
       updateLevel1SectionHud(true);

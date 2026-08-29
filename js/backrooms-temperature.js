@@ -25,13 +25,13 @@ const LEVEL_PROFILE = {
   "0.1_cold": { min: -18, max: -12, base: -15, swing: 1.2 },
   /** 偏凉宜居 15–20°C */
   1: { min: 15, max: 20, base: 17.5, swing: 2.2 },
-  /** 蒸汽管道：偏高、波动大，常 40°C+，峰值可达 50°C 以上 */
+  /** Level 2 重启后整体偏冷，但运作异常的管线旁仍会骤升至危险高温 */
   2: {
-    min: 36,
-    max: 52,
-    base: 44,
-    swing: 6.5,
-    swing2: 5,
+    min: 14,
+    max: 48,
+    base: 25,
+    swing: 11,
+    swing2: 8,
     volatile: true,
   },
   /** Level 3 — 阴冷潮湿 */
@@ -89,6 +89,10 @@ const LEVEL_PROFILE = {
   blue_channel: { min: 14, max: 19, base: 16.5, swing: 1.2 },
   /** 枢纽 — 稳定、干燥的地下公路隧道 */
   hub: { min: 19, max: 22, base: 20.5, swing: 0.5 },
+  /** Level C-101 — 大型服务器机房，持续冷却 */
+  c101: { min: 14, max: 18, base: 16, swing: 1.1 },
+  /** Level C-102 — 占位配置，待层级实现后细化 */
+  c102: { min: 16, max: 20, base: 18, swing: 1.2 },
   /** Level C-144 — 和爱社区，温和的城区与郊区 */
   c144: { min: 16, max: 24, base: 20, swing: 2.6 },
   /** Level C-192 — 封闭森林 */

@@ -7,7 +7,7 @@ import { isFastingRunActive } from "./backrooms-tasks.js";
 
 var _doorBoxScratch = new THREE.Box3();
 
-const STORAGE_KEY = "backrooms_l2_doors_v2";
+const STORAGE_KEY = "backrooms_l2_doors_v3";
 const DOOR_W = 1.05;
 const DOOR_H = 2.45;
 const DOOR_THICK = 0.12;
@@ -30,19 +30,26 @@ function pickDistinctArms(rng, halfLen) {
   var arms = ["pz", "nz", "px", "nx"].filter(function (a) {
     return a !== blocked;
   });
-  if (arms.length < 2) {
-    arms = ["nz", "nx"];
+  if (arms.length < 3) {
+    arms = ["nz", "px", "nx"];
   }
-  var i = Math.floor(rng() * arms.length);
-  var j = Math.floor(rng() * (arms.length - 1));
-  if (j >= i) j += 1;
-  return { a: arms[i], b: arms[j] };
+  for (var i = arms.length - 1; i > 0; i--) {
+    var j = Math.floor(rng() * (i + 1));
+    var swap = arms[i];
+    arms[i] = arms[j];
+    arms[j] = swap;
+  }
+  return { a: arms[0], b: arms[1], c: arms[2] };
 }
 
 function layoutConflictsWithEntities(layout, halfLen) {
-  if (!layout || !layout.l3 || !layout.l283) return true;
+  if (!layout || !layout.l1 || !layout.l3 || !layout.l283) return true;
   var entityArm = getLevel2EntityCorridorArm(halfLen);
-  return layout.l3.arm === entityArm || layout.l283.arm === entityArm;
+  return (
+    layout.l1.arm === entityArm ||
+    layout.l3.arm === entityArm ||
+    layout.l283.arm === entityArm
+  );
 }
 
 function armPosition(rng, halfLen, hubEdge) {
@@ -57,7 +64,7 @@ export function getOrCreateLevel2DoorLayout(halfLen, hubEdge) {
     var raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw) {
       var parsed = JSON.parse(raw);
-      if (parsed && parsed.l3 && parsed.l283) {
+      if (parsed && parsed.l1 && parsed.l3 && parsed.l283) {
         if (!parsed.l3Dest) {
           parsed.l3Dest = mulberry32((parsed.seed | 0) + 7919)() < 0.3 ? "l4" : "l3";
           try {
@@ -81,8 +88,9 @@ export function getOrCreateLevel2DoorLayout(halfLen, hubEdge) {
   var layout = {
     seed: seed,
     l3Dest: rng() < 0.3 ? "l4" : "l3",
-    l3: { arm: pair.a, pos: armPosition(rng, halfLen, hubEdge) },
-    l283: { arm: pair.b, pos: armPosition(rng, halfLen, hubEdge) },
+    l1: { arm: pair.a, pos: armPosition(rng, halfLen, hubEdge) },
+    l3: { arm: pair.b, pos: armPosition(rng, halfLen, hubEdge) },
+    l283: { arm: pair.c, pos: armPosition(rng, halfLen, hubEdge) },
   };
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
@@ -177,7 +185,7 @@ function splitWallColliderOnX(colliders, halfW, x0, x1, doorMinX, doorMaxX) {
 }
 
 /**
- * @param {"l3"|"l283"} doorId
+ * @param {"l1"|"l3"|"l283"} doorId
  */
 function buildWallDoor(group, colliders, spec, halfW, halfLen, hubEdge, doorId, plainMat, rainbowMat) {
   var arm = spec.arm;
@@ -357,6 +365,7 @@ export function buildLevel2Doors(group, colliders, halfW, halfLen, hubEdge) {
     metalness: 0.1,
   });
 
+  var l1 = buildWallDoor(group, colliders, layout.l1, halfW, halfLen, hubEdge, "l1", plainMat, rainbowMat);
   var l3 = buildWallDoor(group, colliders, layout.l3, halfW, halfLen, hubEdge, "l3", plainMat, rainbowMat);
   l3.l3Dest = layout.l3Dest === "l4" ? "l4" : "l3";
   var l283 = buildWallDoor(
@@ -371,13 +380,14 @@ export function buildLevel2Doors(group, colliders, halfW, halfLen, hubEdge) {
     rainbowMat
   );
 
+  colliders.push(l1.collider);
   colliders.push(l3.collider);
   colliders.push(l283.collider);
 
   return {
     layout: layout,
-    doors: { l3: l3, l283: l283 },
-    interactRoots: [l3.root, l283.root],
+    doors: { l1: l1, l3: l3, l283: l283 },
+    interactRoots: [l1.root, l3.root, l283.root],
   };
 }
 
@@ -393,7 +403,7 @@ export function tryOpenLevel2Door(doors, doorId) {
 
 export function updateLevel2Doors(doors, dt) {
   if (!doors) return;
-  var ids = ["l3", "l283"];
+  var ids = ["l1", "l3", "l283"];
   var i;
   for (i = 0; i < ids.length; i++) {
     var d = doors[ids[i]];
@@ -412,6 +422,9 @@ export function updateLevel2Doors(doors, dt) {
 
 export function getLevel2DoorTransition(doors, px, pz) {
   if (!doors) return null;
+  if (doors.l1 && doors.l1.open && pointInPassage(doors.l1.passage, px, pz)) {
+    return "l1";
+  }
   if (doors.l3 && doors.l3.open && pointInPassage(doors.l3.passage, px, pz)) {
     // 「断粮巡航」挑战进行中：普通门必定通往 Level 3。
     if (isFastingRunActive()) return "l3";

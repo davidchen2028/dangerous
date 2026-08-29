@@ -176,6 +176,39 @@ function addSilverPipe(parent, interactRoots) {
   parent.add(glow);
 }
 
+function addLevel2Vent(parent, interactRoots) {
+  var group = new THREE.Group();
+  group.name = "L8Level2Vent";
+  group.position.set(25.65, 1.35, 7);
+  group.rotation.y = -Math.PI * 0.5;
+  var frameMat = new THREE.MeshStandardMaterial({
+    color: 0x52585e,
+    metalness: 0.78,
+    roughness: 0.48,
+  });
+  var darkMat = new THREE.MeshBasicMaterial({ color: 0x020305 });
+  var frame = new THREE.Mesh(new THREE.BoxGeometry(2.7, 2.15, 0.22), frameMat);
+  group.add(frame);
+  var opening = new THREE.Mesh(new THREE.BoxGeometry(2.22, 1.68, 0.3), darkMat);
+  opening.position.z = 0.08;
+  opening.userData.brInteract = { kind: "l8_level2_vent" };
+  group.add(opening);
+  for (var i = -3; i <= 3; i++) {
+    var bar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.62, 0.12), frameMat);
+    bar.position.set(i * 0.31, 0, 0.23);
+    group.add(bar);
+  }
+  var pick = new THREE.Mesh(
+    new THREE.BoxGeometry(2.55, 2.05, 0.7),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  pick.position.z = 0.2;
+  pick.userData.brInteract = { kind: "l8_level2_vent" };
+  group.add(pick);
+  interactRoots.push(pick);
+  parent.add(group);
+}
+
 /** @param {THREE.Group} root */
 export function buildLevel8World(root) {
   var colliders = [];
@@ -211,6 +244,7 @@ export function buildLevel8World(root) {
   }
 
   addWoodenFallPlank(group, interactRoots);
+  addLevel2Vent(group, interactRoots);
   var pipeVisible = pipeAppearsThisRun();
   if (pipeVisible) addSilverPipe(group, interactRoots);
 

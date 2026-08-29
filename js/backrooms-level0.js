@@ -33,6 +33,7 @@ import {
 import { pickCrosshairInteract, getCameraAimRay } from "./backrooms-interact-aim.js";
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
 import {
+  queueEnterLevelBanner,
   queueEnterLevelNumber,
   showEnterLevelBannerIfQueued,
 } from "./backrooms-level-enter.js";
@@ -1539,6 +1540,19 @@ function goToLevel1FromL0() {
   fps.move.forward = false;
   if (clipHintEl) clipHintEl.hidden = true;
   saveBackroomsSurvival(survival);
+  var entersC101 = Math.random() < 0.015;
+  if (entersC101) {
+    try {
+      grantLevelPass("c101", fps.yaw);
+    } catch (err0) {
+      /* ignore */
+    }
+    queueEnterLevelBanner("Level C-101 · 服务器机房");
+    fadeOutLevel0Music(MUSIC_FADE_OUT_MS).then(function () {
+      window.location.href = "backrooms-level-c101.html";
+    });
+    return;
+  }
   try {
     grantLevelPass("clip");
     sessionStorage.setItem("backrooms_clip_yaw", String(fps.yaw));

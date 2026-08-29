@@ -38,6 +38,14 @@ ADMIN_LOCAL_ONLY = os.environ.get("JIWEI_ADMIN_LOCAL_ONLY", "").strip().lower() 
     "yes",
 )
 
+
+def _supervisor_cap() -> int:
+    try:
+        value = int(os.environ.get("BACKROOMS_SUPERVISOR_CAP", "3"))
+    except ValueError:
+        value = 3
+    return max(2, min(5, value))
+
 # NPC 自由对话：密钥只存在服务端环境变量里，绝不下发给浏览器。
 AI_API_BASE = os.environ.get("JIWEI_AI_BASE", "https://api.silra.cn/v1").strip().rstrip("/")
 AI_API_KEY = os.environ.get("JIWEI_AI_KEY", "").strip()
@@ -326,6 +334,16 @@ def admin_online_stats_page() -> Any:
     )
 
 
+@app.route("/admin/meg-governance")
+def admin_meg_governance_page() -> Any:
+    key = request.args.get("key", "")
+    if not _admin_key_ok(key):
+        return make_response("403 Forbidden — 未配置或密钥错误", 403)
+    return _no_cache(
+        make_response(send_from_directory(ROOT / "admin", "meg-governance.html"))
+    )
+
+
 @app.route("/api/admin/user-online-stats")
 def api_admin_user_online_stats() -> Any:
     key = request.args.get("key", "")
@@ -500,6 +518,324 @@ def api_admin_delete_user() -> Any:
     if not ok:
         return jsonify({"ok": False, "message": msg}), 500
     return jsonify({"ok": True, "message": f"已注销账号：{nickname}"})
+
+
+# --------------------------- Backrooms M.E.G. governance ---------------------------
+
+@app.route("/api/backrooms/status")
+def api_backrooms_status() -> Any:
+    return jsonify(
+        {
+            "ok": True,
+            "megOnline": True,
+            "localCareerAvailable": True,
+            "locked": False,
+            "message": "",
+        }
+    )
+
+
+def _backrooms_token(data: Optional[dict] = None) -> str:
+    authorization = request.headers.get("Authorization", "")
+    if authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    if data is None:
+        data = request.get_json(silent=True) or {}
+    return str(data.get("token") or request.args.get("token", "")).strip()
+
+
+def _backrooms_identity(data: Optional[dict] = None) -> Any:
+    return db.get_backrooms_identity(_backrooms_token(data))
+
+
+def _identity_error() -> Any:
+    return jsonify({"ok": False, "error": "unauthorized", "message": "设备凭证无效"}), 401
+
+
+@app.route("/api/backrooms/identity", methods=["POST"])
+def api_backrooms_identity() -> Any:
+    data = request.get_json(silent=True) or {}
+    token = _backrooms_token(data)
+    if token:
+        identity = db.get_backrooms_identity(token)
+        if not identity:
+            return _identity_error()
+        return jsonify(
+            {"ok": True, "restored": True, "profile": db.get_meg_profile(int(identity["id"]))}
+        )
+    display_name = str(data.get("displayName") or "").strip()
+    if len(display_name) < 2 or len(display_name) > 24:
+        return jsonify({"ok": False, "message": "显示名须为 2～24 个字符"}), 400
+    token, identity_id = db.create_backrooms_identity(display_name)
+    return jsonify(
+        {
+            "ok": True,
+            "restored": False,
+            "token": token,
+            "profile": db.get_meg_profile(identity_id),
+        }
+    ), 201
+
+
+@app.route("/api/backrooms/profile", methods=["GET", "PATCH"])
+def api_backrooms_profile() -> Any:
+    data = request.get_json(silent=True) or {}
+    identity = _backrooms_identity(data)
+    if not identity:
+        return _identity_error()
+    if request.method == "PATCH":
+        display_name = str(data.get("displayName") or "").strip()
+        if len(display_name) < 2 or len(display_name) > 24:
+            return jsonify({"ok": False, "message": "显示名须为 2～24 个字符"}), 400
+        db.update_backrooms_display_name(int(identity["id"]), display_name)
+    return jsonify({"ok": True, "profile": db.get_meg_profile(int(identity["id"]))})
+
+
+@app.route("/api/backrooms/event", methods=["POST"])
+def api_backrooms_event() -> Any:
+    data = request.get_json(silent=True) or {}
+    identity = _backrooms_identity(data)
+    if not identity:
+        return _identity_error()
+    event_id = str(data.get("eventId") or "").strip()
+    event_type = str(data.get("type") or data.get("eventType") or "").strip()
+    if not event_id or len(event_id) > 128:
+        return jsonify({"ok": False, "message": "eventId 必填且不得超过 128 字符"}), 400
+    if event_type not in db.MEG_EVENT_CONTRIBUTION:
+        return jsonify(
+            {"ok": False, "message": "事件类型不在服务端白名单", "allowed": sorted(db.MEG_EVENT_CONTRIBUTION)}
+        ), 400
+    accepted, duplicate = db.record_backrooms_event(
+        int(identity["id"]),
+        event_id,
+        event_type,
+        str(data.get("levelId") or "") or None,
+        data.get("payload") if isinstance(data.get("payload"), dict) else {},
+    )
+    if not accepted:
+        return jsonify({"ok": False, "message": "事件记录失败"}), 400
+    return jsonify(
+        {
+            "ok": True,
+            "duplicate": duplicate,
+            "serverValidated": True,
+            "profile": db.get_meg_profile(int(identity["id"])),
+        }
+    )
+
+
+@app.route("/api/backrooms/promotion/apply", methods=["POST"])
+def api_backrooms_promotion_apply() -> Any:
+    data = request.get_json(silent=True) or {}
+    identity = _backrooms_identity(data)
+    if not identity:
+        return _identity_error()
+    current_profile = db.get_meg_profile(int(identity["id"]))
+    if current_profile and current_profile.get("nextRank") == "volunteer":
+        vitals = data.get("vitals") if isinstance(data.get("vitals"), dict) else {}
+        try:
+            hp = float(vitals.get("hp", 0))
+            sanity = float(vitals.get("sanity", 0))
+        except (TypeError, ValueError):
+            hp = sanity = 0
+        if vitals.get("dead") or hp < 70 or sanity < 65:
+            return jsonify(
+                {
+                    "ok": False,
+                    "message": "入职体检未通过：生命须至少 70、理智须至少 65，且申请人必须存活",
+                    "profile": current_profile,
+                }
+            ), 409
+    department = str(data.get("department") or "").strip().lower()
+    if department and not db.set_meg_department(int(identity["id"]), department):
+        return jsonify({"ok": False, "message": "无效部门"}), 400
+    ok, message, application_id = db.apply_meg_promotion(int(identity["id"]))
+    updated_profile = db.get_meg_profile(int(identity["id"]))
+    payload = {
+        "ok": ok,
+        "message": message,
+        "applicationId": application_id,
+        "pending": bool(updated_profile and updated_profile.get("pendingPromotion")),
+        "profile": updated_profile,
+    }
+    return jsonify(payload), 200 if ok else 409
+
+
+@app.route("/api/backrooms/department", methods=["GET", "POST"])
+def api_backrooms_department() -> Any:
+    data = request.get_json(silent=True) or {}
+    identity = _backrooms_identity(data)
+    if not identity:
+        return _identity_error()
+    if request.method == "GET":
+        return jsonify(
+            {
+                "ok": True,
+                "departments": list(db.MEG_DEPARTMENTS),
+                "profile": db.get_meg_profile(int(identity["id"])),
+            }
+        )
+    department = str(data.get("department") or "").strip().lower()
+    if not db.set_meg_department(int(identity["id"]), department):
+        return jsonify(
+            {"ok": False, "message": "无效部门", "departments": list(db.MEG_DEPARTMENTS)}
+        ), 400
+    return jsonify({"ok": True, "profile": db.get_meg_profile(int(identity["id"]))})
+
+
+@app.route("/api/backrooms/report", methods=["POST"])
+def api_backrooms_report() -> Any:
+    data = request.get_json(silent=True) or {}
+    identity = _backrooms_identity(data)
+    if not identity:
+        return _identity_error()
+    try:
+        target_id = int(data.get("targetIdentityId", 0))
+    except (TypeError, ValueError):
+        target_id = 0
+    if not target_id and data.get("supervisorCode"):
+        code = str(data["supervisorCode"]).strip().upper()
+        with db.connect() as conn:
+            row = conn.execute(
+                "SELECT identity_id FROM meg_supervisor_slots WHERE code=? AND status='active'",
+                (code,),
+            ).fetchone()
+            target_id = int(row["identity_id"]) if row else 0
+    reason = str(data.get("reason") or "").strip()
+    details = str(data.get("details") or "").strip()
+    if target_id <= 0 or target_id == int(identity["id"]):
+        return jsonify({"ok": False, "message": "被举报对象无效"}), 400
+    if not reason or len(reason) > 200 or len(details) > 4000:
+        return jsonify({"ok": False, "message": "举报原因必填，且内容过长"}), 400
+    evidence = data.get("evidence") if isinstance(data.get("evidence"), list) else []
+    try:
+        report_id, recommendation, requires_admin = db.create_meg_report(
+            int(identity["id"]), target_id, reason, details, evidence
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 404
+    return jsonify(
+        {
+            "ok": True,
+            "caseId": report_id,
+            "recommendation": recommendation,
+            "requiresAdmin": requires_admin,
+            "evidenceStatus": "unverified",
+            "profile": db.get_meg_profile(int(identity["id"])),
+        }
+    ), 201
+
+
+@app.route("/api/backrooms/cases/mine")
+def api_backrooms_cases_mine() -> Any:
+    identity = _backrooms_identity()
+    if not identity:
+        return _identity_error()
+    identity_id = int(identity["id"])
+    return jsonify(
+        {
+            "ok": True,
+            "cases": db.list_meg_cases(identity_id),
+            "profile": db.get_meg_profile(identity_id),
+        }
+    )
+
+
+@app.route("/api/backrooms/cases/reviewable")
+def api_backrooms_cases_reviewable() -> Any:
+    identity = _backrooms_identity()
+    if not identity:
+        return _identity_error()
+    identity_id = int(identity["id"])
+    return jsonify(
+        {
+            "ok": True,
+            "cases": db.list_reviewable_meg_cases(identity_id),
+            "profile": db.get_meg_profile(identity_id),
+        }
+    )
+
+
+@app.route("/api/backrooms/cases/review", methods=["POST"])
+def api_backrooms_case_review() -> Any:
+    data = request.get_json(silent=True) or {}
+    identity = _backrooms_identity(data)
+    if not identity:
+        return _identity_error()
+    try:
+        case_id = int(data.get("caseId", 0))
+    except (TypeError, ValueError):
+        case_id = 0
+    decision = str(data.get("decision") or "").strip().lower()
+    action = str(data.get("action") or "").strip() or None
+    note = str(data.get("note") or "").strip()[:2000]
+    ok, message = db.review_meg_case_as_player(
+        int(identity["id"]), case_id, decision, action, note
+    )
+    return jsonify(
+        {
+            "ok": ok,
+            "message": message,
+            "profile": db.get_meg_profile(int(identity["id"])),
+        }
+    ), 200 if ok else 403
+
+
+@app.route("/api/admin/backrooms/overview")
+def api_admin_backrooms_overview() -> Any:
+    if not _admin_key_ok(request.args.get("key", "")):
+        return jsonify({"error": "forbidden"}), 403
+    return jsonify({"ok": True, **db.get_meg_overview(_supervisor_cap())})
+
+
+@app.route("/api/admin/backrooms/supervisor-review", methods=["POST"])
+def api_admin_backrooms_supervisor_review() -> Any:
+    if not _admin_key_ok(request.args.get("key", "")):
+        return jsonify({"error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        application_id = int(data.get("applicationId", 0))
+    except (TypeError, ValueError):
+        application_id = 0
+    decision = str(data.get("decision") or "").lower()
+    note = str(data.get("note") or "").strip()[:2000]
+    if application_id <= 0 or decision not in ("approve", "reject"):
+        return jsonify({"ok": False, "message": "申请编号或决定无效"}), 400
+    ok, message = db.review_supervisor_application(
+        application_id, decision == "approve", _supervisor_cap(), note=note
+    )
+    return jsonify({"ok": ok, "message": message}), 200 if ok else 409
+
+
+@app.route("/api/admin/backrooms/case-review", methods=["POST"])
+def api_admin_backrooms_case_review() -> Any:
+    if not _admin_key_ok(request.args.get("key", "")):
+        return jsonify({"error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        case_id = int(data.get("caseId", 0))
+    except (TypeError, ValueError):
+        case_id = 0
+    decision = str(data.get("decision") or "").lower()
+    action = str(data.get("action") or "").strip() or None
+    note = str(data.get("note") or "").strip()[:2000]
+    if case_id <= 0:
+        return jsonify({"ok": False, "message": "案件编号无效"}), 400
+    ok, message = db.review_meg_case(case_id, decision, action, note)
+    return jsonify({"ok": ok, "message": message}), 200 if ok else 409
+
+
+@app.route("/api/admin/backrooms/sanction-lift", methods=["POST"])
+def api_admin_backrooms_sanction_lift() -> Any:
+    if not _admin_key_ok(request.args.get("key", "")):
+        return jsonify({"error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        sanction_id = int(data.get("sanctionId", 0))
+    except (TypeError, ValueError):
+        sanction_id = 0
+    ok, message = db.lift_meg_sanction(sanction_id)
+    return jsonify({"ok": ok, "message": message}), 200 if ok else 409
 
 
 def _broadcast_market_stock() -> None:

@@ -3,22 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-  <title>后室 Level C-101 — 代码服务器</title>
+  <title>后室 Level C-101 — 服务器机房</title>
   <link rel="stylesheet" href="css/backrooms-level0.css?v=22">
   <link rel="stylesheet" href="css/backrooms-survival.css?v=7">
-  <link rel="stylesheet" href="css/backrooms-c101.css?v=1">
+  <link rel="stylesheet" href="css/backrooms-c101.css?v=2">
 </head>
 <body class="backrooms-level1 backrooms-level-c101">
-  <canvas id="backroomsCanvas" aria-label="后室 Level C-101 代码服务器"></canvas>
+  <canvas id="backroomsCanvas" aria-label="后室 Level C-101 服务器机房"></canvas>
   <div id="backroomsInput" class="backrooms-input" aria-hidden="true"></div>
   <div class="backrooms-crosshair" id="backroomsCrosshair" aria-hidden="true"></div>
   <div class="backrooms-hud">
-    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level C-101 · 代码服务器</p>
-    <p class="backrooms-hud__hint" id="backroomsHint">点击画面控制视角 · WASD 移动 · Q 交互</p>
+    <p class="backrooms-hud__title backrooms-hud__title--l1">Backrooms · Level C-101 · 服务器机房 · 终结等级</p>
+    <div class="backrooms-nav"><div class="backrooms-nav__row">
+      <p class="backrooms-temp" id="backroomsTemp"><span class="backrooms-temp__label">温度</span><span class="backrooms-temp__meter"><span class="backrooms-temp__fill" id="backroomsTempFill"></span></span><strong class="backrooms-temp__value" id="backroomsTempValue">—</strong></p>
+      <p class="backrooms-points"><span class="backrooms-points__label">积分点</span><strong class="backrooms-points__value" id="backroomsMegPoints">0</strong></p>
+    </div></div>
+    <p class="backrooms-hud__hint" id="backroomsHint">沿照明通道向东 150 米 · WASD 移动 · Q 交互 · B 背包</p>
     <p class="backrooms-hud__prompt" id="backroomsInteractHint" hidden></p>
     <p class="backrooms-hud__loot" id="backroomsLootToast" hidden></p>
     <div class="backrooms-hud__error" id="backroomsError" hidden></div>
   </div>
+  <section class="c101-archive" id="c101Archive" hidden role="dialog" aria-modal="true" aria-label="受限档案">
+    <div class="c101-archive__panel">
+      <p class="c101-archive__eyebrow">M.E.G. · OMEGA-癸亥 · 已删节副本</p>
+      <h1 id="c101ArchiveTitle">受限档案</h1>
+      <p id="c101ArchiveText"></p>
+      <button id="c101ArchiveClose" type="button">关闭档案</button>
+    </div>
+  </section>
   <section class="c101-editor" id="c101Editor" hidden aria-label="Level 1 代码编辑器">
     <div class="c101-editor__panel">
       <header class="c101-editor__bar">
@@ -30,6 +42,6 @@
     </div>
   </section>
   <script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
-  <script type="module" src="js/backrooms-level-c101.js?v=1"></script>
+  <script type="module" src="js/backrooms-level-c101.js?v=4"></script>
 </body>
 </html>
