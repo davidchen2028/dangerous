@@ -61,6 +61,7 @@ import {
 import {
   buildBackroomsLevel1World,
   resolveClipEntrySpawn,
+  getSpawnChunkBounds,
   WAREHOUSE_HEIGHT,
 } from "./backrooms-level1-world.js?v=7";
 import {
@@ -131,6 +132,7 @@ import {
   submitMegReport,
 } from "./backrooms-meg-career.js";
 import { openMegCareerGuide } from "./backrooms-meg-guide.js";
+import { createWandererManager } from "./backrooms-wanderers.js";
 
 const CHEST_LOOT_DISTANCE = 2.6;
 const AIM_INTERACT_MAX = 4.5;
@@ -201,6 +203,8 @@ let renderer = null;
 let camera = null;
 let scene = null;
 let firesalt = null;
+/** @type {ReturnType<createWandererManager> | null} */
+let wandererManager = null;
 /** @type {ReturnType<buildBackroomsLevel1World> | null} */
 let level1World = null;
 /** @type {ReturnType<createLevel1_1ZoneManager> | null} */
@@ -454,6 +458,15 @@ function collectAimInteractRoots() {
     var j;
     for (j = 0; j < base.length; j++) aimInteractScratch.push(base[j]);
   }
+  if (
+    wandererManager &&
+    !(hubRoute && hubRoute.isActive()) &&
+    !(level1Sublevels && level1Sublevels.isActive()) &&
+    !(level1_1Zones && level1_1Zones.isActive())
+  ) {
+    var wandererRoots = wandererManager.getInteractRoots();
+    for (var w = 0; w < wandererRoots.length; w++) aimInteractScratch.push(wandererRoots[w]);
+  }
   if (horror && !(level1Sublevels && level1Sublevels.isActive())) {
     var chests = horror.getQuantumChests();
     var px = player.x;
@@ -488,7 +501,13 @@ function triggerHomeEnding() {
 
 function refreshAimPick() {
   currentAimPick = null;
-  if (!camera || isInventoryOpen() || megDialogueOpen || isHomeEndingActive()) return;
+  if (
+    !camera ||
+    isInventoryOpen() ||
+    megDialogueOpen ||
+    !!(wandererManager && wandererManager.isDialogueOpen()) ||
+    isHomeEndingActive()
+  ) return;
   if (
     !level1World &&
     !(level1_1Zones && level1_1Zones.isActive()) &&
@@ -528,6 +547,7 @@ function isAimKind(kind, role) {
   if (role != null && d.role !== role) return false;
   if (kind === "chest" && currentAimPick.distance > CHEST_LOOT_DISTANCE) return false;
   if (kind === "meg_npc" && currentAimPick.distance > AIM_NPC_MAX) return false;
+  if (kind === "wanderer" && currentAimPick.distance > AIM_NPC_MAX) return false;
   if (kind === "meg_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "l1_c101_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "l1_sublevel_entry" && currentAimPick.distance > AIM_DOOR_MAX) return false;
@@ -569,6 +589,7 @@ function updateCrosshair() {
   var hide =
     isInventoryOpen() ||
     megDialogueOpen ||
+    !!(wandererManager && wandererManager.isDialogueOpen()) ||
     isHomeEndingActive() ||
     !survival ||
     survival.dead ||
@@ -1373,7 +1394,13 @@ function isAimingLevel1_1WallForCut() {
 }
 
 function tryMegQAction() {
-  if (megDialogueOpen || isInventoryOpen() || isBaseStorageOpen() || isHomeEndingActive()) return;
+  if (
+    megDialogueOpen ||
+    !!(wandererManager && wandererManager.isDialogueOpen()) ||
+    isInventoryOpen() ||
+    isBaseStorageOpen() ||
+    isHomeEndingActive()
+  ) return;
   if (!survival || survival.dead) return;
   if (level1Sublevels && level1Sublevels.isActive()) {
     if (currentAimPick && currentAimPick.data) level1Sublevels.interact(currentAimPick.data);
@@ -1469,6 +1496,10 @@ function tryMegQAction() {
     }
     return;
   }
+  if (isAimKind("wanderer") && wandererManager) {
+    wandererManager.interact(getAimInteractData());
+    return;
+  }
   if (isNearMegPackageReceiver()) {
     openPackageReceiverDialogue();
     return;
@@ -1520,7 +1551,11 @@ function tryMegTalk() {
 }
 
 function updateMegTalkHint() {
-  if (!talkHintEl || megDialogueOpen) return;
+  if (
+    !talkHintEl ||
+    megDialogueOpen ||
+    !!(wandererManager && wandererManager.isDialogueOpen())
+  ) return;
   if (level1_1Zones && level1_1Zones.isActive()) {
     // 前哨人事员（紫衣）单独提示；避免与其它 HUD 叠字。
     if (isAimKind("meg_npc", "recruiter_outpost")) {
@@ -1538,6 +1573,11 @@ function updateMegTalkHint() {
   }
   if (blackoutHintEl && !blackoutHintEl.hidden) {
     talkHintEl.hidden = true;
+    return;
+  }
+  if (isAimKind("wanderer")) {
+    talkHintEl.innerHTML = '流浪者 · 按 <kbd>Q</kbd> 交谈';
+    talkHintEl.hidden = false;
     return;
   }
   // Alpha 基地内人事员由 interiorTalkHint 负责，避免两层提示重叠。
@@ -2263,6 +2303,10 @@ function bindControls() {
     });
   }
   window.addEventListener("keydown", function (e) {
+    if (wandererManager && wandererManager.isDialogueOpen()) {
+      if (wandererManager.handleKey(e)) e.preventDefault();
+      return;
+    }
     if (!megDialogueOpen && !isInventoryOpen() && handleTaskUiKey(e)) {
       e.preventDefault();
       return;
@@ -2670,6 +2714,23 @@ function init() {
   nextFlickerAt = performance.now() + 8000;
 
   initSurvivalHud();
+  wandererManager = createWandererManager({
+    root: root,
+    levelId: "l1",
+    colliders: wallColliders,
+    rescueZone: getSpawnChunkBounds(),
+    showToast: showLootToast,
+    getSurvival: function () { return survival; },
+    spawns: [
+      { id: "l1-ordinary", role: "ordinary", x: 18, z: 14 },
+      { id: "l1-injured", role: "injured", x: 42, z: 22 },
+      { id: "l1-lost", role: "lost", x: -8, z: 30 },
+      { id: "l1-scavenger", role: "scavenger", x: 26, z: -6 },
+      { id: "l1-merchant", role: "merchant", x: 55, z: 10 },
+      { id: "l1-mission", role: "mission", x: 188, z: 18 },
+      { id: "l1-suspicious", role: "suspicious", x: 60, z: -20 },
+    ],
+  });
   if (consumeL283MegExitFlag()) {
     if (level1World && level1World.ensureMegBase) level1World.ensureMegBase();
     respawnAtMegBase();
@@ -2752,6 +2813,7 @@ function startLoop() {
       !isInventoryOpen() &&
       !isBaseStorageOpen() &&
       !megDialogueOpen &&
+      !(wandererManager && wandererManager.isDialogueOpen()) &&
       !isTaskUiOpen() &&
       !isHomeEndingActive()
     ) {
@@ -2782,6 +2844,13 @@ function startLoop() {
       level1World.updateMegDoor(dt);
       level1World.updateMegCorridorVisibility(player.x, player.z);
       level1World.updateC101Entities(dt, player.x, player.z, survival, showLootToast);
+    }
+    if (wandererManager) {
+      var wanderersActive = !inHubRoute && !inLevel1Sublevel && !inLevel1_1;
+      wandererManager.setActive(wanderersActive);
+      if (wanderersActive && survival && !survival.dead) {
+        wandererManager.update(dt, player.x, player.z);
+      }
     }
     if (
       survival &&

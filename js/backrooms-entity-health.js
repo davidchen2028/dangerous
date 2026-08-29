@@ -7,6 +7,7 @@ export const BACKROOMS_ENTITY_HEALTH = Object.freeze({
   death_moth: 60,
   clump: 100,
   smiler: 150,
+  hound: 90,
   partygoer: 120,
 });
 

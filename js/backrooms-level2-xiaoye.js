@@ -236,8 +236,8 @@ export function createLevel2Xiaoye(parent) {
     attacked = true;
     clearXiaoyeSpawnSlot();
     markXiaoyeKillFullHealOnRespawn();
-    survival.takeDamage(XIAOYE_DAMAGE);
-    if (typeof toastFn === "function") {
+    var applied = survival.takeDamage(XIAOYE_DAMAGE) !== false;
+    if (applied && typeof toastFn === "function") {
       toastFn("笑靥 — −100 血量");
     }
   }
@@ -315,7 +315,7 @@ export function createLevel2Xiaoye(parent) {
 /**
  * 固定位置笑靥（L1.1-3 等）
  * @param {THREE.Group} parent
- * @param {{ x: number, z: number, rotY?: number, faceW?: number, faceH?: number }} spec
+ * @param {{ x: number, z: number, rotY?: number, faceW?: number, faceH?: number, canSee?:Function }} spec
  */
 export function createFixedXiaoye(parent, spec) {
   var rotY = spec.rotY != null ? spec.rotY : 0;
@@ -370,8 +370,8 @@ export function createFixedXiaoye(parent, spec) {
   function applyAttack(survival, toastFn) {
     if (attacked || !survival || survival.dead) return;
     attacked = true;
-    survival.takeDamage(XIAOYE_DAMAGE);
-    if (typeof toastFn === "function") toastFn("笑靥 — −100 血量");
+    var applied = survival.takeDamage(XIAOYE_DAMAGE) !== false;
+    if (applied && typeof toastFn === "function") toastFn("笑靥 — −100 血量");
   }
 
   function update(dt, px, pz, survival, toastFn) {
@@ -402,7 +402,10 @@ export function createFixedXiaoye(parent, spec) {
 
     if (phase === "wait") {
       group.scale.setScalar(0.85 + reveal * 0.35);
-      if (dist <= TRIGGER_DIST && !survival.dead && !attacked) {
+      var visible =
+        !spec.canSee ||
+        spec.canSee(group.position.x, group.position.z, px, pz);
+      if (visible && dist <= TRIGGER_DIST && !survival.dead && !attacked) {
         phase = "lunge";
         lungeT = 0;
         lungeTargetX = px;

@@ -203,6 +203,18 @@ function spawnChunkCoords() {
   return worldToChunk(SPAWN_WORLD.x, SPAWN_WORLD.z);
 }
 
+/** 出生点所在流式区块的世界坐标包围盒（半开区间） */
+export function getSpawnChunkBounds() {
+  var sc = spawnChunkCoords();
+  var size = CHUNK_CELLS * BLOCK_SIZE;
+  return {
+    minX: sc.cx * size,
+    maxX: (sc.cx + 1) * size,
+    minZ: sc.cz * size,
+    maxZ: (sc.cz + 1) * size,
+  };
+}
+
 function megBaseWorldCenter() {
   var sc = spawnChunkCoords();
   var cx = sc.cx + MEG_BASE_CHUNK_OFFSET.cx;

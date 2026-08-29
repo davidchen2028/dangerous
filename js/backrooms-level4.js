@@ -28,7 +28,7 @@ import {
   formatNightVisionRemaining,
   useNightVisionPotionFromBackpack,
 } from "./backrooms-night-vision.js";
-import { buildLevel4World, L4_WALL_H } from "./backrooms-level4-world.js?v=2";
+import { buildLevel4World, getSpawnChunkBounds, L4_WALL_H } from "./backrooms-level4-world.js?v=2";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -90,6 +90,8 @@ import {
   initMegCareer,
   submitMegReport,
 } from "./backrooms-meg-career.js";
+import { createWandererManager } from "./backrooms-wanderers.js";
+import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
 
 const FOG_COLOR = 0xe8ebf0;
 const FOG_NEAR = 6;
@@ -146,6 +148,9 @@ let currentAimPick = null;
 let lootToastUntil = 0;
 let transitionLock = false;
 let dialogueOpen = false;
+/** @type {ReturnType<createWandererManager> | null} */
+let wandererManager = null;
+let firesalt = null;
 /** "bntg" | "meg" */
 let dialogueKind = "";
 /** 已接过水的饮水机 id；每台只出一瓶 */
@@ -224,6 +229,7 @@ function updateAimPick() {
     !interactRoots.length ||
     isInventoryOpen() ||
     dialogueOpen ||
+    !!(wandererManager && wandererManager.isDialogueOpen()) ||
     !survival ||
     survival.dead
   ) {
@@ -289,11 +295,21 @@ function isAimStorageClerk() {
   return currentAimPick.distance <= AIM_INTERACT_MAX;
 }
 
+function isAimWanderer() {
+  return !!(
+    currentAimPick &&
+    currentAimPick.data &&
+    currentAimPick.data.kind === "wanderer" &&
+    currentAimPick.distance <= AIM_INTERACT_MAX
+  );
+}
+
 function hudBlocked() {
   return (
     isInventoryOpen() ||
     isBaseStorageOpen() ||
     dialogueOpen ||
+    !!(wandererManager && wandererManager.isDialogueOpen()) ||
     isTaskUiOpen() ||
     !survival ||
     survival.dead ||
@@ -371,6 +387,11 @@ function updateInteractHint() {
   if (isAimStairsDown()) {
     interactHintEl.hidden = false;
     interactHintEl.innerHTML = "按 <kbd>Q</kbd> 沿楼梯下行";
+    return;
+  }
+  if (isAimWanderer()) {
+    interactHintEl.hidden = false;
+    interactHintEl.innerHTML = '流浪者 · 按 <kbd>Q</kbd> 交谈';
     return;
   }
   if (isAimVendingL61()) {
@@ -659,12 +680,22 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen() || isBaseStorageOpen() || dialogueOpen || isTaskUiOpen();
+      return (
+        isInventoryOpen() ||
+        isBaseStorageOpen() ||
+        dialogueOpen ||
+        isTaskUiOpen() ||
+        !!(wandererManager && wandererManager.isDialogueOpen())
+      );
     },
     onJump: function () {
       tryBackroomsJump(fps, JUMP_SPEED);
     },
     onKeyDown: function (e) {
+      if (wandererManager && wandererManager.isDialogueOpen()) {
+        if (wandererManager.handleKey(e)) e.preventDefault();
+        return true;
+      }
       // 任务板 / 成就面板优先吃掉按键（也负责 Y 开关面板）
       if (!dialogueOpen && !isInventoryOpen() && !isBaseStorageOpen() && handleTaskUiKey(e)) {
         e.preventDefault();
@@ -706,7 +737,8 @@ function bindControls() {
       }
       if (e.code === "KeyQ" && !e.repeat) {
         e.preventDefault();
-        if (isAimStairsDown()) tryStairsQ();
+        if (isAimWanderer() && wandererManager) wandererManager.interact(currentAimPick.data);
+        else if (isAimStairsDown()) tryStairsQ();
         else if (isAimVendingL61()) tryVendingQ();
         else if (isAimBntgLiaison()) openBntgDialogue();
         else if (isAimMegMember()) openMegDialogue();
@@ -792,6 +824,29 @@ function init() {
       showLootToast("皇家口粮 · 10 分钟强化");
     },
   });
+  wandererManager = createWandererManager({
+    root: root,
+    levelId: "l4",
+    colliders: colliders,
+    rescueZone: getSpawnChunkBounds(),
+    showToast: showLootToast,
+    getSurvival: function () { return survival; },
+    spawns: [
+      { id: "l4-ordinary", role: "ordinary", x: 6, z: 8 },
+      { id: "l4-injured", role: "injured", x: -20, z: 14 },
+      { id: "l4-lost", role: "lost", x: 12, z: -22 },
+      { id: "l4-scavenger", role: "scavenger", x: -8, z: 5 },
+      { id: "l4-merchant", role: "merchant", x: 0, z: 26 },
+      { id: "l4-mission", role: "mission", x: 16, z: -2 },
+      { id: "l4-suspicious", role: "suspicious", x: 42, z: -10 },
+    ],
+  });
+  interactRoots.push.apply(interactRoots, wandererManager.getInteractRoots());
+  firesalt = createBackroomsFiresaltController({
+    scene: scene,
+    camera: camera,
+    showToast: showLootToast,
+  });
   installMegCheckpointDeathHooks(
     survival,
     function () {
@@ -831,6 +886,7 @@ function init() {
       !isBaseStorageOpen() &&
       !transitionLock &&
       !dialogueOpen &&
+      !(wandererManager && wandererManager.isDialogueOpen()) &&
       !isTaskUiOpen()
     ) {
       var mul =
@@ -842,6 +898,9 @@ function init() {
       });
     }
     if (level4World) level4World.update(fps.player.x, fps.player.z);
+    if (wandererManager && survival && !survival.dead) {
+      wandererManager.update(dt, fps.player.x, fps.player.z);
+    }
     updateAimPick();
     updateWaterHint();
     updateInteractHint();
@@ -863,11 +922,13 @@ function init() {
             isAimVendingL61() ||
             isAimBntgLiaison() ||
             isAimMegMember() ||
+            isAimWanderer() ||
             isAimTaskBoard())
       );
     }
     updateBackroomsTemperature(dt, performance.now());
     updateBackroomsHeatDamage(survival, performance.now());
+    if (firesalt) firesalt.update(dt);
     renderer.render(scene, camera);
     },
   });

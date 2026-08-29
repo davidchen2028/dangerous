@@ -1,16 +1,99 @@
 /**
- * 后室 — 圆形玩家 vs AABB 碰撞（含体内弹出）
+ * 后室 — 圆形玩家 vs AABB / OBB 碰撞（含体内弹出）
  *
  * 热路径一律回填模块级复用对象，避免每帧数千次 {x,z} 分配触发 GC。
  * 调用方必须立即拷贝 .x/.z，不可长期持有返回引用。
+ *
+ * Collider：
+ * - AABB（默认）：{ minX, maxX, minZ, maxZ }
+ * - OBB：{ shape:'obb', cx, cz, halfX, halfZ, rotation, minX, maxX, minZ, maxZ }
+ *   min/max 为世界轴对齐外包盒，供空间分桶；可选 cos/sin 缓存。
  */
 
 /** @type {{ x: number, z: number }} */
 const _pushOut = { x: 0, z: 0 };
 /** @type {{ x: number, z: number }} */
 const _resolveOut = { x: 0, z: 0 };
+/** 复用：OBB 局部 AABB */
+const _obbLocalBox = { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
 
-export function pushOutCircleAABB(px, pz, radius, box) {
+var _obbCos = 1;
+var _obbSin = 0;
+var _obbLx = 0;
+var _obbLz = 0;
+
+function isObbCollider(box) {
+  return box && box.shape === "obb";
+}
+
+function loadObbBasis(box) {
+  if (box.cos != null && box.sin != null) {
+    _obbCos = box.cos;
+    _obbSin = box.sin;
+  } else {
+    var rot = box.rotation || 0;
+    _obbCos = Math.cos(rot);
+    _obbSin = Math.sin(rot);
+  }
+}
+
+/** 世界点 → OBB 局部（XZ），写入 _obbLx/_obbLz，并确保 basis 已加载 */
+function worldToObbLocal(px, pz, box) {
+  loadObbBasis(box);
+  var dx = px - box.cx;
+  var dz = pz - box.cz;
+  _obbLx = dx * _obbCos + dz * _obbSin;
+  _obbLz = -dx * _obbSin + dz * _obbCos;
+}
+
+function fillObbLocalBox(box) {
+  _obbLocalBox.minX = -box.halfX;
+  _obbLocalBox.maxX = box.halfX;
+  _obbLocalBox.minZ = -box.halfZ;
+  _obbLocalBox.maxZ = box.halfZ;
+  return _obbLocalBox;
+}
+
+/**
+ * 构建旋转矩形 collider（含空间分桶用 AABB）。
+ * @param {number} cx
+ * @param {number} cz
+ * @param {number} halfX 局部 X 半宽
+ * @param {number} halfZ 局部 Z 半深
+ * @param {number} [rotation=0] 绕 Y 的弧度
+ * @param {object} [props] 额外字段（kind / ghost 等）
+ */
+export function createObbCollider(cx, cz, halfX, halfZ, rotation, props) {
+  rotation = rotation == null ? 0 : rotation;
+  var cos = Math.cos(rotation);
+  var sin = Math.sin(rotation);
+  var extX = Math.abs(halfX * cos) + Math.abs(halfZ * sin);
+  var extZ = Math.abs(halfX * sin) + Math.abs(halfZ * cos);
+  var box = {
+    shape: "obb",
+    cx: cx,
+    cz: cz,
+    halfX: halfX,
+    halfZ: halfZ,
+    rotation: rotation,
+    cos: cos,
+    sin: sin,
+    minX: cx - extX,
+    maxX: cx + extX,
+    minZ: cz - extZ,
+    maxZ: cz + extZ,
+  };
+  if (props) {
+    var k;
+    for (k in props) {
+      if (Object.prototype.hasOwnProperty.call(props, k)) box[k] = props[k];
+    }
+  }
+  return box;
+}
+
+/** 纯 AABB 弹出（不识别 OBB），写 _pushOut */
+function pushOutCircleAabbRaw(px, pz, radius, box) {
   var closestX = Math.max(box.minX, Math.min(px, box.maxX));
   var closestZ = Math.max(box.minZ, Math.min(pz, box.maxZ));
   var dx = px - closestX;
@@ -45,6 +128,29 @@ export function pushOutCircleAABB(px, pz, radius, box) {
 
   _pushOut.x = px;
   _pushOut.z = pz;
+  return _pushOut;
+}
+
+export function pushOutCircleAABB(px, pz, radius, box) {
+  if (isObbCollider(box)) {
+    return pushOutCircleObb(px, pz, radius, box);
+  }
+  return pushOutCircleAabbRaw(px, pz, radius, box);
+}
+
+/**
+ * 圆 vs OBB：转到局部后复用 AABB 弹出，再转回世界。
+ * @returns {{ x: number, z: number }} 模块级复用对象
+ */
+export function pushOutCircleObb(px, pz, radius, box) {
+  worldToObbLocal(px, pz, box);
+  var cos = _obbCos;
+  var sin = _obbSin;
+  var local = pushOutCircleAabbRaw(_obbLx, _obbLz, radius, fillObbLocalBox(box));
+  var lx = local.x;
+  var lz = local.z;
+  _pushOut.x = box.cx + lx * cos - lz * sin;
+  _pushOut.z = box.cz + lx * sin + lz * cos;
   return _pushOut;
 }
 
@@ -179,14 +285,27 @@ function queryColliderBucket(colliders, px, pz, pad) {
   return _bucketQuery;
 }
 
-/** 玩家到 AABB 最近距离（用于交互判定） */
+/** 玩家到 AABB / OBB 最近距离（用于交互判定） */
 export function distancePointToAabb(px, pz, box) {
+  if (isObbCollider(box)) {
+    return distancePointToObb(px, pz, box);
+  }
   var cx = Math.max(box.minX, Math.min(px, box.maxX));
   var cz = Math.max(box.minZ, Math.min(pz, box.maxZ));
   return Math.hypot(px - cx, pz - cz);
 }
 
+export function distancePointToObb(px, pz, box) {
+  worldToObbLocal(px, pz, box);
+  var cx = Math.max(-box.halfX, Math.min(_obbLx, box.halfX));
+  var cz = Math.max(-box.halfZ, Math.min(_obbLz, box.halfZ));
+  return Math.hypot(_obbLx - cx, _obbLz - cz);
+}
+
 export function aabbCenter(box) {
+  if (isObbCollider(box)) {
+    return { x: box.cx, z: box.cz };
+  }
   return {
     x: (box.minX + box.maxX) * 0.5,
     z: (box.minZ + box.maxZ) * 0.5,
@@ -260,7 +379,48 @@ export function raycastAabbDistance(
 }
 
 /**
- * 准星射线被墙体 AABB 遮挡的最近距离（无墙则 > maxDist）
+ * 射线 vs OBB：原点/方向转到局部后复用 slab。
+ */
+export function raycastObbDistance(
+  ox,
+  oy,
+  oz,
+  dx,
+  dy,
+  dz,
+  box,
+  minY,
+  maxY,
+  maxDist
+) {
+  loadObbBasis(box);
+  var cos = _obbCos;
+  var sin = _obbSin;
+  var rx = ox - box.cx;
+  var rz = oz - box.cz;
+  var lox = rx * cos + rz * sin;
+  var loz = -rx * sin + rz * cos;
+  var ldx = dx * cos + dz * sin;
+  var ldz = -dx * sin + dz * cos;
+  return raycastAabbDistance(
+    lox,
+    oy,
+    loz,
+    ldx,
+    dy,
+    ldz,
+    -box.halfX,
+    minY,
+    -box.halfZ,
+    box.halfX,
+    maxY,
+    box.halfZ,
+    maxDist
+  );
+}
+
+/**
+ * 准星射线被墙体 AABB/OBB 遮挡的最近距离（无墙则 > maxDist）
  */
 export function raycastWallBlockDistance(
   origin,
@@ -282,6 +442,7 @@ export function raycastWallBlockDistance(
   var pad = maxDist + 1.5;
   var i;
   var c;
+  var t;
 
   for (i = 0; i < colliders.length; i++) {
     c = colliders[i];
@@ -295,21 +456,25 @@ export function raycastWallBlockDistance(
     ) {
       continue;
     }
-    var t = raycastAabbDistance(
-      ox,
-      oy,
-      oz,
-      dx,
-      dy,
-      dz,
-      c.minX,
-      minY,
-      c.minZ,
-      c.maxX,
-      maxY,
-      c.maxZ,
-      maxDist
-    );
+    if (isObbCollider(c)) {
+      t = raycastObbDistance(ox, oy, oz, dx, dy, dz, c, minY, maxY, maxDist);
+    } else {
+      t = raycastAabbDistance(
+        ox,
+        oy,
+        oz,
+        dx,
+        dy,
+        dz,
+        c.minX,
+        minY,
+        c.minZ,
+        c.maxX,
+        maxY,
+        c.maxZ,
+        maxDist
+      );
+    }
     if (t != null && t < block) block = t;
   }
   return block;

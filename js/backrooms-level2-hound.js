@@ -12,10 +12,20 @@ const WALK_SPEED = 1.15;
 const CHASE_SPEED = 3.65;
 const ATTACK_DAMAGE = 28;
 
-export function createLevel2Hound(parent, wallColliders) {
+/**
+ * @param {THREE.Object3D} parent
+ * @param {object[]} wallColliders
+ * @param {{x?:number,z?:number,id?:string,waypoints?:Array<{x:number,z:number}>,canSee?:Function}} [spec]
+ */
+export function createLevel2Hound(parent, wallColliders, spec) {
+  spec = spec || {};
   var group = new THREE.Group();
-  group.name = "Level2Hound";
-  group.position.set(0.25, 0, 36);
+  group.name = "Level2Hound_" + (spec.id || "legacy");
+  group.position.set(
+    Number.isFinite(spec.x) ? spec.x : 0.25,
+    0,
+    Number.isFinite(spec.z) ? spec.z : 36
+  );
   parent.add(group);
 
   var hideMat = new THREE.MeshStandardMaterial({
@@ -44,7 +54,14 @@ export function createLevel2Hound(parent, wallColliders) {
   }
 
   var home = { x: group.position.x, z: group.position.z };
-  var patrolAngle = Math.PI;
+  var waypoints =
+    Array.isArray(spec.waypoints) && spec.waypoints.length
+      ? spec.waypoints
+      : [
+          { x: home.x, z: home.z - 7 },
+          { x: home.x, z: home.z + 7 },
+        ];
+  var waypointIndex = 0;
   var attackCooldown = 0;
   var alive = true;
   var health = registerBackroomsEntityTarget(group, {
@@ -84,12 +101,32 @@ export function createLevel2Hound(parent, wallColliders) {
     var dx = px - group.position.x;
     var dz = pz - group.position.z;
     var distance = Math.hypot(dx, dz);
-    var chasing = distance <= NOTICE_DISTANCE;
+    var noticed = distance <= NOTICE_DISTANCE;
+    var chasing =
+      noticed &&
+      (!spec.canSee ||
+        spec.canSee(group.position.x, group.position.z, px, pz));
     if (chasing) {
       distance = moveToward(px, pz, CHASE_SPEED, dt);
+    } else if (noticed && waypoints.length) {
+      // 玩家拐过墙角后先追到离玩家最近的路网端点，再重新获取视线。
+      var chasePoint = waypoints[0];
+      var chasePointDistance = Math.hypot(px - chasePoint.x, pz - chasePoint.z);
+      for (var wi = 1; wi < waypoints.length; wi++) {
+        var candidateDistance = Math.hypot(px - waypoints[wi].x, pz - waypoints[wi].z);
+        if (candidateDistance < chasePointDistance) {
+          chasePoint = waypoints[wi];
+          chasePointDistance = candidateDistance;
+        }
+      }
+      moveToward(chasePoint.x, chasePoint.z, CHASE_SPEED * 0.72, dt);
     } else {
-      patrolAngle += dt * 0.28;
-      moveToward(home.x + Math.sin(patrolAngle) * 0.65, home.z + Math.cos(patrolAngle) * 8, WALK_SPEED, dt);
+      var waypoint = waypoints[waypointIndex % waypoints.length];
+      if (Math.hypot(group.position.x - waypoint.x, group.position.z - waypoint.z) < 0.7) {
+        waypointIndex = (waypointIndex + 1) % waypoints.length;
+        waypoint = waypoints[waypointIndex];
+      }
+      moveToward(waypoint.x, waypoint.z, WALK_SPEED, dt);
     }
     var stride = performance.now() * (chasing ? 0.011 : 0.0045);
     for (var i = 0; i < legs.length; i++) {
@@ -97,8 +134,8 @@ export function createLevel2Hound(parent, wallColliders) {
     }
     if (distance <= ATTACK_DISTANCE && attackCooldown <= 0 && survival && !survival.dead) {
       attackCooldown = 1.4;
-      survival.takeDamage(ATTACK_DAMAGE);
-      if (showToast) showToast("猎犬扑咬 · −" + ATTACK_DAMAGE + " 血量");
+      var applied = survival.takeDamage(ATTACK_DAMAGE) !== false;
+      if (applied && showToast) showToast("猎犬扑咬 · −" + ATTACK_DAMAGE + " 血量");
     }
   }
 
@@ -112,5 +149,5 @@ export function createLevel2Hound(parent, wallColliders) {
     eyeMat.dispose();
   }
 
-  return { group: group, update: update, dispose: dispose };
+  return { group: group, health: health, update: update, dispose: dispose };
 }

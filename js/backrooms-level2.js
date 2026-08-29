@@ -1,5 +1,5 @@
 /**
- * Backrooms Level 2 — 蒸汽管道走廊
+ * Backrooms Level 2 — 无限欧几里得工业隧道
  */
 import * as THREE from "three";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
@@ -25,7 +25,7 @@ import {
   buildBackroomsLevel2World,
   CORRIDOR_HEIGHT,
   SPAWN_Z,
-} from "./backrooms-level2-world.js?v=2";
+} from "./backrooms-level2-streaming-world.js?v=1";
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
 import {
   resolveBackroomsGfxProfile,
@@ -40,12 +40,11 @@ import {
   updateLevel2Doors,
   tryOpenLevel2Door,
   getLevel2DoorTransition,
-} from "./backrooms-level2-doors.js?v=2";
-import { createLevel2Xiaoye } from "./backrooms-level2-xiaoye.js";
-import { createLevel2DeathMoth } from "./backrooms-death-moth.js";
-import { createLevel2Clump } from "./backrooms-clump-ai.js";
-import { createLevel2Hound } from "./backrooms-level2-hound.js?v=1";
+} from "./backrooms-level2-doors.js?v=3";
+import { createLevel2EntityManager } from "./backrooms-level2-entities.js?v=1";
 import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
+import { createWandererManager } from "./backrooms-wanderers.js";
+import { prepareWandererLevelLayout } from "./backrooms-wanderer-store.js";
 import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
@@ -135,14 +134,10 @@ let lastNvHintSec = -1;
 
 let level2Doors = null;
 let interactRoots = [];
-/** @type {ReturnType<createLevel2Xiaoye> | null} */
-let level2Xiaoye = null;
-/** @type {ReturnType<createLevel2DeathMoth> | null} */
-let level2DeathMoth = null;
-/** @type {ReturnType<createLevel2Clump> | null} */
-let level2Clump = null;
-/** @type {ReturnType<createLevel2Hound> | null} */
-let level2Hound = null;
+/** @type {ReturnType<createLevel2EntityManager> | null} */
+let level2Entities = null;
+/** @type {ReturnType<createWandererManager> | null} */
+let wandererManager = null;
 let firesalt = null;
 /** @type {{ data: object, distance: number } | null} */
 let currentAimPick = null;
@@ -251,8 +246,21 @@ function getAimDoorId() {
   return currentAimPick.data.doorId;
 }
 
+function isAimWanderer() {
+  return !!(
+    currentAimPick &&
+    currentAimPick.data &&
+    currentAimPick.data.kind === "wanderer" &&
+    currentAimPick.distance <= AIM_INTERACT_MAX
+  );
+}
+
 function tryDoorQAction() {
   if (isInventoryOpen() || !survival || survival.dead) return;
+  if (isAimWanderer() && wandererManager) {
+    wandererManager.interact(currentAimPick.data);
+    return;
+  }
   var id = getAimDoorId();
   if (!id) {
     if (level2World && currentAimPick && currentAimPick.data) {
@@ -280,7 +288,11 @@ function tryDoorQAction() {
     return;
   }
   if (!level2Doors) return;
-  if (id === "l283") {
+  var destination =
+    currentAimPick && currentAimPick.data
+      ? currentAimPick.data.destination
+      : null;
+  if (destination === "l283" || id === "l283") {
     if (tryOpenLevel2Door(level2Doors, id)) {
       showLootToast("彩色门已打开 · 可以穿过");
     }
@@ -299,6 +311,11 @@ function updateDoorHint() {
   }
   var id = getAimDoorId();
   if (!id) {
+    if (isAimWanderer()) {
+      doorHintEl.innerHTML = '流浪者 · 按 <kbd>Q</kbd> 交谈';
+      doorHintEl.hidden = false;
+      return;
+    }
     var worldHint =
       level2World && currentAimPick
         ? level2World.getInteractionHint(currentAimPick.data)
@@ -311,12 +328,22 @@ function updateDoorHint() {
     }
     return;
   }
-  if (!level2Doors || (level2Doors[id] && level2Doors[id].open)) {
+  var aimedDoor =
+    level2Doors && level2Doors.dynamic && level2Doors.active
+      ? level2Doors.active.get(id)
+      : level2Doors && level2Doors[id];
+  if (!level2Doors || (aimedDoor && aimedDoor.open)) {
     doorHintEl.hidden = true;
     return;
   }
-  if (id === "l283") {
+  var destination =
+    currentAimPick && currentAimPick.data
+      ? currentAimPick.data.destination
+      : null;
+  if (destination === "l283" || id === "l283") {
     doorHintEl.innerHTML = '彩色门 · 按 <kbd>Q</kbd> 打开';
+  } else if (destination === "l1") {
+    doorHintEl.innerHTML = '老化木门 · 按 <kbd>Q</kbd> 打开';
   } else {
     doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开未上锁的门';
   }
@@ -331,7 +358,8 @@ function tryLevelTransition() {
   try {
     saveBackroomsSurvival(survival);
     if (dest === "l1") {
-      grantLevelPass("l1", fps.yaw);
+      // Level 1 的合法回程令牌是 clip；旧的 "l1" 并不存在于 pass 表。
+      grantLevelPass("clip", fps.yaw);
       queueEnterLevelNumber(1);
       window.location.href = "backrooms-level1.html";
     } else if (dest === "l4") {
@@ -420,25 +448,25 @@ function applyLevel2NightVisionLighting(active) {
     scene.fog.color.setHex(FOG_COLOR);
     scene.fog.near = FOG_NEAR;
     scene.fog.far = FOG_FAR;
-    L.ambient.color.setHex(0x2a2a38);
-    L.ambient.intensity = 0.78;
-    L.fill.color.setHex(0x3a3a50);
-    L.fill.groundColor.setHex(0x0a0a10);
-    L.fill.intensity = 0.4;
+    L.ambient.color.setHex(0x56515f);
+    L.ambient.intensity = 0.92;
+    L.fill.color.setHex(0x6f687b);
+    L.fill.groundColor.setHex(0x17151b);
+    L.fill.intensity = 0.58;
     if (playerFollowLights) {
       playerFollowLights.key.intensity = 1.05;
       playerFollowLights.key.distance = 11;
       playerFollowLights.fill.intensity = 0.32;
       playerFollowLights.fill.distance = 7.5;
     }
-    L.materials.wall.color.setHex(0x3a3a44);
-    L.materials.wall.emissive.setHex(0x181820);
-    L.materials.wall.emissiveIntensity = 0.35;
-    L.materials.floor.color.setHex(0x2a2a32);
-    L.materials.floor.emissive.setHex(0x0c0c10);
+    L.materials.wall.color.setHex(0x756f65);
+    L.materials.wall.emissive.setHex(0x2b2721);
+    L.materials.wall.emissiveIntensity = 0.38;
+    L.materials.floor.color.setHex(0x3c3a37);
+    L.materials.floor.emissive.setHex(0x141315);
     L.materials.floor.emissiveIntensity = 0.2;
-    L.materials.ceil.color.setHex(0x050506);
-    L.materials.ceil.emissive.setHex(0x010102);
+    L.materials.ceil.color.setHex(0x202026);
+    L.materials.ceil.emissive.setHex(0x0d0d12);
     L.materials.pipe.color.setHex(0x2a2a32);
     L.materials.pipe.emissive.setHex(0x0a0a10);
     L.materials.lamp.emissiveIntensity = 1.65;
@@ -466,12 +494,20 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
-      return isInventoryOpen() || isTaskUiOpen();
+      return (
+        isInventoryOpen() ||
+        isTaskUiOpen() ||
+        !!(wandererManager && wandererManager.isDialogueOpen())
+      );
     },
     onJump: function () {
       tryBackroomsJump(fps, JUMP_SPEED);
     },
     onKeyDown: function (e) {
+      if (wandererManager && wandererManager.isDialogueOpen()) {
+        if (wandererManager.handleKey(e)) e.preventDefault();
+        return true;
+      }
       if (!isInventoryOpen() && handleTaskUiKey(e)) {
         e.preventDefault();
         return true;
@@ -523,22 +559,15 @@ function init() {
   scene.add(root);
 
   wallColliders.length = 0;
-  var built = buildBackroomsLevel2World(root);
+  var built = buildBackroomsLevel2World(root, { colliders: wallColliders });
   level2World = built;
-  var i;
-  for (i = 0; i < built.colliders.length; i++) {
-    wallColliders.push(built.colliders[i]);
-  }
   fps.player.x = built.spawnX;
   fps.player.z = built.spawnZ;
   level2Lighting = built.lighting;
   playerFollowLights = createPlayerFollowLights(root);
   level2Doors = built.doors;
   interactRoots = built.interactRoots || [];
-  level2Xiaoye = createLevel2Xiaoye(root);
-  level2DeathMoth = createLevel2DeathMoth(root, wallColliders);
-  level2Clump = createLevel2Clump(root, wallColliders);
-  level2Hound = createLevel2Hound(root, wallColliders);
+  level2Entities = createLevel2EntityManager(root, wallColliders);
   firesalt = createBackroomsFiresaltController({
     scene: scene,
     camera: camera,
@@ -547,6 +576,38 @@ function init() {
   applyLevel2NightVisionLighting(isNightVisionActive());
 
   initSurvivalHud();
+  prepareWandererLevelLayout("l2", "infinite-tunnels-v2");
+  var wandererPoints = built.getWandererSpawns ? built.getWandererSpawns() : [];
+  var fallbackPoints = [
+    { x: 0, z: -22 },
+    { x: 22, z: 0 },
+    { x: -22, z: 0 },
+    { x: 0, z: 32 },
+    { x: 32, z: 0 },
+    { x: -32, z: 0 },
+    { x: 0, z: -42 },
+  ];
+  while (wandererPoints.length < 7) {
+    wandererPoints.push(fallbackPoints[wandererPoints.length]);
+  }
+  wandererManager = createWandererManager({
+    root: root,
+    levelId: "l2",
+    colliders: wallColliders,
+    rescueZone: built.spawnZone,
+    showToast: showLootToast,
+    getSurvival: function () { return survival; },
+    spawns: [
+      { id: "l2-ordinary", role: "ordinary", x: wandererPoints[0].x, z: wandererPoints[0].z },
+      { id: "l2-injured", role: "injured", x: wandererPoints[1].x, z: wandererPoints[1].z },
+      { id: "l2-lost", role: "lost", x: wandererPoints[2].x, z: wandererPoints[2].z },
+      { id: "l2-scavenger", role: "scavenger", x: wandererPoints[3].x, z: wandererPoints[3].z },
+      { id: "l2-merchant", role: "merchant", x: wandererPoints[4].x, z: wandererPoints[4].z },
+      { id: "l2-mission", role: "mission", x: wandererPoints[5].x, z: wandererPoints[5].z },
+      { id: "l2-suspicious", role: "suspicious", x: wandererPoints[6].x, z: wandererPoints[6].z },
+    ],
+  });
+  interactRoots.push.apply(interactRoots, wandererManager.getInteractRoots());
   initBackroomsTemperature(2, {
     rootEl: tempRootEl,
     fillEl: tempFillEl,
@@ -592,7 +653,12 @@ function startLoop() {
     _physOpts.bodyHeight = BODY_HEIGHT;
     _physOpts.ceilingY = CORRIDOR_HEIGHT;
     updateBackroomsPlayerPhysics(fps, dt, _physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !isTaskUiOpen()) {
+    if (
+      (!survival || !survival.dead) &&
+      !isInventoryOpen() &&
+      !isTaskUiOpen() &&
+      !(wandererManager && wandererManager.isDialogueOpen())
+    ) {
       var speedMul =
         survival && sprinting
           ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
@@ -606,23 +672,20 @@ function startLoop() {
 
     updateAimPick();
     updateDoorHint();
+    if (wandererManager && survival && !survival.dead) {
+      wandererManager.update(dt, fps.player.x, fps.player.z);
+    }
     updateLevel2Doors(level2Doors, dt);
-    if (level2Xiaoye && survival && !survival.dead) {
-      level2Xiaoye.update(dt, fps.player.x, fps.player.z, survival, showLootToast);
-    }
-    if (level2DeathMoth && survival && !survival.dead) {
-      level2DeathMoth.update(dt, fps.player.x, fps.player.z, survival, showLootToast, {
-        wallColliders: wallColliders,
-        now: now,
-      });
-    }
-    if (level2Clump && survival && !survival.dead) {
-      level2Clump.update(dt, fps.player.x, fps.player.z, survival, showLootToast, {
-        wallColliders: wallColliders,
-      });
-    }
-    if (level2Hound && survival && !survival.dead) {
-      level2Hound.update(dt, fps.player.x, fps.player.z, survival, showLootToast);
+    if (level2Entities && level2World && survival && !survival.dead) {
+      level2Entities.update(
+        dt,
+        fps.player.x,
+        fps.player.z,
+        survival,
+        showLootToast,
+        level2World.getActiveEntitySpawns(),
+        level2Environment
+      );
     }
     if (firesalt) firesalt.update(dt);
 

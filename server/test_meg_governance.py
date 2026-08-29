@@ -136,6 +136,28 @@ class MegGovernanceTest(unittest.TestCase):
         )
         self.assertFalse(accepted)
 
+    def test_civilian_assault_penalty_is_allowed_and_deduplicated(self) -> None:
+        _, identity_id = self.create_identity("流浪者纪律测试")
+        accepted, duplicate = db.record_backrooms_event(
+            identity_id,
+            "civilian-assault:l2:l2-ordinary:first-hit",
+            "civilian_assault",
+            "l2",
+            {"wandererId": "l2-ordinary", "source": "wanderer_ecosystem"},
+        )
+        self.assertTrue(accepted)
+        self.assertFalse(duplicate)
+        accepted, duplicate = db.record_backrooms_event(
+            identity_id,
+            "civilian-assault:l2:l2-ordinary:first-hit",
+            "civilian_assault",
+            "l2",
+            {"wandererId": "l2-ordinary", "source": "wanderer_ecosystem"},
+        )
+        self.assertTrue(accepted)
+        self.assertTrue(duplicate)
+        self.assertEqual(db.get_meg_profile(identity_id)["contribution"], 0)
+
     def test_supervisor_e_number_cap_archive_and_admin_case(self) -> None:
         _, first_id = self.create_identity("监督候选一")
         _, second_id = self.create_identity("监督候选二")

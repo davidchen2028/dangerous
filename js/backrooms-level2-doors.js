@@ -8,6 +8,7 @@ import { isFastingRunActive } from "./backrooms-tasks.js";
 var _doorBoxScratch = new THREE.Box3();
 
 const STORAGE_KEY = "backrooms_l2_doors_v3";
+export const LEVEL2_STREAM_DOOR_STATE_KEY = "backrooms_l2_doors_v4";
 const DOOR_W = 1.05;
 const DOOR_H = 2.45;
 const DOOR_THICK = 0.12;
@@ -391,7 +392,209 @@ export function buildLevel2Doors(group, colliders, halfW, halfLen, hubEdge) {
   };
 }
 
+function readStreamingDoorState() {
+  try {
+    var parsed = JSON.parse(sessionStorage.getItem(LEVEL2_STREAM_DOOR_STATE_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function writeStreamingDoorState(state) {
+  try {
+    sessionStorage.setItem(LEVEL2_STREAM_DOOR_STATE_KEY, JSON.stringify(state));
+  } catch (err) {
+    /* storage may be unavailable */
+  }
+}
+
+function createStreamingDoorRecord(parent, spec, colliders, interactRoots, state) {
+  var root = new THREE.Group();
+  root.name = "L2StreamDoor_" + spec.key;
+  root.position.set(spec.x, 0, spec.z);
+  root.rotation.y = spec.rotation || 0;
+  parent.add(root);
+
+  var colors = {
+    plain: [0x494b50, 0x191a1e],
+    wood: [0x5b3c27, 0x241207],
+    rainbow: [0x9a64b4, 0x45215c],
+  };
+  var palette = colors[spec.style] || colors.plain;
+  var frameMat = new THREE.MeshStandardMaterial({
+    color: spec.style === "rainbow" ? 0x72727d : 0x34363a,
+    roughness: 0.82,
+    metalness: 0.22,
+  });
+  var panelMat = new THREE.MeshStandardMaterial({
+    color: palette[0],
+    emissive: palette[1],
+    emissiveIntensity: spec.style === "rainbow" ? 0.55 : 0.18,
+    roughness: spec.style === "wood" ? 0.96 : 0.74,
+  });
+  var sideL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.7, 0.18), frameMat);
+  sideL.position.set(-0.68, 1.35, 0);
+  root.add(sideL);
+  var sideR = sideL.clone();
+  sideR.position.x = 0.68;
+  root.add(sideR);
+  var lintel = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.14, 0.18), frameMat);
+  lintel.position.set(0, 2.63, 0);
+  root.add(lintel);
+
+  var pivot = new THREE.Group();
+  pivot.position.set(-0.6, 1.32, 0);
+  root.add(pivot);
+  var panel = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 0.11), panelMat);
+  panel.position.x = 0.6;
+  pivot.add(panel);
+  var pick = new THREE.Mesh(
+    new THREE.BoxGeometry(1.65, 2.85, 0.75),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  pick.position.set(0, 1.35, 0);
+  pick.userData.brInteract = {
+    kind: "l2_door",
+    doorId: spec.key,
+    destination: spec.destination,
+  };
+  root.add(pick);
+  interactRoots.push(root);
+
+  root.updateMatrixWorld(true);
+  var box = new THREE.Box3().setFromObject(panel);
+  var collider = {
+    kind: "wall",
+    minX: box.min.x - 0.04,
+    maxX: box.max.x + 0.04,
+    minZ: box.min.z - 0.04,
+    maxZ: box.max.z + 0.04,
+    ghost: !!state[spec.key],
+  };
+  colliders.push(collider);
+  try {
+    delete colliders.__brSpatial;
+  } catch (err) {
+    /* ignore */
+  }
+  return {
+    key: spec.key,
+    chunkKey: spec.chunkKey,
+    destination: spec.destination,
+    style: spec.style,
+    root: root,
+    pivot: pivot,
+    pick: pick,
+    collider: collider,
+    open: !!state[spec.key],
+    openAmount: state[spec.key] ? 1 : 0,
+    materials: [frameMat, panelMat, pick.material],
+    geometries: [sideL.geometry, lintel.geometry, panel.geometry, pick.geometry],
+  };
+}
+
+/**
+ * Dynamic door registry used by the infinite Level 2 world.
+ * Door specs are owned by chunks and may be repeatedly loaded/unloaded.
+ */
+export function createStreamingLevel2Doors(parent, colliders, interactRoots) {
+  var active = new Map();
+  var state = readStreamingDoorState();
+
+  function loadChunk(chunkKey, specs) {
+    for (var i = 0; i < specs.length; i++) {
+      var spec = Object.assign({}, specs[i], { chunkKey: chunkKey });
+      if (active.has(spec.key)) continue;
+      active.set(
+        spec.key,
+        createStreamingDoorRecord(parent, spec, colliders, interactRoots, state)
+      );
+    }
+  }
+
+  function unloadChunk(chunkKey) {
+    var remove = [];
+    active.forEach(function (door, key) {
+      if (door.chunkKey === chunkKey) remove.push(key);
+    });
+    for (var i = 0; i < remove.length; i++) {
+      var door = active.get(remove[i]);
+      active.delete(remove[i]);
+      var ci = colliders.indexOf(door.collider);
+      if (ci >= 0) colliders.splice(ci, 1);
+      try {
+        delete colliders.__brSpatial;
+      } catch (err) {
+        /* ignore */
+      }
+      var ri = interactRoots.indexOf(door.root);
+      if (ri >= 0) interactRoots.splice(ri, 1);
+      if (door.root.parent) door.root.parent.remove(door.root);
+      door.materials.forEach(function (material) { material.dispose(); });
+      door.geometries.forEach(function (geometry) { geometry.dispose(); });
+    }
+  }
+
+  var api = {
+    dynamic: true,
+    active: active,
+    loadChunk: loadChunk,
+    unloadChunk: unloadChunk,
+    openDoor: function (key) {
+      var door = active.get(key);
+      if (!door) return false;
+      door.open = true;
+      door.collider.ghost = true;
+      state[key] = true;
+      writeStreamingDoorState(state);
+      return true;
+    },
+    update: function (dt) {
+      active.forEach(function (door) {
+        var target = door.open ? 1 : 0;
+        door.openAmount += (target - door.openAmount) * Math.min(1, dt * 6);
+        door.pivot.rotation.y = -door.openAmount * Math.PI * 0.56;
+      });
+    },
+    getTransition: function (px, pz) {
+      var result = null;
+      active.forEach(function (door) {
+        if (result || !door.open) return;
+        var dx = px - door.root.position.x;
+        var dz = pz - door.root.position.z;
+        if (dx * dx + dz * dz > 1.5 * 1.5) return;
+        result =
+          door.destination === "l3_or_l4"
+            ? isFastingRunActive()
+              ? "l3"
+              : ((hashDoorKey(door.key) % 10) < 3 ? "l4" : "l3")
+            : door.destination;
+      });
+      return result;
+    },
+    dispose: function () {
+      var chunks = [];
+      active.forEach(function (door) {
+        if (chunks.indexOf(door.chunkKey) < 0) chunks.push(door.chunkKey);
+      });
+      chunks.forEach(unloadChunk);
+    },
+  };
+  return api;
+}
+
+function hashDoorKey(text) {
+  var h = 2166136261;
+  for (var i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
 export function tryOpenLevel2Door(doors, doorId) {
+  if (doors && doors.dynamic) return doors.openDoor(doorId);
   if (!doors || !doors[doorId]) return false;
   var d = doors[doorId];
   if (d.open) return true;
@@ -402,6 +605,10 @@ export function tryOpenLevel2Door(doors, doorId) {
 }
 
 export function updateLevel2Doors(doors, dt) {
+  if (doors && doors.dynamic) {
+    doors.update(dt);
+    return;
+  }
   if (!doors) return;
   var ids = ["l1", "l3", "l283"];
   var i;
@@ -421,6 +628,7 @@ export function updateLevel2Doors(doors, dt) {
 }
 
 export function getLevel2DoorTransition(doors, px, pz) {
+  if (doors && doors.dynamic) return doors.getTransition(px, pz);
   if (!doors) return null;
   if (doors.l1 && doors.l1.open && pointInPassage(doors.l1.passage, px, pz)) {
     return "l1";

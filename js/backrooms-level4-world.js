@@ -40,6 +40,17 @@ function worldToChunk(px, pz) {
   };
 }
 
+/** 出生点所在流式区块的世界坐标包围盒（半开区间） */
+export function getSpawnChunkBounds() {
+  var c = worldToChunk(L4_SPAWN_X, L4_SPAWN_Z);
+  return {
+    minX: c.cx * L4_CHUNK_SIZE,
+    maxX: (c.cx + 1) * L4_CHUNK_SIZE,
+    minZ: c.cz * L4_CHUNK_SIZE,
+    maxZ: (c.cz + 1) * L4_CHUNK_SIZE,
+  };
+}
+
 var _voidWindowTex = null;
 function voidWindowTexture() {
   if (_voidWindowTex) return _voidWindowTex;

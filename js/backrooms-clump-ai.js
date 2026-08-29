@@ -181,8 +181,8 @@ function applyPounceDamage(clump, survival, toastFn, opts) {
   if (clump.lungeApplied || !survival || survival.dead) return;
   clump.lungeApplied = true;
   var damage = opts.damage != null ? opts.damage : CLUMP_POUNCE_DAMAGE;
-  survival.takeDamage(damage);
-  if (typeof toastFn === "function") {
+  var applied = survival.takeDamage(damage) !== false;
+  if (applied && typeof toastFn === "function") {
     toastFn((opts.name || "肢团") + "扑击！−" + damage + " 血量");
   }
 }
@@ -283,11 +283,11 @@ function updateSingleClump(clump, dt, px, pz, survival, toastFn, opts) {
 function createClumpSystem(parent, spawns, opts) {
   opts = opts || {};
   var luck = getLuck();
-  if (luck >= 30) {
+  if (opts.applyLuck !== false && luck >= 30) {
     spawns = spawns.filter(function () {
       return Math.random() < 0.55;
     });
-  } else if (luck <= -30) {
+  } else if (opts.applyLuck !== false && luck <= -30) {
     spawns = spawns.slice();
     var originals = spawns.slice();
     for (var s = 0; s < originals.length; s++) {
@@ -348,6 +348,7 @@ export function createClumpsAt(parent, spawns, wallColliders, options) {
     cooldown: options.cooldown,
     kind: options.kind,
     name: options.name,
+    applyLuck: options.applyLuck,
   });
 }
 

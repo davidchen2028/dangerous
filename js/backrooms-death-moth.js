@@ -253,8 +253,10 @@ function updateSingleMoth(moth, dt, px, pz, survival, toastFn, opts) {
       var sdx = px - moth.x;
       var sdz = pz - moth.z;
       if (sdx * sdx + sdz * sdz <= (DEATH_MOTH_SPRAY_RANGE + 0.8) * (DEATH_MOTH_SPRAY_RANGE + 0.8)) {
-        survival.takeDamage(DEATH_MOTH_SPRAY_DAMAGE);
-        if (toastFn) toastFn("死亡飞蛾毒液！−" + DEATH_MOTH_SPRAY_DAMAGE + " 血量");
+        var applied = survival.takeDamage(DEATH_MOTH_SPRAY_DAMAGE) !== false;
+        if (applied && toastFn) {
+          toastFn("死亡飞蛾毒液！−" + DEATH_MOTH_SPRAY_DAMAGE + " 血量");
+        }
       }
       moth.sprayApplied = true;
     }
@@ -306,11 +308,11 @@ function updateSingleMoth(moth, dt, px, pz, survival, toastFn, opts) {
 function createDeathMothSystem(parent, spawns, opts) {
   opts = opts || {};
   var luck = getLuck();
-  if (luck >= 30) {
+  if (opts.applyLuck !== false && luck >= 30) {
     spawns = spawns.filter(function () {
       return Math.random() < 0.55;
     });
-  } else if (luck <= -30) {
+  } else if (opts.applyLuck !== false && luck <= -30) {
     spawns = spawns.slice();
     var originals = spawns.slice();
     for (var s = 0; s < originals.length; s++) {
@@ -362,9 +364,11 @@ function createDeathMothSystem(parent, spawns, opts) {
 }
 
 /** 自定义关卡：按给定世界坐标生成死亡飞蛾 */
-export function createDeathMothsAt(parent, spawns, wallColliders) {
+export function createDeathMothsAt(parent, spawns, wallColliders, options) {
+  options = options || {};
   return createDeathMothSystem(parent, spawns || [], {
     wallColliders: wallColliders || null,
+    applyLuck: options.applyLuck,
   });
 }
 

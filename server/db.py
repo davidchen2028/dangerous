@@ -1099,6 +1099,7 @@ MEG_EVENT_CONTRIBUTION = {
     "c101_submit": 0,
     "high_risk_complete": 50,
     "base_assault": -250,
+    "civilian_assault": -40,
     "entity_neutralized": 20,
     "rescue_complete": 35,
     "supply_delivered": 15,
