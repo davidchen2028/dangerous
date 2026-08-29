@@ -164,18 +164,25 @@ def _push_friends_update(user_id: int) -> None:
         socketio.emit("friends_updated", _friends_payload(user_id), room=sid)
 
 
+def _secret_equal(candidate: str, expected: str) -> bool:
+    """按字节做等时比较：compare_digest 遇到非 ASCII 字符串会抛 TypeError。"""
+    return secrets.compare_digest(
+        (candidate or "").encode("utf-8"), (expected or "").encode("utf-8")
+    )
+
+
 def _admin_key_ok(key: str) -> bool:
     if not ADMIN_KEY:
         return False
     if ADMIN_LOCAL_ONLY and request.remote_addr not in ("127.0.0.1", "::1"):
         return False
-    return secrets.compare_digest(key or "", ADMIN_KEY)
+    return _secret_equal(key, ADMIN_KEY)
 
 
 def _admin_password_ok(password: str) -> bool:
     if not ADMIN_KEY:
         return False
-    return secrets.compare_digest(password or "", ADMIN_KEY)
+    return _secret_equal(password, ADMIN_KEY)
 
 
 def _client_ip() -> str:

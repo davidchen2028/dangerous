@@ -274,6 +274,31 @@ class MegGovernanceTest(unittest.TestCase):
         self.assertFalse(status.get_json()["locked"])
         self.assertFalse(status.get_json()["localCareerAvailable"])
 
+    def test_non_ascii_admin_key_is_rejected_not_crashed(self) -> None:
+        """compare_digest 遇到非 ASCII 字符串会抛 TypeError，必须按字节比较。"""
+        for key in ("我的密钥", "clé", "key🔑", "wrong", ""):
+            with self.subTest(key=key):
+                page = self.client.get("/admin/meg-governance", query_string={"key": key})
+                self.assertEqual(page.status_code, 403)
+                api = self.client.get(
+                    "/api/admin/backrooms/overview", query_string={"key": key}
+                )
+                self.assertEqual(api.status_code, 403)
+
+    def test_non_ascii_admin_key_can_authenticate(self) -> None:
+        server_app.ADMIN_KEY = "极危管理密钥"
+        try:
+            ok = self.client.get(
+                "/admin/meg-governance", query_string={"key": "极危管理密钥"}
+            )
+            self.assertEqual(ok.status_code, 200)
+            bad = self.client.get(
+                "/admin/meg-governance", query_string={"key": "极危管理密码"}
+            )
+            self.assertEqual(bad.status_code, 403)
+        finally:
+            server_app.ADMIN_KEY = "test-admin-key"
+
 
 if __name__ == "__main__":
     unittest.main()
