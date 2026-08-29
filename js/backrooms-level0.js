@@ -334,6 +334,10 @@ const MAIN_AREA_RADIUS = 96;
 let leftMainAreaHintShown = false;
 const CLIP_DASH_SPEED = 13;
 const CLIP_DASH_TIME = 0.55;
+/** 测试用自动切出的等待时长 */
+const AUTO_CLIP_DELAY_MS = 20000;
+/** 到时后自动切出的时间戳；0 表示已结算或未启用 */
+let autoClipDeadline = 0;
 
 function syncLevel0HudTitle(title) {
   var el = document.querySelector(".backrooms-hud__title");
@@ -1589,6 +1593,21 @@ function updateClipDash(dt) {
   }
 }
 
+/**
+ * 测试用：进入 L0 满 AUTO_CLIP_DELAY_MS 后自动切出到 Level 1。
+ * 子区域与马尼拉房间内推迟结算，避免带着子场景状态跳转。
+ */
+function updateAutoClip(nowMs) {
+  if (!autoClipDeadline || clipState !== "idle") return;
+  if (survival && survival.dead) return;
+  if (manilaRoom) return;
+  if (level0Zones && level0Zones.isInSubZone()) return;
+  if (nowMs < autoClipDeadline) return;
+  autoClipDeadline = 0;
+  showBackroomsToast("墙壁失去了阻力，你被推出了这一层。");
+  goToLevel1FromL0();
+}
+
 function isDevJumpOpen() {
   return !!(devJumpEl && !devJumpEl.hidden);
 }
@@ -1964,6 +1983,7 @@ function init() {
   bindControls();
   syncLookUi();
   onResize();
+  autoClipDeadline = performance.now() + AUTO_CLIP_DELAY_MS;
   startLoop();
 }
 
@@ -2011,6 +2031,7 @@ function startLoop() {
 
     updatePlayerPhysics(dt);
     if (level0Zones) level0Zones.update(dt);
+    updateAutoClip(nowMs);
     updateRedRoomAudio();
     if (
       (!survival || !survival.dead) &&
