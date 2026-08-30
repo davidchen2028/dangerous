@@ -154,6 +154,10 @@ export function createLevel0WorldManager(root, opts) {
   var shadows = !!gfx.shadows;
   var onPoiChanged =
     typeof opts.onPoiChanged === "function" ? opts.onPoiChanged : null;
+  // 复用本生成器的其他层级（如 Level C-1 交点）可传 [] 关闭 Level 0 专属地标。
+  var poiSpecs = Array.isArray(opts.poiSpecs) ? opts.poiSpecs : POI_SPECS;
+  var onChunkBuilt =
+    typeof opts.onChunkBuilt === "function" ? opts.onChunkBuilt : null;
 
   var materialContext = {
     seed: seed,
@@ -421,16 +425,17 @@ export function createLevel0WorldManager(root, opts) {
   }
 
   function choosePoi(cx, cz, epoch) {
+    if (!poiSpecs.length) return null;
     var stableKind = stablePoiSpecs.get(keyOf(cx, cz));
     if (stableKind) {
-      for (var si = 0; si < POI_SPECS.length; si++) {
-        if (POI_SPECS[si].kind === stableKind) return POI_SPECS[si];
+      for (var si = 0; si < poiSpecs.length; si++) {
+        if (poiSpecs[si].kind === stableKind) return poiSpecs[si];
       }
     }
-    var clipSpec = POI_SPECS[0];
+    var clipSpec = poiSpecs[0];
     if (clipGuarantee && eligibleForSpec(clipSpec, cx, cz)) return clipSpec;
-    for (var i = 0; i < POI_SPECS.length; i++) {
-      var spec = POI_SPECS[i];
+    for (var i = 0; i < poiSpecs.length; i++) {
+      var spec = poiSpecs[i];
       var roll =
         hashString(
           seed + "|poi|" + spec.kind + "|" + cx + "|" + cz + "|" + epoch
@@ -952,6 +957,48 @@ export function createLevel0WorldManager(root, opts) {
     ceiling.position.set(cx * chunkSize, wallHeight, cz * chunkSize);
     ceiling.receiveShadow = shadows;
     group.add(ceiling);
+
+    if (onChunkBuilt) {
+      onChunkBuilt(chunk, {
+        seed: seed,
+        gridSize: gridSize,
+        chunkSize: chunkSize,
+        wallHeight: wallHeight,
+        cellsPerChunk: CELLS_PER_CHUNK,
+        hashString: hashString,
+        mulberry32: mulberry32,
+        cellWorldCenter: function (row, col) {
+          return cellWorldCenter(cx, cz, row, col);
+        },
+        isOpenCell: function (row, col) {
+          if (row < 0 || col < 0) return false;
+          if (row >= CELLS_PER_CHUNK || col >= CELLS_PER_CHUNK) return false;
+          return matrix[row][col] === 0;
+        },
+        addCollider: function (collider) {
+          addCollider(chunk, collider);
+        },
+        addInteract: function (mesh) {
+          addInteract(chunk, mesh);
+        },
+        /**
+         * 登记一处地标：走过两处以上之后，非欧循环才可能把玩家绕回去。
+         * 每个区块只保留最后登记的一处（与 POI 地标同一套机制）。
+         */
+        addLandmark: function (kind, position, safePosition) {
+          return addLandmark(
+            chunk,
+            { kind: kind },
+            position,
+            safePosition || position
+          );
+        },
+        /** 随区块卸载一并移除并释放几何/材质 */
+        addDisposable: function (object) {
+          if (object) chunk.disposableSpecials.push(object);
+        },
+      });
+    }
 
     chunks.set(key, chunk);
     loadCount++;

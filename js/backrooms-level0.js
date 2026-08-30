@@ -1557,6 +1557,20 @@ function goToLevel1FromL0() {
     });
     return;
   }
+  // 交点与 Level 0 极为相似，很多人切出后其实到的是这里而不是 Level 1。
+  var entersC1 = Math.random() < 0.05;
+  if (entersC1) {
+    try {
+      grantLevelPass("c1", fps.yaw);
+    } catch (err1) {
+      /* ignore */
+    }
+    queueEnterLevelBanner("Level C-1 · 交点");
+    fadeOutLevel0Music(MUSIC_FADE_OUT_MS).then(function () {
+      window.location.href = "backrooms-level-c1.html";
+    });
+    return;
+  }
   try {
     grantLevelPass("clip");
     sessionStorage.setItem("backrooms_clip_yaw", String(fps.yaw));

@@ -9,6 +9,8 @@ export const BACKROOMS_ENTITY_HEALTH = Object.freeze({
   smiler: 150,
   hound: 90,
   partygoer: 120,
+  faceling: 110,
+  duller: 90,
 });
 
 /** @type {object[]} */

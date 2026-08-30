@@ -649,6 +649,8 @@ var _megStorageClerkNpc = null;
 var _megRecruiterNpc = null;
 /** @type {THREE.Object3D | null} */
 var _level13Entrance = null;
+/** @type {THREE.Object3D | null} 通往 Level C-1「交点」的封锁楼梯间门 */
+var _levelC1Entrance = null;
 function resetMegModuleState() {
   _megBaseCenter = null;
   _megBaseOccluderGroup = null;
@@ -664,6 +666,7 @@ function resetMegModuleState() {
   _megStorageClerkNpc = null;
   _megRecruiterNpc = null;
   _level13Entrance = null;
+  _levelC1Entrance = null;
 }
 
 /** 出生区块 M.E.G 引导员 */
@@ -977,6 +980,46 @@ function buildMegAlphaBase(root, ctx) {
   };
   root.add(level13Entrance);
   _level13Entrance = level13Entrance;
+
+  // Level C-1「交点」：一段被封住的灰白色楼梯间门，推开即可切入交点。
+  var c1Door = new THREE.Group();
+  c1Door.name = "LevelC1StairDoor";
+  var c1FrameMat = new THREE.MeshStandardMaterial({
+    color: 0xb4b8b7,
+    roughness: 0.72,
+    metalness: 0.18,
+  });
+  var c1PanelMat = new THREE.MeshStandardMaterial({
+    color: 0x969c9d,
+    roughness: 0.62,
+    metalness: 0.22,
+  });
+  var c1Frame = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.2, 0.16), c1FrameMat);
+  c1Frame.position.y = 1.1;
+  c1Door.add(c1Frame);
+  var c1Panel = new THREE.Mesh(new THREE.BoxGeometry(1.08, 2, 0.09), c1PanelMat);
+  c1Panel.position.set(0, 1.02, 0.1);
+  c1Door.add(c1Panel);
+  var c1Sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.05, 0.34),
+    new THREE.MeshBasicMaterial({
+      map: createMegSignTexture("楼梯间 · 封锁"),
+      transparent: false,
+    })
+  );
+  c1Sign.position.set(0, 1.92, 0.16);
+  c1Door.add(c1Sign);
+  var c1Pick = new THREE.Mesh(
+    new THREE.BoxGeometry(1.7, 2.3, 1),
+    sharedChestPickMat()
+  );
+  c1Pick.position.set(0, 1.15, 0.4);
+  c1Pick.userData.brInteract = { kind: "l1_c1_door" };
+  c1Door.add(c1Pick);
+  c1Door.position.set(center.x - 3.6, 0, center.z - hz - 0.72);
+  c1Door.rotation.y = Math.PI;
+  root.add(c1Door);
+  _levelC1Entrance = c1Pick;
 
   var backDoorStaff = buildMegStaffFigure(
     root,
@@ -2169,6 +2212,7 @@ export function buildBackroomsLevel1World(root, opts) {
         roots.push(c101Entrance.pickMesh);
       }
       if (_level13Entrance) roots.push(_level13Entrance);
+      if (_levelC1Entrance) roots.push(_levelC1Entrance);
       for (var si = 0; si < ctx.sublevelInteracts.length; si++) {
         roots.push(ctx.sublevelInteracts[si]);
       }

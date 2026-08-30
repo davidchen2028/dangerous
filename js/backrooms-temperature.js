@@ -89,6 +89,8 @@ const LEVEL_PROFILE = {
   blue_channel: { min: 14, max: 19, base: 16.5, swing: 1.2 },
   /** 枢纽 — 稳定、干燥的地下公路隧道 */
   hub: { min: 19, max: 22, base: 20.5, swing: 0.5 },
+  /** Level C-1 — 交点，潮湿带霉味的黄墙纸走廊，略低于常温 */
+  c1: { min: 15, max: 20, base: 17, swing: 1.3 },
   /** Level C-101 — 大型服务器机房，持续冷却 */
   c101: { min: 14, max: 18, base: 16, swing: 1.1 },
   /** Level C-102 — 占位配置，待层级实现后细化 */

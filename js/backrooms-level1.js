@@ -550,6 +550,7 @@ function isAimKind(kind, role) {
   if (kind === "wanderer" && currentAimPick.distance > AIM_NPC_MAX) return false;
   if (kind === "meg_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "l1_c101_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
+  if (kind === "l1_c1_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "l1_sublevel_entry" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "level1_1_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "level1_1_2_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
@@ -1415,6 +1416,10 @@ function tryMegQAction() {
     enterLevelC101();
     return;
   }
+  if (isAimKind("l1_c1_door")) {
+    enterLevelC1();
+    return;
+  }
   if (hubRoute && hubRoute.isActive()) {
     if (hubRoute.handleDoor(getAimInteractData())) return;
   }
@@ -1764,6 +1769,11 @@ function updateMegDoorHint() {
   }
   if (isAimKind("l1_c101_door")) {
     doorHintEl.innerHTML = '柱子上的木门 · 按 <kbd>Q</kbd> 打开';
+    doorHintEl.hidden = false;
+    return;
+  }
+  if (isAimKind("l1_c1_door")) {
+    doorHintEl.innerHTML = '被封锁的楼梯间门 · 按 <kbd>Q</kbd> 切入 Level C-1';
     doorHintEl.hidden = false;
     return;
   }
@@ -2131,6 +2141,18 @@ function enterLevelC101() {
   showLootToast("木门后的冷气裹着服务器风扇的低鸣。");
   window.setTimeout(function () {
     window.location.href = "backrooms-level-c101.html";
+  }, 450);
+}
+
+function enterLevelC1() {
+  if (hubEntering || !survival || survival.dead) return;
+  hubEntering = true;
+  saveBackroomsSurvival(survival);
+  grantLevelPass("c1", yaw);
+  queueEnterLevelBanner("Level C-1 · 交点");
+  showLootToast("门后是黄墙纸的走廊——和 Level 0 像得让人发怵。");
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level-c1.html";
   }, 450);
 }
 

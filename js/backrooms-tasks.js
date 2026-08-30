@@ -395,6 +395,7 @@ export const ACHIEVEMENT_DEFS = [
   { id: "beach_holiday", title: "沙滩度假", category: "explore", levelId: "l48", reward: 0, condition: "进入 Level 48" },
   { id: "painting", title: "画", category: "explore", levelId: "l57", reward: 0, condition: "进入 Level 57" },
   { id: "have_fun", title: "尽情欢乐吧", category: "explore", levelId: "l283", reward: 0, condition: "进入 Level 283" },
+  { id: "crossroad_of_clusters", title: "两个层群的交点", category: "explore", levelId: "c1", reward: 0, condition: "进入 Level C-1 的黄墙纸走廊" },
   { id: "protected_processes", title: "受保护的进程", category: "explore", levelId: "c101", reward: 0, condition: "进入 Level C-101 的服务器机房" },
   { id: "combination_connection", title: "组合、连接", category: "explore", levelId: "c102", reward: 0, condition: "从 Level C-101 的楼梯抵达 Level C-102" },
 
