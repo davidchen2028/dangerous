@@ -1,8 +1,11 @@
 /**
  * 极危行动 — 客户端资源包
  * 把后室/大厅静态文件缓存到本机；接口与 WebSocket 仍走网络。
+ *
+ * JS/CSS 必须 network-first：cacheKey 会去掉 ?v=，若用 cache-first，
+ * 发版后仍会吐出旧逻辑（例如 Level 4 楼梯仍进 L6）。
  */
-const PACK_VERSION = 3;
+const PACK_VERSION = 4;
 const CACHE_PREFIX = "jiwei-client-pack-";
 const CACHE_NAME = CACHE_PREFIX + PACK_VERSION;
 
@@ -27,6 +30,11 @@ function shouldBypass(url) {
   if (path.indexOf("/admin/") === 0) return true;
   if (path === "/sw.js") return true;
   return false;
+}
+
+function isCodeAsset(url) {
+  var path = new URL(url, self.location.origin).pathname;
+  return /\.(?:js|mjs|css)$/i.test(path);
 }
 
 function cacheKeyFor(request) {
@@ -99,6 +107,47 @@ function fillPack(cache, files) {
   });
 }
 
+function putInPackCache(request, response) {
+  if (!response || !response.ok || !sameOrigin(request.url)) return;
+  caches.open(CACHE_NAME).then(function (cache) {
+    cache.put(cacheKeyFor(request), response.clone());
+  });
+}
+
+function networkFirst(request) {
+  return fetch(request)
+    .then(function (response) {
+      putInPackCache(request, response);
+      return response;
+    })
+    .catch(function () {
+      return caches.open(CACHE_NAME).then(function (cache) {
+        return cache.match(cacheKeyFor(request)).then(function (cached) {
+          return cached || Response.error();
+        });
+      });
+    });
+}
+
+function cacheFirst(request) {
+  return caches.open(CACHE_NAME).then(function (cache) {
+    var key = cacheKeyFor(request);
+    return cache.match(key).then(function (cached) {
+      if (cached) return cached;
+      return fetch(request)
+        .then(function (resp) {
+          if (resp && resp.ok && sameOrigin(request.url)) {
+            cache.put(key, resp.clone());
+          }
+          return resp;
+        })
+        .catch(function () {
+          return cached || Response.error();
+        });
+    });
+  });
+}
+
 self.addEventListener("install", function (event) {
   event.waitUntil(
     fetch(packUrl("api/client-pack"), { cache: "no-store" })
@@ -167,11 +216,7 @@ self.addEventListener("fetch", function (event) {
     event.respondWith(
       fetch(request)
         .then(function (response) {
-          if (response && response.ok) {
-            caches.open(CACHE_NAME).then(function (cache) {
-              cache.put(cacheKeyFor(request), response.clone());
-            });
-          }
+          putInPackCache(request, response);
           return response;
         })
         .catch(function () {
@@ -183,22 +228,10 @@ self.addEventListener("fetch", function (event) {
     return;
   }
 
-  event.respondWith(
-    caches.open(CACHE_NAME).then(function (cache) {
-      var key = cacheKeyFor(request);
-      return cache.match(key).then(function (cached) {
-        if (cached) return cached;
-        return fetch(request)
-          .then(function (resp) {
-            if (resp && resp.ok && sameOrigin(request.url)) {
-              cache.put(key, resp.clone());
-            }
-            return resp;
-          })
-          .catch(function () {
-            return cached || Response.error();
-          });
-      });
-    })
-  );
+  if (isCodeAsset(request.url)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  event.respondWith(cacheFirst(request));
 });
