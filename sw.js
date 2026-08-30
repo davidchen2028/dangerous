@@ -5,7 +5,7 @@
  * JS/CSS 必须 network-first：cacheKey 会去掉 ?v=，若用 cache-first，
  * 发版后仍会吐出旧逻辑（例如 Level 4 楼梯仍进 L6）。
  */
-const PACK_VERSION = 4;
+const PACK_VERSION = 5;
 const CACHE_PREFIX = "jiwei-client-pack-";
 const CACHE_NAME = CACHE_PREFIX + PACK_VERSION;
 

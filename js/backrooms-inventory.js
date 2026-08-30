@@ -2,6 +2,7 @@
  * 后室独立背包 — 7×5（35 格）+ 底部 6 格快捷栏
  * 获得物品优先进快捷栏；可从背包拖到快捷栏；←/→ 选中，R 使用选中格
  */
+import { getLevelKeyByItemId } from "./backrooms-level-key-catalog.js";
 
 export const BACKPACK_COLS = 7;
 export const BACKPACK_ROWS = 5;
@@ -488,7 +489,8 @@ function markSellPickCell(cell, source, index) {
 }
 
 function appendItemIcon(cell, item) {
-  var iconSrc = ITEM_ICONS[item.id];
+  var keyDef = getLevelKeyByItemId(item.id);
+  var iconSrc = ITEM_ICONS[item.id] || (keyDef && keyDef.icon);
   if (iconSrc) {
     var img = document.createElement("img");
     img.className = "br-pack__icon";

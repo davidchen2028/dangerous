@@ -3,6 +3,7 @@
  * sell 为 null 表示不可收购。
  */
 import { getLuck } from "./backrooms-luck.js";
+import { getLevelKeyByItemId } from "./backrooms-level-key-catalog.js";
 
 /** @typedef {{ id: string, name: string, buy: number | null, sell: number | null }} ShopPrice */
 
@@ -50,21 +51,30 @@ export const SHOP_PRICES = {
 /** @param {string} itemId */
 export function getBuyPrice(itemId) {
   var entry = SHOP_PRICES[itemId];
-  return entry ? entry.buy : null;
+  if (entry) return entry.buy;
+  var key = getLevelKeyByItemId(itemId);
+  return key && key.enabled ? key.buyPrice : null;
 }
 
 /** @param {string} itemId @returns {number | null} null = 不可收购 */
 export function getSellPrice(itemId) {
   var entry = SHOP_PRICES[itemId];
-  if (!entry || entry.sell == null) return null;
+  var basePrice = entry ? entry.sell : null;
+  if (!entry) {
+    var key = getLevelKeyByItemId(itemId);
+    basePrice = key && key.enabled ? key.sellPrice : null;
+  }
+  if (basePrice == null) return null;
   var luck = getLuck();
-  if (luck <= -30) return Math.max(1, Math.floor(entry.sell * 0.7));
-  if (luck >= 30) return Math.max(1, Math.round(entry.sell * 1.15));
-  return entry.sell;
+  if (luck <= -30) return Math.max(1, Math.floor(basePrice * 0.7));
+  if (luck >= 30) return Math.max(1, Math.round(basePrice * 1.15));
+  return basePrice;
 }
 
 /** @param {string} itemId */
 export function getShopItemName(itemId) {
   var entry = SHOP_PRICES[itemId];
-  return entry ? entry.name : itemId;
+  if (entry) return entry.name;
+  var key = getLevelKeyByItemId(itemId);
+  return key ? key.name : itemId;
 }

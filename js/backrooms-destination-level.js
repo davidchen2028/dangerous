@@ -59,6 +59,7 @@ import {
 } from "./backrooms-petrify.js";
 import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
 import { getBuyPrice, getSellPrice } from "./backrooms-shop-prices.js";
+import { getTradableLevelKeys } from "./backrooms-level-key-catalog.js";
 import {
   tryBeginMerchantTrade,
   shouldGiveLuckyMerchantGift,
@@ -606,6 +607,14 @@ const BNTG_ITEMS = [
     cost: getBuyPrice("escort_l61"),
   },
 ];
+getTradableLevelKeys("buy").forEach(function (key) {
+  BNTG_ITEMS.push({
+    id: "level-key:" + key.itemId,
+    itemId: key.itemId,
+    label: key.name,
+    cost: key.buyPrice,
+  });
+});
 
 function renderVendorMenu(note) {
   if (!dialogueEl || !dialogueTextEl) return;
@@ -731,7 +740,11 @@ function confirmVendorPurchase() {
       ok = addItem({ id: "royal_rations_medium", name: "中等大小皇家口粮" });
     } else if (id === "roulette") {
       ok = addItem({ id: "roulette", name: "后室轮盘赌" });
-    } else ok = addItem({ id: "archive_c11", name: "C-11 档案查看器" });
+    } else if (def.itemId) {
+      ok = addItem({ id: def.itemId, name: def.label });
+    } else {
+      ok = addItem({ id: "archive_c11", name: "C-11 档案查看器" });
+    }
     if (!ok) {
       renderVendorMenu(packFull ? "背包已满，无法购买。" : "无法放入物品。");
       return;
@@ -1057,6 +1070,7 @@ function init() {
   showEnterLevelBannerIfQueued();
   if (level === 10) markLevelEntered("l10", showToast);
   else if (level === 11) markLevelEntered("l11", showToast);
+  else if (level === 75) markLevelEntered("l75", showToast);
   scene = new THREE.Scene();
   var outdoor = level === 10 || level === 11;
   var bg = level === 75 ? 0x303840 : outdoor ? 0xa7d9ed : 0x030509;

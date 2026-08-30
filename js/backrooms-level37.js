@@ -22,6 +22,7 @@ import {
 } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
+import { markLevelEntered } from "./backrooms-tasks.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -298,6 +299,7 @@ function init() {
     return;
   }
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l37", showToast);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xbfe0ee);
   scene.fog = new THREE.Fog(0xbfe0ee, 22, 78);

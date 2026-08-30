@@ -20,6 +20,11 @@ import {
 import { showEnterLevelBannerIfQueued, queueEnterLevelBanner } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import {
+  LEVEL_KEY_CATALOG,
+  getLevelKeyByLevelId,
+  getLevelKeyItemId,
+} from "./backrooms-level-key-catalog.js";
+import {
   markLevelEntered,
   handleTaskUiKey,
   isTaskUiOpen,
@@ -137,39 +142,15 @@ const CORE_DOORS = {
   11: "l11",
 };
 
-const LEVEL_TARGETS = {
-  l0: { pass: "l0", page: "backrooms-level0.html", banner: "Level 0" },
-  l1: { pass: "clip", page: "backrooms-level1.html", banner: "Level 1" },
-  l2: { pass: "l2", page: "backrooms-level2.html", banner: "Level 2" },
-  l3: { pass: "l3", page: "backrooms-level3.html", banner: "Level 3" },
-  l4: { pass: "l4", page: "backrooms-level4.html", banner: "Level 4" },
-  l6: { pass: "l6", page: "backrooms-level6.html", banner: "Level 6" },
-  l6_1: { pass: "l6_1", page: "backrooms-level6-1.html", banner: "Level 6.1" },
-  l7: { pass: "l7", page: "backrooms-level7.html", banner: "Level 7" },
-  l8: { pass: "l8", page: "backrooms-level8.html", banner: "Level 8" },
-  l9: { pass: "l9", page: "backrooms-level9.html", banner: "Level 9" },
-  l10: { pass: "l10", page: "backrooms-level10.html", banner: "Level 10" },
-  l11: { pass: "l11", page: "backrooms-level11.html", banner: "Level 11" },
-  l13: { pass: "l13", page: "backrooms-level13.html", banner: "Level 13" },
-  l14: { pass: "l14", page: "backrooms-level14.html", banner: "Level 14" },
-  l16: { pass: "l16", page: "backrooms-level16.html", banner: "Level 16" },
-  l21: { pass: "l21", page: "backrooms-level21.html", banner: "Level 21" },
-  l37: { pass: "l37", page: "backrooms-level37.html", banner: "Level 37" },
-  l46: { pass: "l46", page: "backrooms-level46.html", banner: "Level 46" },
-  l48: { pass: "l48", page: "backrooms-level48.html", banner: "Level 48" },
-  l57: { pass: "l57", page: "backrooms-level57.html", banner: "Level 57" },
-  l75: { pass: "l75", page: "backrooms-level75.html", banner: "Level 75" },
-  l119: { pass: "l119", page: "backrooms-level119.html", banner: "Level 119" },
-  l121: { pass: "l121", page: "backrooms-level121.html", banner: "Level 121" },
-  l149: { pass: "l149", page: "backrooms-level149.html", banner: "Level 149" },
-  l283: { pass: "l283", page: "backrooms-level283.html", banner: "Level 283" },
-  l363: { pass: "l363", page: "backrooms-level363.html", banner: "Level 363" },
-  c1289: { pass: "c1289", page: "backrooms-level-c1289.html", banner: "Level C-1289" },
-  c1290: { pass: "c1290", page: "backrooms-level-c1290.html", banner: "Level C-1290" },
-  c1291: { pass: "c1291", page: "backrooms-level-c1291.html", banner: "Level C-1291" },
-  c1292: { pass: "c1292", page: "backrooms-level-c1292.html", banner: "Level C-1292" },
-  c1293: { pass: "c1293", page: "backrooms-level-c1293.html", banner: "Level C-1293" },
-};
+const LEVEL_TARGETS = Object.create(null);
+LEVEL_KEY_CATALOG.forEach(function (entry) {
+  if (!entry.hubTarget || !entry.independent || !entry.page || !entry.pass) return;
+  LEVEL_TARGETS[entry.levelId] = {
+    pass: entry.pass,
+    page: entry.page,
+    banner: entry.label,
+  };
+});
 
 function showToast(text, durationMs) {
   showBackroomsLootToast(text, { durationMs: durationMs || 2800 });
@@ -343,7 +324,9 @@ function targetForDoor(index) {
 }
 
 function nativeUnlocked(index) {
-  return index === 2 || index === 11;
+  var targetId = targetForDoor(index);
+  var key = targetId ? getLevelKeyByLevelId(targetId) : null;
+  return !!(key && key.nativeHub);
 }
 
 /** 枢纽内独立出现的异常闪烁门，无需层级密钥即可进入 C-1289。 */
@@ -575,7 +558,8 @@ function tryInteract() {
     showToast("门后的环形符号尚未与任何已发现层级对应。");
     return;
   }
-  if (!data.native && countItem("level_key_" + data.targetId) < 1) {
+  var keyItemId = getLevelKeyItemId(data.targetId);
+  if (!data.native && (!keyItemId || countItem(keyItemId) < 1)) {
     showToast("大门完全锁死。你缺少与这个环形符号对应的层级密钥。");
     return;
   }

@@ -17,6 +17,7 @@ import {
 } from "./backrooms-temperature.js";
 import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
 import { enforceLevelEntry } from "./backrooms-level-pass.js";
+import { markLevelEntered } from "./backrooms-tasks.js";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -129,6 +130,7 @@ function init() {
     return;
   }
   showEnterLevelBannerIfQueued();
+  markLevelEntered("l121", showToast);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0c2430);
   scene.fog = new THREE.FogExp2(0x0c2430, 0.045);
