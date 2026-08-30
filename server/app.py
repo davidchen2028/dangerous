@@ -76,6 +76,9 @@ socketio = SocketIO(
 sessions_by_sid: Dict[str, dict] = {}
 # user_id -> sid（单设备在线，新登录顶掉旧连接）
 sid_by_user_id: Dict[int, str] = {}
+# 后室在关卡跳转时会整页刷新；短暂保留同一条在线记录，避免丢时长和虚增登录次数。
+BACKROOMS_PRESENCE_GRACE_SECONDS = 30
+pending_online_session_ends: Dict[int, dict] = {}
 
 
 def _no_cache(resp: Any) -> Any:
@@ -258,17 +261,28 @@ def _bind_session(
     nickname: str,
     token: str,
     client_device: str = "desktop",
+    scope: str = "lobby",
 ) -> None:
+    scope = "backrooms" if scope == "backrooms" else "lobby"
+    online_session_id = None
     old_sid = sid_by_user_id.get(user_id)
     if old_sid and old_sid != sid:
         old_sess = sessions_by_sid.pop(old_sid, None)
         leave_room(old_sid)
         if old_sess and old_sess.get("online_session_id"):
-            db.end_online_session(old_sess["online_session_id"])
+            online_session_id = old_sess["online_session_id"]
         socketio.emit("auth_kicked", {"message": "账号在其他窗口登录"}, room=old_sid)
+        try:
+            socketio.server.disconnect(old_sid)
+        except Exception:
+            pass
 
-    db.end_open_sessions_for_user(user_id)
-    online_session_id = db.start_online_session(user_id)
+    pending = pending_online_session_ends.pop(user_id, None)
+    if online_session_id is None and pending:
+        online_session_id = pending.get("online_session_id")
+    if online_session_id is None:
+        db.end_open_sessions_for_user(user_id)
+        online_session_id = db.start_online_session(user_id)
 
     sessions_by_sid[sid] = {
         "user_id": user_id,
@@ -276,22 +290,52 @@ def _bind_session(
         "token": token,
         "online_session_id": online_session_id,
         "client_device": client_device,
+        "scope": scope,
     }
     sid_by_user_id[user_id] = sid
     join_room(LOBBY_ROOM, sid=sid)
 
 
-def _unbind_session(sid: str) -> Optional[dict]:
+def _unbind_session(sid: str, *, end_online: bool = True) -> Optional[dict]:
     sess = sessions_by_sid.pop(sid, None)
     if not sess:
         return None
-    if sess.get("online_session_id"):
+    if end_online and sess.get("online_session_id"):
         db.end_online_session(sess["online_session_id"])
     uid = sess["user_id"]
     if sid_by_user_id.get(uid) == sid:
         sid_by_user_id.pop(uid, None)
     leave_room(LOBBY_ROOM, sid=sid)
     return sess
+
+
+def _schedule_backrooms_session_end(sess: dict) -> None:
+    user_id = int(sess["user_id"])
+    online_session_id = sess.get("online_session_id")
+    if not online_session_id:
+        return
+    marker = secrets.token_urlsafe(12)
+    disconnected_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    pending_online_session_ends[user_id] = {
+        "online_session_id": online_session_id,
+        "marker": marker,
+        "disconnected_at": disconnected_at,
+    }
+
+    def finish_after_grace() -> None:
+        socketio.sleep(BACKROOMS_PRESENCE_GRACE_SECONDS)
+        pending = pending_online_session_ends.get(user_id)
+        if not pending or pending.get("marker") != marker:
+            return
+        if user_id in sid_by_user_id:
+            pending_online_session_ends.pop(user_id, None)
+            return
+        pending_online_session_ends.pop(user_id, None)
+        # 宽限仅用于判断是否在切关；真正离线时按断线瞬间结算，不多算宽限时间。
+        db.end_online_session(online_session_id, disconnected_at)
+        _notify_friends_presence(user_id, False)
+
+    socketio.start_background_task(finish_after_grace)
 
 
 def _disconnect_user(
@@ -306,11 +350,13 @@ def _disconnect_user(
     if sid:
         was_online = True
         socketio.emit("auth_kicked", {"message": message}, to=sid)
+        sess = _unbind_session(sid)
+        if sess:
+            _notify_friends_presence(user_id, False)
         try:
             socketio.server.disconnect(sid)
         except Exception:
             pass
-        _unbind_session(sid)
     else:
         db.end_open_sessions_for_user(user_id)
     return was_online
@@ -376,7 +422,7 @@ def api_admin_user_online_stats() -> Any:
                 "generatedAt": datetime.now(timezone.utc)
                 .replace(microsecond=0)
                 .isoformat(),
-                "onlineCount": len(sid_by_user_id),
+                "onlineCount": len(online_ids),
                 "userCount": len(stats),
                 "users": stats,
                 "bannedIps": db.list_active_banned_ips(),
@@ -1378,7 +1424,15 @@ def on_auth_resume(data: dict) -> None:
         return
 
     _touch_user_session_meta(int(user["id"]), data)
-    _bind_session(sid, int(user["id"]), user["nickname"], token, _parse_client_device(data))
+    scope = "backrooms" if (data or {}).get("scope") == "backrooms" else "lobby"
+    _bind_session(
+        sid,
+        int(user["id"]),
+        user["nickname"],
+        token,
+        _parse_client_device(data),
+        scope,
+    )
     _emit_auth_ok(sid, user, token, message="")
     _notify_friends_presence(int(user["id"]), True)
 
@@ -1599,10 +1653,15 @@ def on_disconnect() -> None:
     from flask import request
 
     sid = request.sid
-    sess = _unbind_session(sid)
+    current = sessions_by_sid.get(sid)
+    is_backrooms = bool(current and current.get("scope") == "backrooms")
+    sess = _unbind_session(sid, end_online=not is_backrooms)
     if not sess:
         return
-    _notify_friends_presence(sess["user_id"], False)
+    if is_backrooms:
+        _schedule_backrooms_session_end(sess)
+    else:
+        _notify_friends_presence(sess["user_id"], False)
 
 
 def main() -> None:

@@ -28,7 +28,7 @@ import {
   formatNightVisionRemaining,
   useNightVisionPotionFromBackpack,
 } from "./backrooms-night-vision.js";
-import { buildLevel4World, getSpawnChunkBounds, L4_WALL_H } from "./backrooms-level4-world.js?v=2";
+import { buildLevel4World, getSpawnChunkBounds, L4_WALL_H } from "./backrooms-level4-world.js?v=3";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,

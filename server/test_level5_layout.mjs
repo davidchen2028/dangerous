@@ -52,4 +52,8 @@ check("generated danger descriptors stay out of lobby", () => {
   }
 });
 
+check("loot and records avoid furniture footprints", () => {
+  assert.deepEqual(validateLevel5Layout("terror-hotel", 12), []);
+});
+
 console.log("Level5 layout tests: " + passed + " passed, 0 failed");

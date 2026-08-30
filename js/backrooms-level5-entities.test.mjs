@@ -65,3 +65,46 @@ test("safe lobby prevents entity damage", () => {
   assert.equal(player.hp, 100);
   manager.dispose();
 });
+
+test("killed entities stay dead after manager recreate", () => {
+  store.clear();
+  store.set(
+    "backrooms_l5_entities_v1",
+    JSON.stringify({ "persist-hound": { hp: 0, dead: true } })
+  );
+  const root = new THREE.Group();
+  const specs = [{
+    id: "persist-hound",
+    kind: "hound",
+    x: 40,
+    z: 0,
+    waypoints: [{ x: 40, z: 0 }],
+  }];
+  const manager = createLevel5EntityManager(root, []);
+  manager.update(0.05, 40, 0, survival(), () => {}, specs, { spawnSafe: false }, []);
+  assert.equal(manager.getActiveCount(), 0);
+  manager.dispose();
+});
+
+test("unload persists damaged hp without waiting for the heartbeat", () => {
+  store.clear();
+  const root = new THREE.Group();
+  const manager = createLevel5EntityManager(root, []);
+  const specs = [{
+    id: "hurt-hound",
+    kind: "hound",
+    x: 42,
+    z: 0,
+    waypoints: [{ x: 42, z: 0 }],
+  }];
+  manager.update(0.05, 42, 0, survival(), () => {}, specs, { spawnSafe: false }, []);
+  assert.equal(manager.getActiveCount(), 1);
+  // Unload all active entities immediately; remove() must write session state.
+  manager.update(0.05, 0, 0, survival(), () => {}, [], { spawnSafe: true }, []);
+  assert.equal(manager.getActiveCount(), 0);
+  const saved = JSON.parse(store.get("backrooms_l5_entities_v1") || "{}");
+  assert.ok(saved["hurt-hound"], "unload should persist entity state");
+  assert.equal(saved["hurt-hound"].dead, false);
+  assert.ok(Number.isFinite(saved["hurt-hound"].hp));
+  manager.dispose();
+});

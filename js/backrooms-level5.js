@@ -52,6 +52,7 @@ import {
   DEFAULT_GRAVITY,
 } from "./backrooms-fps-controller.js";
 import { L5_WALL_HEIGHT } from "./backrooms-level5-layout.js";
+import { startGuardedRafLoop } from "./backrooms-frame-guard.js";
 
 const EYE_HEIGHT = 1.65;
 const BODY_HEIGHT = 1.85;
@@ -169,6 +170,11 @@ function takeLoot(data) {
 function leaveTo(levelId, number, page, message) {
   if (transitionLock || !survival || survival.dead) return;
   transitionLock = true;
+  if (entities) {
+    if (entities.flushState) entities.flushState();
+    entities.dispose();
+    entities = null;
+  }
   saveBackroomsSurvival(survival);
   grantLevelPass(levelId, fps.yaw);
   queueEnterLevelNumber(number);
@@ -333,58 +339,60 @@ function init() {
 
 function startLoop() {
   var clock = new THREE.Clock();
-  function frame() {
-    requestAnimationFrame(frame);
-    var dt = Math.min(clock.getDelta(), 0.05);
-    var now = performance.now();
-    environment = world.update(fps.player.x, fps.player.z, now);
-    var mood = atmosphere.update(dt, now, environment, survival);
-    var moving = isBackroomsPlayerMoving(fps);
-    var sprinting = isBackroomsSprintHeld(fps) && moving;
+  startGuardedRafLoop({
+    label: "Backrooms L5",
+    showError: showError,
+    tick: function () {
+      var dt = Math.min(clock.getDelta(), 0.05);
+      var now = performance.now();
+      environment = world.update(fps.player.x, fps.player.z, now);
+      var mood = atmosphere.update(dt, now, environment, survival);
+      var moving = isBackroomsPlayerMoving(fps);
+      var sprinting = isBackroomsSprintHeld(fps) && moving;
 
-    if (survival && !survival.dead) {
-      survivalEnv.sprinting = sprinting;
-      survivalEnv.sanityDrainPerSec = mood.sanityDrainPerSec;
-      survival.update(dt, survivalEnv);
-    }
-    updateBackroomsPlayerPhysics(fps, dt, physOpts);
-    if ((!survival || !survival.dead) && !isInventoryOpen() && !isTaskUiOpen()) {
-      var speedMul =
-        survival && sprinting
-          ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
-          : 1;
-      speedMul *= mood.movementMultiplier;
-      moveBackroomsPlayer(fps, dt, speedMul, function (nx, nz) {
-        return resolveBackroomsMoveCollisions(nx, nz, fps.player.radius, world.colliders, 10);
-      });
-    }
-    if (entities && survival && !survival.dead) {
-      entities.update(
-        dt,
-        fps.player.x,
-        fps.player.z,
-        survival,
-        toast,
-        world.getEntitySpawns(),
-        environment,
-        world.getSteamHazards()
-      );
-    }
-    if (firesalt) firesalt.update(dt);
-    updateAim();
-    updateInteractionHint();
-    updateZoneLook();
-    if (crosshairEl) {
-      var hidden = isInventoryOpen() || !survival || survival.dead;
-      crosshairEl.classList.toggle("backrooms-crosshair--hidden", hidden);
-      crosshairEl.classList.toggle("backrooms-crosshair--interact", !hidden && !!aimPick);
-    }
-    applyBackroomsCamera(fps, camera, EYE_HEIGHT);
-    updateBackroomsTemperature(dt, now);
-    updateBackroomsHeatDamage(survival, now);
-    renderer.render(scene, camera);
-  }
-  frame();
+      if (survival && !survival.dead) {
+        survivalEnv.sprinting = sprinting;
+        survivalEnv.sanityDrainPerSec = mood.sanityDrainPerSec;
+        survival.update(dt, survivalEnv);
+      }
+      updateBackroomsPlayerPhysics(fps, dt, physOpts);
+      if ((!survival || !survival.dead) && !isInventoryOpen() && !isTaskUiOpen()) {
+        var speedMul =
+          survival && sprinting
+            ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving)
+            : 1;
+        speedMul *= mood.movementMultiplier;
+        moveBackroomsPlayer(fps, dt, speedMul, function (nx, nz) {
+          return resolveBackroomsMoveCollisions(nx, nz, fps.player.radius, world.colliders, 10);
+        });
+      }
+      if (entities && survival && !survival.dead) {
+        entities.update(
+          dt,
+          fps.player.x,
+          fps.player.z,
+          survival,
+          toast,
+          world.getEntitySpawns(),
+          environment,
+          world.getSteamHazards()
+        );
+      }
+      if (firesalt) firesalt.update(dt);
+      updateAim();
+      updateInteractionHint();
+      updateZoneLook();
+      if (crosshairEl) {
+        var hidden = isInventoryOpen() || !survival || survival.dead;
+        crosshairEl.classList.toggle("backrooms-crosshair--hidden", hidden);
+        crosshairEl.classList.toggle("backrooms-crosshair--interact", !hidden && !!aimPick);
+      }
+      applyBackroomsCamera(fps, camera, EYE_HEIGHT);
+      updateBackroomsTemperature(dt, now);
+      updateBackroomsHeatDamage(survival, now);
+      renderer.render(scene, camera);
+    },
+  });
 }
 
 try {

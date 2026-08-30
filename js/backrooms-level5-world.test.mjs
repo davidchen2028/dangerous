@@ -133,3 +133,57 @@ test("a collision-resolved player can walk from lobby to the Level 6 boiler exit
   assert.equal(world.update(x, z, now).zone, "boiler");
   world.dispose();
 });
+
+test("loot and records stay outside furniture colliders", () => {
+  const root = new THREE.Group();
+  const world = buildLevel5World(root, { seed: "terror-hotel", gfxProfile: {} });
+  for (let cx = -4; cx <= 5; cx++) {
+    for (let cz = -2; cz <= 2; cz++) {
+      world.update(cx * 24, cz * 24, 1000);
+    }
+  }
+  for (const mesh of world.interactRoots) {
+    const data = mesh.userData && mesh.userData.brInteract;
+    if (!data || (data.kind !== "l5_loot" && data.kind !== "l5_record")) continue;
+    const wx = mesh.getWorldPosition(new THREE.Vector3());
+    for (const c of world.colliders) {
+      const inside =
+        wx.x >= c.minX && wx.x <= c.maxX && wx.z >= c.minZ && wx.z <= c.maxZ;
+      assert.equal(
+        inside,
+        false,
+        data.kind + " " + data.id + " sits inside collider"
+      );
+    }
+  }
+  world.dispose();
+});
+
+test("Level 6 exit pick sits on the room side of the doorway", () => {
+  const root = new THREE.Group();
+  const world = buildLevel5World(root, { seed: "terror-hotel", gfxProfile: {} });
+  world.update(4 * 24, 0, 2000);
+  const exit = world.interactRoots.find((mesh) =>
+    mesh.userData.brInteract && mesh.userData.brInteract.kind === "l5_exit_l6"
+  );
+  assert.ok(exit);
+  const pos = exit.getWorldPosition(new THREE.Vector3());
+  const doorX = 4 * 24 + 12;
+  assert.ok(pos.x < doorX - 0.6, "pick must sit west of the east doorway");
+  const box = new THREE.Box3().setFromObject(exit);
+  assert.ok(box.max.x < doorX, "pick AABB must not engulf players standing in the door");
+  world.dispose();
+});
+
+test("records expose a tall invisible pick volume", () => {
+  const root = new THREE.Group();
+  const world = buildLevel5World(root, { seed: "record-pick", gfxProfile: {} });
+  for (let x = -1; x >= -20; x--) world.update(x * 24, 0, 1000 + Math.abs(x));
+  const record = world.interactRoots.find((mesh) =>
+    mesh.userData.brInteract && mesh.userData.brInteract.kind === "l5_record"
+  );
+  assert.ok(record, "seed should generate at least one record");
+  const box = new THREE.Box3().setFromObject(record);
+  assert.ok(box.max.y - box.min.y >= 1, "record pick height should be aimable at eye level");
+  world.dispose();
+});

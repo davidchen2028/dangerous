@@ -114,6 +114,8 @@ export function createLevel5EntityManager(parent, colliders) {
         faceW: 1.8,
         faceH: 2.6,
         canSee: canSee,
+        // Level 5 用点光池；笑靥自带灯会打穿预算并触发着色器重编译。
+        noPointLight: true,
       });
     }
     return null;
@@ -125,6 +127,11 @@ export function createLevel5EntityManager(parent, colliders) {
     state[entry.id] = { hp: health.hp, dead: !health.alive || health.hp <= 0 };
   }
 
+  function flushState() {
+    active.forEach(remember);
+    writeState(state);
+  }
+
   function remove(id) {
     var entry = active.get(id);
     if (!entry) return;
@@ -133,6 +140,7 @@ export function createLevel5EntityManager(parent, colliders) {
     var root = entry.system && (entry.system.root || entry.system.group);
     if (root && root.parent) root.parent.remove(root);
     active.delete(id);
+    writeState(state);
   }
 
   function add(spec) {
@@ -200,13 +208,13 @@ export function createLevel5EntityManager(parent, colliders) {
     saveClock += dt;
     if (saveClock >= 5) {
       saveClock = 0;
-      active.forEach(remember);
-      writeState(state);
+      flushState();
     }
   }
 
   return {
     update: update,
+    flushState: flushState,
     getActiveCount: function () { return active.size; },
     dispose: function () {
       Array.from(active.keys()).forEach(remove);

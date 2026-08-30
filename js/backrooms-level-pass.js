@@ -1,6 +1,7 @@
 /**
  * 后室关卡入场令牌 + 刷新策略（任意关卡 F5 → 重置并回 L0）
  */
+import "./backrooms-presence.js";
 import { resetBackroomsRun } from "./backrooms-survival.js";
 import { markLevelEscaped } from "./backrooms-tasks.js";
 

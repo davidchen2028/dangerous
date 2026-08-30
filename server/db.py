@@ -814,7 +814,7 @@ def start_online_session(user_id: int) -> int:
         return int(cur.lastrowid)
 
 
-def end_online_session(session_id: int) -> None:
+def end_online_session(session_id: int, ended_at: Optional[str] = None) -> None:
     with connect() as conn:
         conn.execute(
             """
@@ -822,7 +822,7 @@ def end_online_session(session_id: int) -> None:
             SET ended_at = ?
             WHERE id = ? AND ended_at IS NULL
             """,
-            (_utc_now(), session_id),
+            (ended_at or _utc_now(), session_id),
         )
 
 

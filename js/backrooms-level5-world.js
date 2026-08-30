@@ -318,8 +318,9 @@ function addBoilerFurniture(chunk, center, layout, mats) {
     var tunnel = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.8, 0.2), mats.void);
     tunnel.position.set(center.x + HALF - 0.24, 1.4, center.z);
     chunk.group.add(tunnel);
-    var pick = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.6, 1), mats.pick);
-    pick.position.set(center.x + HALF - 0.7, 1.3, center.z);
+    // 薄拾取盒贴在门洞内侧（房间侧），避免玩家走进盒子内部导致射线 near 打不中。
+    var pick = new THREE.Mesh(new THREE.BoxGeometry(0.7, 2.6, 2.8), mats.pick);
+    pick.position.set(center.x + HALF - 1.15, 1.3, center.z);
     pick.userData.brInteract = { kind: "l5_exit_l6" };
     chunk.group.add(pick);
     chunk.interacts.push(pick);
@@ -348,9 +349,13 @@ function addLoot(chunk, center, spec, mats, taken) {
 }
 
 function addRecord(chunk, center, spec, mats) {
+  var group = new THREE.Group();
   var paper = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.025, 0.58), mats.paper);
-  paper.position.set(center.x + spec.x, 0.04, center.z + spec.z);
-  paper.userData.brInteract = {
+  paper.position.y = 0.04;
+  group.add(paper);
+  var pick = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 0.9), mats.pick);
+  pick.position.y = 0.55;
+  pick.userData.brInteract = {
     kind: "l5_record",
     id: spec.id,
     text:
@@ -358,8 +363,10 @@ function addRecord(chunk, center, spec, mats) {
         ? "锅炉员日志：不要回应管道里的敲击声。它并不是从管道里传来的。"
         : "褪色的入住登记：同一个房号被重复写了几十次，却没有退房日期。",
   };
-  chunk.group.add(paper);
-  chunk.interacts.push(paper);
+  group.add(pick);
+  group.position.set(center.x + spec.x, 0, center.z + spec.z);
+  chunk.group.add(group);
+  chunk.interacts.push(pick);
 }
 
 function addSteam(chunk, center, spec, mats) {
@@ -593,6 +600,7 @@ export function buildLevel5World(root, opts) {
         if (at >= 0) interacts.splice(at, 1);
         delete item.pick.userData.brInteract;
         if (item.group.parent) item.group.parent.remove(item.group);
+        disposeObject(item.group);
         chunk.loot.splice(i, 1);
       }
     });

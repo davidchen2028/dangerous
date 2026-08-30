@@ -315,7 +315,7 @@ export function createLevel2Xiaoye(parent) {
 /**
  * 固定位置笑靥（L1.1-3 等）
  * @param {THREE.Group} parent
- * @param {{ x: number, z: number, rotY?: number, faceW?: number, faceH?: number, canSee?:Function }} spec
+ * @param {{ x: number, z: number, rotY?: number, faceW?: number, faceH?: number, canSee?:Function, noPointLight?: boolean }} spec
  */
 export function createFixedXiaoye(parent, spec) {
   var rotY = spec.rotY != null ? spec.rotY : 0;
@@ -340,9 +340,12 @@ export function createFixedXiaoye(parent, spec) {
   face.position.y = faceH * 0.42;
   group.add(face);
 
-  var glow = new THREE.PointLight(0xe8f4ff, 0.55, 14, 2);
-  glow.position.set(0, faceH * 0.45, 0.6);
-  group.add(glow);
+  var glow = null;
+  if (!spec.noPointLight) {
+    glow = new THREE.PointLight(0xe8f4ff, 0.55, 14, 2);
+    glow.position.set(0, faceH * 0.45, 0.6);
+    group.add(glow);
+  }
 
   group.position.set(spec.x, 0, spec.z);
   group.rotation.y = rotY;
@@ -382,7 +385,7 @@ export function createFixedXiaoye(parent, spec) {
       group.position.set(homeX, 0, homeZ);
       group.rotation.y = rotY;
       faceMat.opacity = 0.35 + 0.08 * Math.sin(performance.now() * 0.003);
-      glow.intensity = 0.18;
+      if (glow) glow.intensity = 0.18;
       group.scale.setScalar(0.75);
       group.visible = true;
       if (cooldownLeft <= 0) {
@@ -398,7 +401,7 @@ export function createFixedXiaoye(parent, spec) {
     var reveal = 1 - Math.min(1, Math.max(0, (dist - 8) / 28));
     var pulse = 0.88 + 0.12 * Math.sin(performance.now() * 0.004);
     faceMat.opacity = (0.08 + reveal * 0.88) * pulse;
-    glow.intensity = 0.12 + reveal * 0.65;
+    if (glow) glow.intensity = 0.12 + reveal * 0.65;
 
     if (phase === "wait") {
       group.scale.setScalar(0.85 + reveal * 0.35);
@@ -423,7 +426,7 @@ export function createFixedXiaoye(parent, spec) {
       group.position.z = homeZ + (lungeTargetZ - homeZ) * ease;
       group.scale.setScalar(1.1 + ease * 2.4);
       faceMat.opacity = Math.min(1, 0.95 + ease * 0.05);
-      glow.intensity = 1.2 + ease * 2.5;
+      if (glow) glow.intensity = 1.2 + ease * 2.5;
       if (p >= 1) {
         phase = "cooldown";
         cooldownLeft = COOLDOWN_SEC;

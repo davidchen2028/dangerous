@@ -69,18 +69,20 @@ export function getLevel5ChunkLayout(seed, cx, cz) {
   }
 
   if (rng() < 0.48) {
+    var lootPos = sampleClearLocal(rng, zone, layout.variant, 12);
     layout.loot.push({
       id: "l5-loot-" + key,
-      x: (rng() - 0.5) * 12,
-      z: (rng() - 0.5) * 12,
+      x: lootPos.x,
+      z: lootPos.z,
       itemId: rng() < 0.62 ? "almond_water" : "fire_salt",
     });
   }
   if (rng() < 0.2) {
+    var recordPos = sampleClearLocal(rng, zone, layout.variant, 10);
     layout.records.push({
       id: "l5-record-" + key,
-      x: (rng() - 0.5) * 10,
-      z: (rng() - 0.5) * 10,
+      x: recordPos.x,
+      z: recordPos.z,
     });
   }
 
@@ -93,9 +95,10 @@ export function getLevel5ChunkLayout(seed, cx, cz) {
     if (rng() < 0.35) layout.entities.push({ kind: "clump" });
     if (rng() < 0.12) layout.entities.push({ kind: "smiler" });
     if (rng() < 0.7) {
+      var steamPos = sampleClearLocal(rng, zone, layout.variant, 11);
       layout.steam.push({
-        x: (rng() - 0.5) * 11,
-        z: (rng() - 0.5) * 11,
+        x: steamPos.x,
+        z: steamPos.z,
       });
     }
   }
@@ -115,6 +118,41 @@ export function level5ChunkCenter(cx, cz) {
   return { x: cx * L5_CHUNK_SIZE, z: cz * L5_CHUNK_SIZE };
 }
 
+/**
+ * 与 world 家具碰撞盒对齐的本地禁区（相对区块中心）。
+ * loot / 记录点必须避开，否则准星会被家具 AABB 挡住。
+ */
+export function level5FurnitureBlocksLocal(zone, variant, x, z) {
+  if (zone === "grand_hall") {
+    if ((variant | 0) % 2 === 0) {
+      return Math.abs(x) <= 3.7 && Math.abs(z) <= 1.4;
+    }
+    return Math.abs(x) <= 0.28 && Math.abs(z) <= 4.6;
+  }
+  if (zone === "boiler") {
+    for (var i = -1; i <= 1; i++) {
+      if (Math.hypot(x - i * 4.2, z - 2.5) < 1.25) return true;
+    }
+  }
+  return false;
+}
+
+function sampleClearLocal(rng, zone, variant, span) {
+  var x = 0;
+  var z = 0;
+  for (var t = 0; t < 14; t++) {
+    x = (rng() - 0.5) * span;
+    z = (rng() - 0.5) * span;
+    if (!level5FurnitureBlocksLocal(zone, variant, x, z)) {
+      return { x: x, z: z };
+    }
+  }
+  // 兜底放到四角，避开中央桌/罐。
+  x = (rng() < 0.5 ? -1 : 1) * Math.min(5.2, span * 0.42);
+  z = (rng() < 0.5 ? -1 : 1) * Math.min(5.2, span * 0.42);
+  return { x: x, z: z };
+}
+
 export function validateLevel5Layout(seed, radius) {
   radius = radius == null ? 5 : Math.max(1, radius | 0);
   var errors = [];
@@ -125,6 +163,18 @@ export function validateLevel5Layout(seed, radius) {
       var south = getLevel5ChunkLayout(seed, cx, cz + 1);
       if (a.doors.e !== east.doors.w) errors.push(a.key + " east mismatch");
       if (a.doors.s !== south.doors.n) errors.push(a.key + " south mismatch");
+      for (var li = 0; li < a.loot.length; li++) {
+        var loot = a.loot[li];
+        if (level5FurnitureBlocksLocal(a.zone, a.variant, loot.x, loot.z)) {
+          errors.push(a.key + " loot inside furniture");
+        }
+      }
+      for (var ri = 0; ri < a.records.length; ri++) {
+        var record = a.records[ri];
+        if (level5FurnitureBlocksLocal(a.zone, a.variant, record.x, record.z)) {
+          errors.push(a.key + " record inside furniture");
+        }
+      }
     }
   }
   return errors;

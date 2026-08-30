@@ -2,7 +2,7 @@
  * 极危行动 — 客户端资源包
  * 把后室/大厅静态文件缓存到本机；接口与 WebSocket 仍走网络。
  */
-const PACK_VERSION = 2;
+const PACK_VERSION = 3;
 const CACHE_PREFIX = "jiwei-client-pack-";
 const CACHE_NAME = CACHE_PREFIX + PACK_VERSION;
 
