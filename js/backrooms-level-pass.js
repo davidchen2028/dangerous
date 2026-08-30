@@ -5,7 +5,7 @@ import { resetBackroomsRun } from "./backrooms-survival.js";
 import { markLevelEscaped } from "./backrooms-tasks.js";
 
 export const LEVEL0_PAGE = "backrooms-level0.html";
-/** @typedef {"clip" | "hub" | "l0" | "l1_bntg" | "l2" | "l3" | "l4" | "l6" | "l6_1" | "l7" | "l8" | "l9" | "l10" | "l11" | "l13" | "l14" | "l16" | "l21" | "l37" | "l46" | "l48" | "l57" | "l75" | "l119" | "l121" | "l149" | "l283" | "l363" | "blue_channel" | "c1" | "c101" | "c102" | "c144" | "c192" | "c370" | "c1289" | "c1290" | "c1291" | "c1292" | "c1293" | "c1294" | "c1295" | "c1296" | "c1297" | "c1298" | "c1299" | "c1299_1"} BackroomsLevelPassId */
+/** @typedef {"clip" | "hub" | "l0" | "l1_bntg" | "l2" | "l3" | "l4" | "l5" | "l6" | "l6_1" | "l7" | "l8" | "l9" | "l10" | "l11" | "l13" | "l14" | "l16" | "l21" | "l37" | "l46" | "l48" | "l57" | "l75" | "l119" | "l121" | "l149" | "l283" | "l363" | "blue_channel" | "c1" | "c101" | "c102" | "c144" | "c192" | "c370" | "c1289" | "c1290" | "c1291" | "c1292" | "c1293" | "c1294" | "c1295" | "c1296" | "c1297" | "c1298" | "c1299" | "c1299_1"} BackroomsLevelPassId */
 
 /** @type {Record<BackroomsLevelPassId, { pass: string, yaw: string | null }>} */
 export const LEVEL_PASS_KEYS = {
@@ -20,6 +20,7 @@ export const LEVEL_PASS_KEYS = {
   l2: { pass: "backrooms_l2_pass", yaw: "backrooms_l2_yaw" },
   l3: { pass: "backrooms_l3_pass", yaw: "backrooms_l3_yaw" },
   l4: { pass: "backrooms_l4_pass", yaw: "backrooms_l4_yaw" },
+  l5: { pass: "backrooms_l5_pass", yaw: "backrooms_l5_yaw" },
   l6: { pass: "backrooms_l6_pass", yaw: "backrooms_l6_yaw" },
   l6_1: { pass: "backrooms_l6_1_pass", yaw: "backrooms_l6_1_yaw" },
   l7: { pass: "backrooms_l7_pass", yaw: "backrooms_l7_yaw" },

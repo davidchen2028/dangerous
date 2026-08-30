@@ -40,6 +40,10 @@ const LEVEL_PROFILE = {
   283: { min: 19, max: 23, base: 21, swing: 1.8 },
   /** Level 4 — 明亮办公区（稳定日光灯，无 L0 式电流噪） */
   4: { min: 20, max: 24, base: 22, swing: 1.2 },
+  /** Level 5 — 大厅温暖，深入锅炉区后体感明显升高 */
+  5: { min: 20, max: 29, base: 23, swing: 2.4 },
+  /** Level 5 锅炉房 — 蒸汽与失控锅炉造成剧烈高温波动 */
+  "5_boiler": { min: 34, max: 49, base: 41, swing: 4.2, volatile: true, swing2: 3.2 },
   /** Level 6 — 伸手不见五指的黑暗空洞 */
   6: { min: 6, max: 11, base: 8.5, swing: 1.1 },
   /** Level 6.1 — 零食货架间 */

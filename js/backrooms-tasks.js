@@ -382,6 +382,7 @@ export const ACHIEVEMENT_DEFS = [
   { id: "too_hot", title: "太热了", category: "explore", levelId: "l2", reward: 0, condition: "进入 Level 2" },
   { id: "pipe_maze", title: "管道迷宫", category: "explore", levelId: "l3", reward: 0, condition: "进入 Level 3" },
   { id: "safe_office", title: "安全办公间", category: "explore", levelId: "l4", reward: 0, condition: "进入 Level 4" },
+  { id: "terror_hotel", title: "恐怖旅馆", category: "explore", levelId: "l5", reward: 0, condition: "进入 Level 5 的豪华大厅" },
   { id: "so_dark", title: "好黑", category: "explore", levelId: "l6", reward: 0, condition: "进入 Level 6" },
   { id: "snacks_here", title: "零食，我来了", category: "explore", levelId: "l6_1", reward: 0, condition: "进入 Level 6.1" },
   { id: "vast_sea", title: "大海，广阔", category: "explore", levelId: "l7", reward: 0, condition: "进入 Level 7" },
@@ -406,7 +407,7 @@ export const ACHIEVEMENT_DEFS = [
     category: "set",
     hidden: true,
     reward: 30,
-    condition: "通关 Level 0–14（排除 5、12）全部主线层级",
+    condition: "通关 Level 0–14（排除 12）全部主线层级",
   },
   {
     id: "off_mainline",
@@ -542,13 +543,14 @@ export const ACHIEVEMENT_DEFS = [
   },
 ];
 
-/** 主线通关判定：Level 0–14 排除 5、12 */
+/** 主线通关判定：Level 0–14 排除尚未制作的 12 */
 const MAINLINE_LEVELS = [
   "l0",
   "l1",
   "l2",
   "l3",
   "l4",
+  "l5",
   "l6",
   "l7",
   "l8",

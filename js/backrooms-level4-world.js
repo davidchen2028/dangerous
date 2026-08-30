@@ -696,8 +696,8 @@ function addVendingMachineToL61(group, colliders, interactRoots, vx, vz, mats) {
   interactRoots.push(pick);
 }
 
-/** 出生区块向下楼梯 → Level 6 */
-function addStairsDownToL6(group, colliders, interactRoots, sx, sz, mats) {
+/** 出生区块向下楼梯 → Level 5 */
+function addStairsDownToL5(group, colliders, interactRoots, sx, sz, mats) {
   var hole = new THREE.Mesh(sharedBoxGeometry(), mats.stairVoid);
   hole.position.set(sx, 0.02, sz);
   hole.scale.set(2.4, 0.08, 3.4);
@@ -1066,8 +1066,8 @@ function loadChunk(cx, cz, ctx) {
     tagShadowMesh(shaft, true, true);
     group.add(shaft);
     pushBoxCollider(colliders, ox - 1.08, ox + 1.08, oz - 1 - 1.08, oz - 1 + 1.08);
-    // 电梯井东侧：通往 Level 6 的向下楼梯
-    addStairsDownToL6(group, colliders, chunkInteractRoots, ox + 4.2, oz + 1.2, mats);
+    // 电梯井东侧：通往 Level 5 的向下楼梯
+    addStairsDownToL5(group, colliders, chunkInteractRoots, ox + 4.2, oz + 1.2, mats);
     // 出生区西侧：写着“自动售货机”，Q 切入 Level 6.1
     addVendingMachineToL61(group, colliders, chunkInteractRoots, ox - 8.2, oz + 3.5, mats);
   }

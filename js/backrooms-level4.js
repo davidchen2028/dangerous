@@ -386,7 +386,7 @@ function updateInteractHint() {
   }
   if (isAimStairsDown()) {
     interactHintEl.hidden = false;
-    interactHintEl.innerHTML = "按 <kbd>Q</kbd> 沿楼梯下行";
+    interactHintEl.innerHTML = "按 <kbd>Q</kbd> 沿楼梯下行至 Level 5";
     return;
   }
   if (isAimWanderer()) {
@@ -641,14 +641,14 @@ function tryWaterCoolerQ() {
   showLootToast("接了一瓶杏仁水 · 这台饮水机空了");
 }
 
-function exitToLevel6() {
+function exitToLevel5() {
   if (transitionLock) return;
   transitionLock = true;
-  showLootToast("你走下楼梯——黑暗吞没了灯光…");
+  showLootToast("你走下楼梯——猩红地毯与黄铜灯出现在下方…");
   saveBackroomsSurvival(survival);
-  grantLevelPass("l6", fps.yaw);
-  queueEnterLevelNumber(6);
-  leaveLevel4("backrooms-level6.html");
+  grantLevelPass("l5", fps.yaw);
+  queueEnterLevelNumber(5);
+  leaveLevel4("backrooms-level5.html");
 }
 
 function exitToLevel61() {
@@ -664,7 +664,7 @@ function exitToLevel61() {
 function tryStairsQ() {
   if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
   if (!isAimStairsDown()) return;
-  exitToLevel6();
+  exitToLevel5();
 }
 
 function tryVendingQ() {
