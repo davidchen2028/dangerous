@@ -82,6 +82,8 @@ const UNTRADED_IDS = [
   "level_key_l1_5",
   "level_key_l1_bntg",
   "level_key_l6_1",
+  "level_key_c2",
+  "level_key_c2_1",
 ];
 
 const NATIVE_HUB_IDS = [
@@ -92,11 +94,11 @@ const NATIVE_HUB_IDS = [
   "level_key_l363",
 ];
 
-test("catalog contains exactly 59 unique, valid level keys", () => {
-  assert.equal(LEVEL_KEY_CATALOG.length, 59);
+test("catalog contains exactly 61 unique, valid level keys", () => {
+  assert.equal(LEVEL_KEY_CATALOG.length, 61);
   assert.deepEqual(validateLevelKeyCatalog(), []);
-  assert.equal(new Set(LEVEL_KEY_CATALOG.map((entry) => entry.itemId)).size, 59);
-  assert.equal(new Set(LEVEL_KEY_CATALOG.map((entry) => entry.levelId)).size, 59);
+  assert.equal(new Set(LEVEL_KEY_CATALOG.map((entry) => entry.itemId)).size, 61);
+  assert.equal(new Set(LEVEL_KEY_CATALOG.map((entry) => entry.levelId)).size, 61);
   for (const entry of LEVEL_KEY_CATALOG) {
     assert.match(entry.itemId, /^level_key_[a-z0-9_]+$/);
     assert.ok(entry.page);

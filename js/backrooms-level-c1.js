@@ -48,6 +48,7 @@ import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
 import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
+  queueEnterLevelBanner,
 } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
@@ -308,7 +309,7 @@ function updateDoorHint() {
   if (kind === "c1_loot") {
     text = (currentAimPick.data.name || "补给") + " · 按 <kbd>Q</kbd> 拾取";
   } else if (kind === "c1_peephole") {
-    text = "墙上的小洞 · 按 <kbd>Q</kbd> 凑近查看";
+    text = "墙上的小洞 · 按 <kbd>Q</kbd> 切出至 Level C-2";
   } else if (kind === "c1_fire_exit") {
     text = "灰白色消防通道 · 按 <kbd>Q</kbd> 前往 Level 1";
   }
@@ -338,13 +339,15 @@ function takeLoot(data) {
 }
 
 function peepThroughHole() {
-  // 原文：凑近墙洞能看到 Level C-2 的景象，此时尝试切出即可过去。
-  // C-2 在本作尚未实现，所以这里只做观察，不开放通行。
-  showToast(
-    "洞后是另一片走廊的轮廓——那是 Level C-2。这个距离切不过去。",
-    4200
-  );
-  queueSanityShock(0.8);
+  if (leaving || !survival || survival.dead) return;
+  leaving = true;
+  saveBackroomsSurvival(survival);
+  grantLevelPass("c2", fps.yaw);
+  queueEnterLevelBanner("Level C-2 · 视 · 界");
+  showToast("你贴近墙洞，灰白色的视界覆过黄墙纸……", 3200);
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level-c2.html";
+  }, 520);
 }
 
 function leaveToLevel1() {
@@ -388,6 +391,7 @@ function bindControls() {
     inputEl: inputEl,
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
+    onTapInteract: tryQAction,
     shouldBlockPointerLock: function () {
       return isInventoryOpen() || isTaskUiOpen();
     },

@@ -27,7 +27,7 @@ function defineKey(itemId, levelId, label, page, pass, opts) {
   });
 }
 
-/** 59 个已制作、可游玩区域；C-102 与纯过渡场景不列入。 */
+/** 61 个已制作、可游玩区域；C-102 与纯过渡场景不列入。 */
 function trade(buyPrice, sellPrice, extra) {
   extra = extra || {};
   extra.buyPrice = buyPrice;
@@ -65,7 +65,7 @@ export const LEVEL_KEY_CATALOG = Object.freeze([
   defineKey("level_key_l283", "l283", "Level 283", "backrooms-level283.html", "l283", trade(200, 100, { hubTarget: true })),
   defineKey("level_key_l363", "l363", "Level 363", "backrooms-level363.html", "l363", { hubTarget: true, nativeHub: true }),
 
-  // 子层级与独立基地（15）
+  // 子层级与独立基地（16）
   defineKey("level_key_l0_1", "0.1", "Level 0.1 天顶站", "backrooms-level0.html", null, { independent: false }),
   defineKey("level_key_l0_2", "0.2", "Level 0.2", "backrooms-level0.html", null, { independent: false }),
   defineKey("level_key_l0_3", "0.3", "Level 0.3", "backrooms-level0.html", null, { independent: false }),
@@ -81,9 +81,11 @@ export const LEVEL_KEY_CATALOG = Object.freeze([
   defineKey("level_key_l1_5", "l1.5", "Level 1.5 颠倒", "backrooms-level1.html", null, { independent: false }),
   defineKey("level_key_l1_bntg", "l1_bntg", "Level 1 B.N.T.G. 独立基地", "backrooms-level1-bntg-base.html", "l1_bntg"),
   defineKey("level_key_l6_1", "l6_1", "Level 6.1 零食间", "backrooms-level6-1.html", "l6_1", { hubTarget: true }),
+  defineKey("level_key_c2_1", "c2_1", "Ray Complex-2.1", "backrooms-level-c2-1.html", "c2_1", { independent: false }),
 
-  // C 层级（17）
+  // C 层级（18）
   defineKey("level_key_c1", "c1", "Level C-1 交点", "backrooms-level-c1.html", "c1", trade(180, 90, { hubTarget: true })),
+  defineKey("level_key_c2", "c2", "Level C-2 视 · 界", "backrooms-level-c2.html", "c2", { hubTarget: true }),
   defineKey("level_key_c101", "c101", "Level C-101 服务器机房", "backrooms-level-c101.html", "c101", trade(140, 70, { hubTarget: true })),
   defineKey("level_key_c144", "c144", "Level C-144 和爱社区", "backrooms-level-c144.html", "c144", trade(90, 45, { hubTarget: true })),
   defineKey("level_key_c192", "c192", "Level C-192 森林", "backrooms-level-c192.html", "c192", trade(120, 60, { hubTarget: true })),

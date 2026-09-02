@@ -217,6 +217,7 @@ export function bindBackroomsWindowResize(renderer, camera, applySize) {
  *   lookSens?: number,
  *   mobileLookRef?: { current: ReturnType<attachMobileDragLook> | null },
  *   onKeyDown?: (e: KeyboardEvent) => boolean | void,
+ *   onTapInteract?: () => void,
  *   onJump?: () => void,
  *   shouldBlockPointerLock?: () => boolean,
  *   shouldBlockLook?: () => boolean,
@@ -255,6 +256,34 @@ export function bindBackroomsFpsControls(opts) {
       shouldBlockPointerLock: opts.shouldBlockPointerLock,
     });
     if (opts.mobileLookRef) opts.mobileLookRef.current = mobileLook;
+
+    // 触屏没有 KeyQ：短按准星区域等同交互，拖动仍只负责转动视角。
+    if (opts.onTapInteract) {
+      var tapId = null;
+      var tapX = 0;
+      var tapY = 0;
+      var tapMoved = false;
+      cap.addEventListener("pointerdown", function (e) {
+        if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+        tapId = e.pointerId;
+        tapX = e.clientX;
+        tapY = e.clientY;
+        tapMoved = false;
+      });
+      window.addEventListener("pointermove", function (e) {
+        if (e.pointerId !== tapId) return;
+        if (Math.hypot(e.clientX - tapX, e.clientY - tapY) > 12) tapMoved = true;
+      });
+      window.addEventListener("pointerup", function (e) {
+        if (e.pointerId !== tapId) return;
+        var shouldInteract = !tapMoved;
+        tapId = null;
+        if (shouldInteract) opts.onTapInteract();
+      });
+      window.addEventListener("pointercancel", function (e) {
+        if (e.pointerId === tapId) tapId = null;
+      });
+    }
   }
 
   function applyWASDKey(e, down) {

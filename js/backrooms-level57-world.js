@@ -128,6 +128,34 @@ function cavePaintingTexture() {
   return tex;
 }
 
+/** 《错误的镜子》：灰白诊室被镜面沿中线错位复制。 */
+function wrongMirrorTexture() {
+  var w = 256;
+  var h = 192;
+  var c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  var ctx = c.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#d7dcda";
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = "#738088";
+  ctx.fillRect(18, 20, 98, 152);
+  ctx.fillRect(140, 8, 98, 152);
+  ctx.strokeStyle = "#2a3540";
+  ctx.lineWidth = 8;
+  ctx.strokeRect(8, 8, w - 16, h - 16);
+  ctx.strokeStyle = "#9cd8ef";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(128, 8);
+  ctx.lineTo(128, h - 8);
+  ctx.stroke();
+  var tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function isCavePaintingThisRun() {
   try {
     var saved = sessionStorage.getItem(PAINTING_VARIANT_KEY);
@@ -343,6 +371,32 @@ export function buildLevel57World(root) {
   };
   group.add(paintPick);
   interactRoots.push(paintPick);
+
+  // 东墙上的《错误的镜子》是独立入口，不替换本局原有画作变体。
+  var mirrorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.45, 1.05), frameMat);
+  mirrorFrame.position.set(half - 0.08, 1.62, 0.75);
+  group.add(mirrorFrame);
+  var mirror = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.25, 0.85),
+    new THREE.MeshStandardMaterial({
+      map: wrongMirrorTexture() || undefined,
+      color: 0xffffff,
+      emissive: 0x1a2a32,
+      emissiveIntensity: 0.28,
+      roughness: 0.48,
+    })
+  );
+  mirror.position.set(half - 0.14, 1.62, 0.75);
+  mirror.rotation.y = -Math.PI / 2;
+  group.add(mirror);
+  var mirrorPick = new THREE.Mesh(
+    new THREE.BoxGeometry(0.55, 1.55, 1.45),
+    new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
+  );
+  mirrorPick.position.set(half - 0.35, 1.62, 0.75);
+  mirrorPick.userData.brInteract = { kind: "l57_wrong_mirror" };
+  group.add(mirrorPick);
+  interactRoots.push(mirrorPick);
 
   var paintLight = new THREE.PointLight(0xffddaa, 0.55, 4.5, 2);
   paintLight.position.set(0, 2.0, roomMinZ + 1.2);

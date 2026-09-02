@@ -95,6 +95,10 @@ const LEVEL_PROFILE = {
   hub: { min: 19, max: 22, base: 20.5, swing: 0.5 },
   /** Level C-1 — 交点，潮湿带霉味的黄墙纸走廊，略低于常温 */
   c1: { min: 15, max: 20, base: 17, swing: 1.3 },
+  /** Level C-2 — 灰白诊室与露天假景，温度近似稳定室温 */
+  c2: { min: 16, max: 21, base: 18.5, swing: 1.2 },
+  /** Ray Complex-2.1 — 无物质光路，读数仅有微弱漂移 */
+  c2_1: { min: 20, max: 24, base: 22, swing: 0.55 },
   /** Level C-101 — 大型服务器机房，持续冷却 */
   c101: { min: 14, max: 18, base: 16, swing: 1.1 },
   /** Level C-102 — 占位配置，待层级实现后细化 */

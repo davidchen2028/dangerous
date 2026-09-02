@@ -21,7 +21,11 @@ import {
   formatNightVisionRemaining,
   useNightVisionPotionFromBackpack,
 } from "./backrooms-night-vision.js";
-import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
+import {
+  showEnterLevelBannerIfQueued,
+  queueEnterLevelNumber,
+  queueEnterLevelBanner,
+} from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { aiChoiceHtml, isAiChatOpen, closeAiChat } from "./backrooms-ai-chat.js?v=2";
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
@@ -235,6 +239,7 @@ function interactLabel(data) {
   if (!data) return "";
   if (data.kind === "l57_painting") return "黄色房间画作 · 按 <kbd>Q</kbd> 切出";
   if (data.kind === "l57_cave_painting") return "洞穴画作 · 按 <kbd>Q</kbd> 穿过";
+  if (data.kind === "l57_wrong_mirror") return "《错误的镜子》· 按 <kbd>Q</kbd> 穿过";
   if (data.kind === "l57_painter") return "画家 · 按 <kbd>Q</kbd> 对话";
   return "";
 }
@@ -292,6 +297,16 @@ function exitToLevel8() {
   window.location.href = "backrooms-level8.html";
 }
 
+function exitToLevelC2() {
+  if (transitionLock) return;
+  transitionLock = true;
+  showLootToast("镜面错开，灰白诊室从画布后显现……");
+  saveBackroomsSurvival(survival);
+  grantLevelPass("c2", fps.yaw);
+  queueEnterLevelBanner("Level C-2 · 视 · 界");
+  window.location.href = "backrooms-level-c2.html";
+}
+
 function tryQAction() {
   if (isInventoryOpen() || !survival || survival.dead || painterDialogueOpen) return;
 
@@ -308,6 +323,10 @@ function tryQAction() {
     window.setTimeout(exitToLevel8, 450);
     return;
   }
+  if (k === "l57_wrong_mirror") {
+    window.setTimeout(exitToLevelC2, 450);
+    return;
+  }
   if (k === "l57_painter") {
     openPainterDialogue();
   }
@@ -319,6 +338,7 @@ function bindControls() {
     inputEl: inputEl,
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
+    onTapInteract: tryQAction,
     shouldBlockPointerLock: function () {
       return isInventoryOpen() || painterDialogueOpen || isTaskUiOpen();
     },

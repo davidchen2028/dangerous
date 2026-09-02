@@ -397,6 +397,8 @@ export const ACHIEVEMENT_DEFS = [
   { id: "painting", title: "画", category: "explore", levelId: "l57", reward: 0, condition: "进入 Level 57" },
   { id: "have_fun", title: "尽情欢乐吧", category: "explore", levelId: "l283", reward: 0, condition: "进入 Level 283" },
   { id: "crossroad_of_clusters", title: "两个层群的交点", category: "explore", levelId: "c1", reward: 0, condition: "进入 Level C-1 的黄墙纸走廊" },
+  { id: "world_of_vision", title: "视 · 界", category: "explore", levelId: "c2", reward: 0, condition: "进入 Level C-2 的无纵深风景" },
+  { id: "lost_complexity", title: "失去复杂", category: "explore", levelId: "c2_1", reward: 0, condition: "穿过失效验光机，进入 Ray Complex-2.1" },
   { id: "protected_processes", title: "受保护的进程", category: "explore", levelId: "c101", reward: 0, condition: "进入 Level C-101 的服务器机房" },
   { id: "combination_connection", title: "组合、连接", category: "explore", levelId: "c102", reward: 0, condition: "从 Level C-101 的楼梯抵达 Level C-102" },
 
