@@ -162,14 +162,19 @@
   color: #5a6878;
 }
 
-/* 商品区 */
+/* 商品区：自己做滚动。不给 min-height:0 的话，flex 子项会按内容撑高，
+   再被 .market-page__layout 的 overflow:hidden 裁掉，滚轮就没有对象。 */
 .market-main {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   padding: 0.85rem 1rem 1rem;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .market-main__head {
@@ -180,13 +185,12 @@
 }
 
 .market-main__grid {
-  flex: 1;
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
   gap: 0.85rem;
   align-content: start;
   align-items: start;
-  overflow-y: auto;
   padding-right: 0.25rem;
 }
 
@@ -207,7 +211,8 @@
   background: linear-gradient(180deg, #1a222c 0%, #12181f 100%);
   border: 1px solid rgba(70, 90, 110, 0.45);
   border-radius: 10px;
-  overflow: hidden;
+  /* hidden 会变成滚轮拦截层：指针在卡片上时列表滚不动 */
+  overflow: visible;
   transition: border-color 0.2s, transform 0.15s;
 }
 
@@ -222,6 +227,8 @@
   align-items: center;
   justify-content: center;
   padding: 0.25rem 0.2rem;
+  border-radius: 10px 10px 0 0;
+  overflow: clip;
   background: radial-gradient(ellipse at 50% 30%, #243040 0%, #101418 70%);
 }
 
@@ -239,22 +246,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: 6.75rem;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(100, 120, 140, 0.55) transparent;
-}
-
-.market-card__body::-webkit-scrollbar {
-  width: 4px;
-}
-
-.market-card__body::-webkit-scrollbar-thumb {
-  background: rgba(100, 120, 140, 0.55);
-  border-radius: 4px;
+  flex: 0 0 auto;
 }
 
 .market-card__name {
