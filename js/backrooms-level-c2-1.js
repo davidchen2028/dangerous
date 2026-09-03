@@ -111,6 +111,19 @@ function annihilate(reason) {
   survival.takeDamage(9999);
 }
 
+/** 离开明纹累计虚空暴露 → Level 110（C-24），不再湮灭死亡。 */
+function enterLevel110FromVoid() {
+  if (transitionLock || !survival || survival.dead) return;
+  transitionLock = true;
+  saveBackroomsSurvival(survival);
+  grantLevelPass("l110", fps.yaw);
+  queueEnterLevelBanner("Level 110 · C-24");
+  showToast("虚空吞没了光子。一条尚未标注的光路把你抛向视界。", 4200);
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level110.html";
+  }, 900);
+}
+
 function usePath(data) {
   if (!data || transitionLock || !survival || survival.dead) return;
   if (data.action === "annihilate") {
@@ -232,7 +245,7 @@ function startLoop() {
     var outsidePath = insideLongSection && !isOnRayComplexPath(fps.player.x);
     if (fps.player.z > C21_PATH_MAX_Z + 2 || fps.player.z < C21_PATH_MIN_Z - 2 || Math.abs(fps.player.x) > 16) outsidePath = true;
     voidExposure = Math.max(0, voidExposure + (outsidePath ? dt : -dt * 2));
-    if (voidExposure > 1.1) annihilate("你没有沿任何 Ray Complex 行进。虚空吞没了光子；C-24 的光路尚未成形。");
+    if (voidExposure > 1.1) enterLevel110FromVoid();
 
     updateAim();
     updateUi();

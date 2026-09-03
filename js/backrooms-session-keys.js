@@ -7,7 +7,9 @@ import {
   MEG_DEATH_KEY,
   MEG_RESPAWN_FLAG,
   L283_MEG_EXIT_FLAG,
+  L110_MEG_EXIT_FLAG,
 } from "./backrooms-meg-checkpoint.js";
+import { L110_HALF_CAPS_KEY } from "./backrooms-level110-caps.js";
 import {
   XIAOYE_STORAGE_KEY,
   XIAOYE_FULL_HEAL_KEY,
@@ -120,6 +122,11 @@ export const BACKROOMS_SESSION_KEYS = [
   "backrooms_c2_entry_v1",
   "backrooms_c2_1_pass",
   "backrooms_c2_1_yaw",
+  "backrooms_l110_pass",
+  "backrooms_l110_yaw",
+  L110_HALF_CAPS_KEY,
+  L110_MEG_EXIT_FLAG,
+  "backrooms_l110_o2_used_v1",
   "backrooms_c101_pass",
   "backrooms_c101_yaw",
   "backrooms_c101_result_v1",

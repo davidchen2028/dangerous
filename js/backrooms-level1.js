@@ -99,6 +99,7 @@ import {
   updateMegBaseAutoSave,
   consumeMegRespawnRedirectFlag,
   consumeL283MegExitFlag,
+  consumeL110MegExitFlag,
   applyMegDeathState,
   MEG_RESPAWN_FLAG,
 } from "./backrooms-meg-checkpoint.js";
@@ -2751,6 +2752,9 @@ function init() {
     ],
   });
   if (consumeL283MegExitFlag()) {
+    if (level1World && level1World.ensureMegBase) level1World.ensureMegBase();
+    respawnAtMegBase();
+  } else if (consumeL110MegExitFlag()) {
     if (level1World && level1World.ensureMegBase) level1World.ensureMegBase();
     respawnAtMegBase();
   } else if (consumeMegRespawnRedirectFlag()) {

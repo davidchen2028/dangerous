@@ -82,6 +82,7 @@ export const LEVEL_KEY_CATALOG = Object.freeze([
   defineKey("level_key_l1_bntg", "l1_bntg", "Level 1 B.N.T.G. 独立基地", "backrooms-level1-bntg-base.html", "l1_bntg"),
   defineKey("level_key_l6_1", "l6_1", "Level 6.1 零食间", "backrooms-level6-1.html", "l6_1", { hubTarget: true }),
   defineKey("level_key_c2_1", "c2_1", "Ray Complex-2.1", "backrooms-level-c2-1.html", "c2_1", { independent: false }),
+  defineKey("level_key_l110", "l110", "Level 110 · C-24 永恒的终末", "backrooms-level110.html", "l110", { independent: false }),
 
   // C 层级（18）
   defineKey("level_key_c1", "c1", "Level C-1 交点", "backrooms-level-c1.html", "c1", trade(180, 90, { hubTarget: true })),

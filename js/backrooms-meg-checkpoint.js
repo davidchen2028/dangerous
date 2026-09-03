@@ -456,6 +456,7 @@ export function consumeMegRespawnRedirectFlag() {
 }
 
 export const L283_MEG_EXIT_FLAG = "backrooms_l283_meg_exit_v1";
+export const L110_MEG_EXIT_FLAG = "backrooms_l110_meg_exit_v1";
 
 export function setL283MegExitFlag() {
   try {
@@ -469,6 +470,24 @@ export function consumeL283MegExitFlag() {
   try {
     if (sessionStorage.getItem(L283_MEG_EXIT_FLAG) !== "1") return false;
     sessionStorage.removeItem(L283_MEG_EXIT_FLAG);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+export function setL110MegExitFlag() {
+  try {
+    sessionStorage.setItem(L110_MEG_EXIT_FLAG, "1");
+  } catch (err) {
+    /* ignore */
+  }
+}
+
+export function consumeL110MegExitFlag() {
+  try {
+    if (sessionStorage.getItem(L110_MEG_EXIT_FLAG) !== "1") return false;
+    sessionStorage.removeItem(L110_MEG_EXIT_FLAG);
     return true;
   } catch (err) {
     return false;

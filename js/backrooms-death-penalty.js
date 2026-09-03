@@ -10,6 +10,7 @@
  */
 import { getMegPoints, addMegPoints, updateMegPointsDisplay } from "./backrooms-meg-points.js";
 import { applySoyMilkSanityMax } from "./backrooms-soy-milk.js";
+import { getL110CapMul } from "./backrooms-level110-caps.js";
 
 export const DEATH_COUNT_KEY = "backrooms_death_count_v1";
 export const DEATH_P1_KEY = "backrooms_death_penalty_p1_v1";
@@ -84,7 +85,7 @@ export function clearDeathPenalties() {
 
 export function getSanityMax() {
   var base = hasDeathPenalty1() ? SANITY_MAX_P1 : SANITY_MAX_DEFAULT;
-  return applySoyMilkSanityMax(base);
+  return Math.max(1, Math.floor(applySoyMilkSanityMax(base) * getL110CapMul()));
 }
 
 export function getSanityDrainMul() {

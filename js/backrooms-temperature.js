@@ -99,6 +99,8 @@ const LEVEL_PROFILE = {
   c2: { min: 16, max: 21, base: 18.5, swing: 1.2 },
   /** Ray Complex-2.1 — 无物质光路，读数仅有微弱漂移 */
   c2_1: { min: 20, max: 24, base: 22, swing: 0.55 },
+  /** Level 110 / C-24 — 环黑洞太空城，舱内极寒 */
+  l110: { min: -50, max: -20, base: -35, swing: 4.5, volatile: true },
   /** Level C-101 — 大型服务器机房，持续冷却 */
   c101: { min: 14, max: 18, base: 16, swing: 1.1 },
   /** Level C-102 — 占位配置，待层级实现后细化 */

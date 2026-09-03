@@ -6,6 +6,7 @@
  * 死亡负面（最大生命/体力百分比削减）叠加在口粮上限之上。
  */
 import { getDeathHpMul, getDeathStaminaMul } from "./backrooms-death-penalty.js";
+import { getL110CapMul } from "./backrooms-level110-caps.js";
 
 export const ROYAL_RATIONS_BUFF_KEY = "backrooms_royal_rations_until";
 export const ROYAL_RATIONS_MEDIUM_KEY = "backrooms_royal_rations_medium_until";
@@ -66,11 +67,11 @@ function baseStaminaMax() {
 }
 
 export function getHpMax() {
-  return Math.max(1, Math.floor(baseHpMax() * getDeathHpMul()));
+  return Math.max(1, Math.floor(baseHpMax() * getDeathHpMul() * getL110CapMul()));
 }
 
 export function getStaminaMax() {
-  return Math.max(1, Math.floor(baseStaminaMax() * getDeathStaminaMul()));
+  return Math.max(1, Math.floor(baseStaminaMax() * getDeathStaminaMul() * getL110CapMul()));
 }
 
 /** 奔跑加速倍率：中等皇家口粮期间 2 倍 */

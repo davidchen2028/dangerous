@@ -399,6 +399,7 @@ export const ACHIEVEMENT_DEFS = [
   { id: "crossroad_of_clusters", title: "两个层群的交点", category: "explore", levelId: "c1", reward: 0, condition: "进入 Level C-1 的黄墙纸走廊" },
   { id: "world_of_vision", title: "视 · 界", category: "explore", levelId: "c2", reward: 0, condition: "进入 Level C-2 的无纵深风景" },
   { id: "lost_complexity", title: "失去复杂", category: "explore", levelId: "c2_1", reward: 0, condition: "穿过失效验光机，进入 Ray Complex-2.1" },
+  { id: "eternal_ending", title: "永恒的终末", category: "explore", levelId: "l110", reward: 0, condition: "踏入 Ray Complex 虚空，进入 Level 110 · C-24" },
   { id: "protected_processes", title: "受保护的进程", category: "explore", levelId: "c101", reward: 0, condition: "进入 Level C-101 的服务器机房" },
   { id: "combination_connection", title: "组合、连接", category: "explore", levelId: "c102", reward: 0, condition: "从 Level C-101 的楼梯抵达 Level C-102" },
 

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <title>后室 Level 110 · C-24</title>
+  <link rel="stylesheet" href="css/backrooms-level0.css?v=22">
+  <link rel="stylesheet" href="css/backrooms-survival.css?v=6">
+  <style>
+    .l110-o2 {
+      position: absolute;
+      left: 12px;
+      bottom: 92px;
+      min-width: 140px;
+      padding: 6px 10px;
+      border: 1px solid rgba(90, 160, 220, 0.45);
+      background: rgba(6, 12, 22, 0.72);
+      color: #cfe8ff;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      pointer-events: none;
+    }
+    .l110-o2__meter {
+      display: block;
+      height: 6px;
+      margin-top: 4px;
+      background: rgba(255, 255, 255, 0.12);
+      overflow: hidden;
+    }
+    .l110-o2__fill {
+      display: block;
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #2a6db8, #7ad0ff);
+    }
+    .l110-o2--critical .l110-o2__fill { background: #ff5a5a; }
+  </style>
+</head>
+<body class="backrooms-level1 backrooms-level110" data-c-level="l110" data-c-title="Level 110 · C-24">
+  <canvas id="backroomsCanvas" aria-label="后室 Level 110 C-24"></canvas>
+  <div id="backroomsInput" class="backrooms-input" aria-hidden="true"></div>
+  <div class="backrooms-crosshair" id="backroomsCrosshair" aria-hidden="true"></div>
+  <div class="backrooms-hud">
+    <p class="backrooms-hud__title backrooms-hud__title--l1">Level 110 · C-24 · 永恒的终末</p>
+    <div class="backrooms-nav"><div class="backrooms-nav__row">
+      <p class="backrooms-temp" id="backroomsTemp"><span class="backrooms-temp__label">温度</span><span class="backrooms-temp__meter"><span class="backrooms-temp__fill" id="backroomsTempFill"></span></span><strong class="backrooms-temp__value" id="backroomsTempValue">—</strong></p>
+      <p class="backrooms-points"><span class="backrooms-points__label">积分点</span><strong class="backrooms-points__value" id="backroomsMegPoints">0</strong></p>
+    </div></div>
+    <p class="l110-o2" id="l110Oxygen" aria-live="polite">
+      密封服氧气 <strong id="l110OxygenValue">100%</strong>
+      <span class="l110-o2__meter"><span class="l110-o2__fill" id="l110OxygenFill"></span></span>
+    </p>
+    <p class="backrooms-hud__hint" id="backroomsHint">正在加压气闸…</p>
+    <p class="backrooms-hud__prompt" id="backroomsDoorHint" hidden></p>
+    <p class="backrooms-hud__loot" id="backroomsLootToast" hidden></p>
+    <div class="backrooms-hud__error" id="backroomsError" hidden></div>
+  </div>
+  <script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
+  <script type="module" src="js/backrooms-level110.js?v=1"></script>
+</body>
+</html>
