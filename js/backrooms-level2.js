@@ -25,7 +25,7 @@ import {
   buildBackroomsLevel2World,
   CORRIDOR_HEIGHT,
   SPAWN_Z,
-} from "./backrooms-level2-streaming-world.js?v=1";
+} from "./backrooms-level2-streaming-world.js?v=2";
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
 import {
   resolveBackroomsGfxProfile,
@@ -40,7 +40,7 @@ import {
   updateLevel2Doors,
   tryOpenLevel2Door,
   getLevel2DoorTransition,
-} from "./backrooms-level2-doors.js?v=3";
+} from "./backrooms-level2-doors.js?v=4";
 import { createLevel2EntityManager } from "./backrooms-level2-entities.js?v=1";
 import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
 import { createWandererManager } from "./backrooms-wanderers.js";
@@ -563,6 +563,8 @@ function init() {
   level2World = built;
   fps.player.x = built.spawnX;
   fps.player.z = built.spawnZ;
+  // 隧道走向每局随机，沿用上一关的朝向会让玩家开局正对墙面。
+  if (Number.isFinite(built.spawnYaw)) fps.yaw = built.spawnYaw;
   level2Lighting = built.lighting;
   playerFollowLights = createPlayerFollowLights(root);
   level2Doors = built.doors;

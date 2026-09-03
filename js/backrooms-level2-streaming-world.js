@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import * as Layout from "./backrooms-level2-layout.js";
 import { createPointLightPool } from "./backrooms-point-light-pool.js";
-import { createStreamingLevel2Doors } from "./backrooms-level2-doors.js?v=3";
+import { createStreamingLevel2Doors } from "./backrooms-level2-doors.js?v=4";
 import { createObbCollider } from "./backrooms-collide.js";
 
 const CHUNK_SIZE = Layout.LEVEL2_CHUNK_SIZE || Layout.L2_CHUNK_SIZE || 60;
@@ -13,6 +13,7 @@ const L2_SPAWN_Z = Layout.LEVEL2_SPAWN_Z != null
   ? Layout.LEVEL2_SPAWN_Z
   : (Layout.L2_SPAWN_Z != null ? Layout.L2_SPAWN_Z : 0);
 const WALL_THICK = 0.18;
+const MIN_CLEAR_WIDTH = Layout.L2_MIN_CLEAR_WIDTH || 2.4;
 const INTERACTION_KEY = "backrooms_l2_interactions_v2";
 export const LEVEL2_LAYOUT_SEED_KEY = "backrooms_l2_layout_seed_v2";
 var activeLayoutSeed = "0";
@@ -97,6 +98,7 @@ function segmentInfo(segment) {
   var dx = ends.b.x - ends.a.x;
   var dz = ends.b.z - ends.a.z;
   var length = Math.hypot(dx, dz);
+  var rotation = Math.atan2(dx, dz);
   return {
     a: ends.a,
     b: ends.b,
@@ -105,10 +107,102 @@ function segmentInfo(segment) {
     dx: dx,
     dz: dz,
     length: length,
-    rotation: Math.atan2(dx, dz),
-    width: Math.max(3.6, Number(segment.width) || 6),
+    rotation: rotation,
+    tx: Math.sin(rotation),
+    tz: Math.cos(rotation),
+    nx: Math.cos(rotation),
+    nz: -Math.sin(rotation),
+    kind: segment.kind,
+    feature: segment.feature,
+    width: Math.max(MIN_CLEAR_WIDTH, Number(segment.width) || 4),
     height: Math.max(3.4, Number(segment.height) || 3.8),
   };
+}
+
+/**
+ * 走廊墙沿整段铺设，只在别的走廊真正压过来的地方开口。
+ * 邻块也要参与，否则区块接缝处的墙会横插进对面的走廊。
+ */
+function collectCarvers(cx, cz) {
+  var own = [];
+  var all = [];
+  for (var dz = -1; dz <= 1; dz++) {
+    for (var dx = -1; dx <= 1; dx++) {
+      var center = dx === 0 && dz === 0;
+      var layout = getLayout(cx + dx, cz + dz);
+      var segments = Array.isArray(layout.segments) ? layout.segments : [];
+      for (var i = 0; i < segments.length; i++) {
+        var info = segmentInfo(segments[i]);
+        if (center) own.push(info);
+        if (info.length > 0.1) all.push(info);
+      }
+    }
+  }
+  return { own: own, all: all };
+}
+
+/** 点落在另一条走廊的净空内 → 该处应当是开口而不是墙 */
+function pointOpensWall(carvers, self, x, z) {
+  for (var i = 0; i < carvers.length; i++) {
+    var o = carvers[i];
+    if (o === self) continue;
+    var dx = x - o.x;
+    var dz = z - o.z;
+    var du = dx * o.tx + dz * o.tz;
+    if (Math.abs(du) > o.length * 0.5 + 0.1) continue;
+    var dv = dx * o.nx + dz * o.nz;
+    // 严格小于净空半宽：等宽平行段互相贴合时不会把对方的墙削掉
+    if (Math.abs(dv) < o.width * 0.5 - 0.05) return true;
+  }
+  return false;
+}
+
+function pointInDoorCut(cuts, x, z) {
+  for (var i = 0; i < cuts.length; i++) {
+    var dx = x - cuts[i].x;
+    var dz = z - cuts[i].z;
+    if (dx * dx + dz * dz <= cuts[i].r * cuts[i].r) return true;
+  }
+  return false;
+}
+
+/** 返回该侧墙需要实体化的 [起点, 终点] 区间（沿段中心线的局部坐标） */
+function solidWallSpans(self, side, carvers, cuts) {
+  var half = self.length * 0.5;
+  var steps = Math.max(2, Math.ceil(self.length / 0.25));
+  var offX = self.nx * side * self.width * 0.5;
+  var offZ = self.nz * side * self.width * 0.5;
+  var spans = [];
+  var runStart = null;
+  for (var i = 0; i <= steps; i++) {
+    var u = -half + (self.length * i) / steps;
+    var x = self.x + self.tx * u + offX;
+    var z = self.z + self.tz * u + offZ;
+    var open = pointOpensWall(carvers, self, x, z) || pointInDoorCut(cuts, x, z);
+    if (open) {
+      if (runStart !== null && u - runStart >= 0.3) spans.push([runStart, u]);
+      runStart = null;
+    } else if (runStart === null) {
+      runStart = u;
+    }
+  }
+  if (runStart !== null && half - runStart >= 0.3) spans.push([runStart, half]);
+  return spans;
+}
+
+/** 端点没有任何其他走廊接续时补一堵封头，避免走到断头处直接看见虚空 */
+function endpointIsOpen(carvers, self, point) {
+  for (var i = 0; i < carvers.length; i++) {
+    var o = carvers[i];
+    if (o === self) continue;
+    var dx = point.x - o.x;
+    var dz = point.z - o.z;
+    var du = dx * o.tx + dz * o.tz;
+    if (Math.abs(du) > o.length * 0.5 + 0.05) continue;
+    var dv = dx * o.nx + dz * o.nz;
+    if (Math.abs(dv) < o.width * 0.5 - 0.05) return true;
+  }
+  return false;
 }
 
 function createObb(cx, cz, halfX, halfZ, rotation, kind) {
@@ -206,9 +300,8 @@ function sharedMaterials() {
   };
 }
 
-function addCorridorSegment(ctx, record, segment, index) {
-  var s = segmentInfo(segment);
-  if (!(s.length > 0.1)) return;
+function addCorridorSegment(ctx, record, segment, index, s, carvers, doorCuts) {
+  if (!s || !(s.length > 0.1)) return;
   var group = record.group;
   var floorGeo = new THREE.BoxGeometry(s.width, 0.12, s.length + 0.25);
   var ceilGeo = new THREE.BoxGeometry(s.width, 0.1, s.length + 0.25);
@@ -216,24 +309,54 @@ function addCorridorSegment(ctx, record, segment, index) {
   addBox(group, floorGeo, ctx.materials.floor, s.x, 0.04, s.z, s.rotation);
   addBox(group, ceilGeo, ctx.materials.ceil, s.x, s.height, s.z, s.rotation);
 
-  var wallLength = Math.max(0.8, s.length - Math.min(2.4, s.width * 0.35));
-  var wallGeo = new THREE.BoxGeometry(WALL_THICK, s.height, wallLength);
-  record.geometries.push(wallGeo);
-  var nx = Math.cos(s.rotation);
-  var nz = -Math.sin(s.rotation);
+  var wallLength = Math.max(1, s.length - 1.2);
+  var nx = s.nx;
+  var nz = s.nz;
   var wallMat = (hashText(record.key + ":brick:" + index) % 5 === 0)
     ? ctx.materials.brick
     : ctx.materials.wall;
   for (var side = -1; side <= 1; side += 2) {
-    var wx = s.x + nx * (s.width * 0.5);
-    var wz = s.z + nz * (s.width * 0.5);
-    addBox(group, wallGeo, wallMat, wx, s.height * 0.5, wz, s.rotation);
-    addCollider(
-      ctx,
-      record,
-      createObb(wx, wz, WALL_THICK * 0.5, wallLength * 0.5, -s.rotation, "wall")
-    );
+    var spans = solidWallSpans(s, side, carvers, doorCuts);
+    var offX = nx * side * s.width * 0.5;
+    var offZ = nz * side * s.width * 0.5;
+    for (var si = 0; si < spans.length; si++) {
+      var spanLen = spans[si][1] - spans[si][0];
+      var mid = (spans[si][0] + spans[si][1]) * 0.5;
+      var wx = s.x + s.tx * mid + offX;
+      var wz = s.z + s.tz * mid + offZ;
+      var spanGeo = new THREE.BoxGeometry(WALL_THICK, s.height, spanLen);
+      record.geometries.push(spanGeo);
+      addBox(group, spanGeo, wallMat, wx, s.height * 0.5, wz, s.rotation);
+      addCollider(
+        ctx,
+        record,
+        createObb(wx, wz, WALL_THICK * 0.5, spanLen * 0.5, -s.rotation, "wall")
+      );
+    }
   }
+
+  if (segment.kind !== "diagonal_branch") {
+    var ends = [s.a, s.b];
+    for (var ei = 0; ei < ends.length; ei++) {
+      if (endpointIsOpen(carvers, s, ends[ei])) continue;
+      var capGeoEnd = new THREE.BoxGeometry(s.width + WALL_THICK * 2, s.height, WALL_THICK);
+      record.geometries.push(capGeoEnd);
+      addBox(group, capGeoEnd, wallMat, ends[ei].x, s.height * 0.5, ends[ei].z, s.rotation);
+      addCollider(
+        ctx,
+        record,
+        createObb(
+          ends[ei].x,
+          ends[ei].z,
+          s.width * 0.5 + WALL_THICK,
+          WALL_THICK * 0.5,
+          -s.rotation,
+          "wall"
+        )
+      );
+    }
+  }
+
   if (segment.kind === "diagonal_branch" && segment.feature) {
     var roomDepth = 5;
     var roomWidth = Math.max(6.2, s.width + 1);
@@ -266,6 +389,23 @@ function addCorridorSegment(ctx, record, segment, index) {
       record,
       createObb(farX, farZ, roomWidth * 0.5, WALL_THICK * 0.5, -s.rotation, "wall")
     );
+    // 房间比支路宽，近端两侧要补墙，否则入口两边直接漏到虚空。
+    var stubW = (roomWidth - s.width) * 0.5;
+    if (stubW > 0.1) {
+      var stubGeo = new THREE.BoxGeometry(stubW, s.height, WALL_THICK);
+      record.geometries.push(stubGeo);
+      for (var stubSide = -1; stubSide <= 1; stubSide += 2) {
+        var stubOff = stubSide * (s.width * 0.5 + stubW * 0.5);
+        var stubX = s.b.x + nx * stubOff;
+        var stubZ = s.b.z + nz * stubOff;
+        addBox(group, stubGeo, wallMat, stubX, s.height * 0.5, stubZ, s.rotation);
+        addCollider(
+          ctx,
+          record,
+          createObb(stubX, stubZ, stubW * 0.5, WALL_THICK * 0.5, -s.rotation, "wall")
+        );
+      }
+    }
   } else if (segment.kind === "diagonal_branch") {
     var capGeo = new THREE.BoxGeometry(s.width + WALL_THICK * 2, s.height, WALL_THICK);
     record.geometries.push(capGeo);
@@ -319,15 +459,16 @@ function addCorridorSegment(ctx, record, segment, index) {
       x: lx,
       y: s.height - 0.35,
       z: lz,
-      intensity: record.blackout ? 0.04 : 0.72,
-      distance: Math.max(8, s.width * 1.8),
+      intensity: record.blackout ? 0.04 : 0.95,
+      // 照射半径与走廊宽度脱钩，否则窄隧道会连墙面都照不亮
+      distance: Math.max(12, s.width * 2.6),
     };
     record.lights.push(candidate);
     ctx.lightCandidates.push(candidate);
   }
 
   // Larger rooms and some long corridors receive carts/crates without blocking the center lane.
-  if ((segment.kind === "room" || random() < 0.18) && s.width >= 5.5) {
+  if ((segment.kind === "room" || random() < 0.18) && s.width >= 3.4) {
     var sideOffset = s.width * 0.5 - 0.78;
     var propX = s.x + nx * sideOffset;
     var propZ = s.z + nz * sideOffset;
@@ -337,15 +478,6 @@ function addCorridorSegment(ctx, record, segment, index) {
       propX, 0.36, propZ, s.rotation);
     addCollider(ctx, record, createObb(propX, propZ, 0.42, 0.55, -s.rotation, "obstacle"));
   }
-
-  record.navSegments.push({
-    a: s.a,
-    b: s.b,
-    x: s.x,
-    z: s.z,
-    rotation: s.rotation,
-    width: s.width,
-  });
 }
 
 function featurePosition(record, feature) {
@@ -404,46 +536,70 @@ function deriveFeatures(record) {
   if (record.key !== "0,0" && seed % 11 === 0) {
     layoutFeatures.push({ type: "record", segmentIndex: (seed >>> 3) % Math.max(1, record.navSegments.length) });
   }
-  if (record.key !== "0,0" && seed % 13 === 0) {
-    var destinations = ["l1", "l3_or_l4", "l283"];
-    var exitSegment =
-      record.navSegments[(seed >>> 7) % Math.max(1, record.navSegments.length)];
-    var side = seed & 1 ? 1 : -1;
-    layoutFeatures.push({
-      type: "exit",
-      destination: destinations[(seed >>> 5) % destinations.length],
-      style: destinations[(seed >>> 5) % destinations.length] === "l283" ? "rainbow" : (seed % 2 ? "wood" : "plain"),
-      x: exitSegment
-        ? exitSegment.x + Math.cos(exitSegment.rotation) * side * (exitSegment.width * 0.5 - 0.05)
-        : undefined,
-      z: exitSegment
-        ? exitSegment.z - Math.sin(exitSegment.rotation) * side * (exitSegment.width * 0.5 - 0.05)
-        : undefined,
-      rotation: exitSegment ? exitSegment.rotation - Math.PI * 0.5 : 0,
-      segmentIndex: (seed >>> 7) % Math.max(1, record.navSegments.length),
+  return layoutFeatures;
+}
+
+/** 在某条走廊的侧墙上挑一处不会落在路口开口里的门位 */
+function pickDoorSpot(record, carvers, slot) {
+  var segments = record.navSegments;
+  if (!segments.length) return null;
+  for (var attempt = 0; attempt < 8; attempt++) {
+    var h = hashText(record.key + ":doorspot:" + slot + ":" + attempt);
+    var info = segments[h % segments.length];
+    var span = info.length * 0.5 - 2.4;
+    if (span <= 0) continue;
+    var side = (h >>> 4) & 1 ? 1 : -1;
+    var along = -span + (((h >>> 6) % 1000) / 1000) * span * 2;
+    var x = info.x + info.tx * along + info.nx * side * (info.width * 0.5 - 0.04);
+    var z = info.z + info.tz * along + info.nz * side * (info.width * 0.5 - 0.04);
+    if (pointOpensWall(carvers, info, x, z)) continue;
+    return {
+      x: x,
+      z: z,
+      rotation: info.rotation - Math.PI * 0.5 * side,
+      height: info.height,
+    };
+  }
+  return null;
+}
+
+function deriveDoorSpecs(record, carvers) {
+  var specs = [];
+  var seed = hashText(record.key + ":exits");
+  var count = record.key === "0,0" ? 1 : 2 + (seed % 2);
+  var destinations = ["l1", "l3_or_l4", "l283"];
+  for (var i = 0; i < count; i++) {
+    var spot = pickDoorSpot(record, carvers, i);
+    if (!spot) continue;
+    var crowded = false;
+    for (var j = 0; j < specs.length; j++) {
+      if (Math.hypot(specs[j].x - spot.x, specs[j].z - spot.z) < 4.5) {
+        crowded = true;
+        break;
+      }
+    }
+    if (crowded) continue;
+    var dh = hashText(record.key + ":dest:" + i);
+    var destination = destinations[dh % destinations.length];
+    specs.push({
+      key: record.key + ":exit:" + i,
+      x: spot.x,
+      z: spot.z,
+      rotation: spot.rotation,
+      height: spot.height,
+      destination: destination,
+      style: destination === "l283" ? "rainbow" : (dh & 1 ? "wood" : "plain"),
     });
   }
-  return layoutFeatures;
+  return specs;
 }
 
 function addChunkFeatures(ctx, record) {
   var features = deriveFeatures(record);
-  var doorSpecs = [];
   for (var i = 0; i < features.length; i++) {
     var feature = features[i];
     var pos = featurePosition(record, feature);
     var id = record.key + ":" + feature.type + ":" + i;
-    if (feature.type === "exit") {
-      doorSpecs.push({
-        key: id,
-        x: pos.x,
-        z: pos.z,
-        rotation: pos.rotation,
-        destination: feature.destination || "l3_or_l4",
-        style: feature.style || "plain",
-      });
-      continue;
-    }
     if (feature.type === "toolbox") {
       var geo = new THREE.BoxGeometry(0.76, 0.48, 0.52);
       record.geometries.push(geo);
@@ -491,7 +647,7 @@ function addChunkFeatures(ctx, record) {
       );
     }
   }
-  ctx.doors.loadChunk(record.key, doorSpecs);
+  ctx.doors.loadChunk(record.key, record.doorSpecs || []);
 }
 
 function deriveEntitySpawns(record) {
@@ -545,7 +701,25 @@ function loadChunk(cx, cz, ctx) {
   };
   ctx.chunks.set(key, record);
   var segments = Array.isArray(layout.segments) ? layout.segments : [];
-  for (var i = 0; i < segments.length; i++) addCorridorSegment(ctx, record, segments[i], i);
+  var carverPack = collectCarvers(cx, cz);
+  record.navSegments = carverPack.own.filter(function (info) {
+    return info.length > 0.1;
+  });
+  record.doorSpecs = deriveDoorSpecs(record, carverPack.all);
+  var doorCuts = record.doorSpecs.map(function (spec) {
+    return { x: spec.x, z: spec.z, r: 0.92 };
+  });
+  for (var i = 0; i < segments.length; i++) {
+    addCorridorSegment(
+      ctx,
+      record,
+      segments[i],
+      i,
+      carverPack.own[i],
+      carverPack.all,
+      doorCuts
+    );
+  }
   addChunkFeatures(ctx, record);
   record.entitySpawns = deriveEntitySpawns(record);
 
@@ -632,9 +806,9 @@ export function buildBackroomsLevel2World(root, opts) {
   var fill = new THREE.HemisphereLight(0x6f687b, 0x17151b, 0.58);
   root.add(ambient, fill);
   var lightPool = createPointLightPool(root, {
-    count: 5,
+    count: 7,
     color: 0xffe9b8,
-    distance: 11,
+    distance: 13,
     decay: 1.65,
     y: 3.2,
     name: "Level2TunnelLight",
@@ -699,7 +873,7 @@ export function buildBackroomsLevel2World(root, opts) {
           : materials.lamp;
       }
       for (var ci = 0; ci < chunk.lights.length; ci++) {
-        chunk.lights[ci].intensity = dark ? 0.04 : 0.72;
+        chunk.lights[ci].intensity = dark ? 0.04 : 0.95;
       }
     });
     lightPool.update(px, pz, lightCandidates);
@@ -750,6 +924,10 @@ export function buildBackroomsLevel2World(root, opts) {
     doors: ctx.doors,
     spawnX: L2_SPAWN_X,
     spawnZ: L2_SPAWN_Z,
+    spawnYaw:
+      typeof Layout.getLevel2SpawnYaw === "function"
+        ? Layout.getLevel2SpawnYaw(activeLayoutSeed)
+        : 0,
     spawnZone: spawnBounds(),
     lighting: {
       ambient: ambient,

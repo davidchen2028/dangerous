@@ -462,7 +462,7 @@ function buildChunkLayout(seed, cx, cz) {
   );
 
   var mainWidth = safe
-    ? 6.5
+    ? 4.2
     : quantizeWidth(rng, L2_MAIN_WIDTH_MIN, L2_MAIN_WIDTH_MAX);
   mainWidth = clamp(mainWidth, L2_MAIN_WIDTH_MIN, L2_MAIN_WIDTH_MAX);
   if (mainWidth + EPS < L2_MIN_CLEAR_WIDTH) mainWidth = L2_MIN_CLEAR_WIDTH;
@@ -598,6 +598,39 @@ export function clearLevel2LayoutCache() {
 }
 
 /**
+ * 出生朝向：沿离开出生枢纽的最长一条通道看出去。
+ * 枢纽所在走廊的走向随 seed 变化，写死朝向会让玩家开局正对一堵墙。
+ * @param {number|string=} seed
+ * @returns {number}
+ */
+export function getLevel2SpawnYaw(seed) {
+  var layout = getLevel2ChunkLayout(seed == null ? "0" : seed, L2_SPAWN_CX, L2_SPAWN_CZ);
+  var best = null;
+  var bestLen = 0;
+  for (var i = 0; i < layout.segments.length; i++) {
+    var seg = layout.segments[i];
+    var dx;
+    var dz;
+    if (almostEq(seg.ax, L2_SPAWN_X) && almostEq(seg.az, L2_SPAWN_Z)) {
+      dx = seg.bx - seg.ax;
+      dz = seg.bz - seg.az;
+    } else if (almostEq(seg.bx, L2_SPAWN_X) && almostEq(seg.bz, L2_SPAWN_Z)) {
+      dx = seg.ax - seg.bx;
+      dz = seg.az - seg.bz;
+    } else {
+      continue;
+    }
+    if (seg.length > bestLen) {
+      bestLen = seg.length;
+      best = { dx: dx, dz: dz };
+    }
+  }
+  if (!best) return 0;
+  // 相机朝向为 (-sin yaw, -cos yaw)
+  return Math.atan2(-best.dx, -best.dz);
+}
+
+/**
  * 出生区：位置、朝向、安全包围盒、所在区块布局摘要。
  * @param {number|string=} seed
  */
@@ -611,7 +644,7 @@ export function getLevel2SpawnZone(seed) {
     cz: L2_SPAWN_CZ,
     x: L2_SPAWN_X,
     z: L2_SPAWN_Z,
-    yaw: 0,
+    yaw: getLevel2SpawnYaw(s),
     safe: true,
     bounds: bounds,
     /** 救援/积分用：整个出生区块 */

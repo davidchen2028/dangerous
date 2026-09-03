@@ -16,16 +16,19 @@ export const L2_UNLOAD_RADIUS = 3;
 /** 路段长度步长（米）：每个 segment.length 必须是该值的正整数倍 */
 export const L2_SEGMENT_LEN_STEP = 5;
 
-/** 主通道宽度范围（米） */
-export const L2_MAIN_WIDTH_MIN = 5.5;
-export const L2_MAIN_WIDTH_MAX = 8;
+/**
+ * 主通道宽度范围（米）
+ * 隧道宽度必须远小于路段长度，否则路口开口会吃掉大半侧墙，走廊看起来像空场。
+ */
+export const L2_MAIN_WIDTH_MIN = 3.2;
+export const L2_MAIN_WIDTH_MAX = 4.4;
 
 /** 任意可通行段最低净宽（米） */
-export const L2_MIN_CLEAR_WIDTH = 3.6;
+export const L2_MIN_CLEAR_WIDTH = 2.4;
 
 /** 支路 / 特征入口宽度范围（米） */
-export const L2_BRANCH_WIDTH_MIN = 3.6;
-export const L2_BRANCH_WIDTH_MAX = 5.2;
+export const L2_BRANCH_WIDTH_MIN = 2.6;
+export const L2_BRANCH_WIDTH_MAX = 3.4;
 
 /** 层高范围（米） */
 export const L2_HEIGHT_MIN = 3.4;

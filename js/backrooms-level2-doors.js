@@ -443,6 +443,33 @@ function createStreamingDoorRecord(parent, spec, colliders, interactRoots, state
   lintel.position.set(0, 2.63, 0);
   root.add(lintel);
 
+  // 走廊侧墙已按门洞挖空，这里把门框以外的洞口补回去。
+  var extras = [];
+  var cutHalf = 0.95;
+  var ceiling = Math.max(2.9, Number(spec.height) || CORRIDOR_HEIGHT);
+  var headerH = ceiling - 2.7;
+  if (headerH > 0.05) {
+    var header = new THREE.Mesh(
+      new THREE.BoxGeometry(cutHalf * 2, headerH, 0.16),
+      frameMat
+    );
+    header.position.set(0, 2.7 + headerH * 0.5, 0);
+    root.add(header);
+    extras.push(header);
+  }
+  var jambW = cutHalf - 0.74;
+  if (jambW > 0.02) {
+    for (var jamb = -1; jamb <= 1; jamb += 2) {
+      var filler = new THREE.Mesh(
+        new THREE.BoxGeometry(jambW, 2.7, 0.16),
+        frameMat
+      );
+      filler.position.set(jamb * (0.74 + jambW * 0.5), 1.35, 0);
+      root.add(filler);
+      extras.push(filler);
+    }
+  }
+
   var pivot = new THREE.Group();
   pivot.position.set(-0.6, 1.32, 0);
   root.add(pivot);
@@ -473,6 +500,25 @@ function createStreamingDoorRecord(parent, spec, colliders, interactRoots, state
     ghost: !!state[spec.key],
   };
   colliders.push(collider);
+
+  var extraColliders = [];
+  var extraGeometries = [];
+  for (var e = 0; e < extras.length; e++) {
+    extraGeometries.push(extras[e].geometry);
+    if (extras[e].position.y < 2.7) {
+      var jambBox = new THREE.Box3().setFromObject(extras[e]);
+      var jambCollider = {
+        kind: "wall",
+        minX: jambBox.min.x - 0.02,
+        maxX: jambBox.max.x + 0.02,
+        minZ: jambBox.min.z - 0.02,
+        maxZ: jambBox.max.z + 0.02,
+      };
+      extraColliders.push(jambCollider);
+      colliders.push(jambCollider);
+    }
+  }
+
   try {
     delete colliders.__brSpatial;
   } catch (err) {
@@ -487,10 +533,13 @@ function createStreamingDoorRecord(parent, spec, colliders, interactRoots, state
     pivot: pivot,
     pick: pick,
     collider: collider,
+    extraColliders: extraColliders,
     open: !!state[spec.key],
     openAmount: state[spec.key] ? 1 : 0,
     materials: [frameMat, panelMat, pick.material],
-    geometries: [sideL.geometry, lintel.geometry, panel.geometry, pick.geometry],
+    geometries: [sideL.geometry, lintel.geometry, panel.geometry, pick.geometry].concat(
+      extraGeometries
+    ),
   };
 }
 
@@ -523,6 +572,10 @@ export function createStreamingLevel2Doors(parent, colliders, interactRoots) {
       active.delete(remove[i]);
       var ci = colliders.indexOf(door.collider);
       if (ci >= 0) colliders.splice(ci, 1);
+      (door.extraColliders || []).forEach(function (extra) {
+        var xi = colliders.indexOf(extra);
+        if (xi >= 0) colliders.splice(xi, 1);
+      });
       try {
         delete colliders.__brSpatial;
       } catch (err) {
