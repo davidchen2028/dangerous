@@ -11,6 +11,16 @@ var _vfxGeo = null;
 var _steamMat = null;
 var _acidMat = null;
 
+function mulberry32(seed) {
+  return function () {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function vfxAssets() {
   if (!_vfxGeo) _vfxGeo = new THREE.SphereGeometry(0.45, 6, 6);
   if (!_steamMat) {
@@ -35,15 +45,17 @@ function vfxAssets() {
 /**
  * @param {{ x: number, z: number, y?: number }[]} slots
  * @param {THREE.Group} hazardGroup
+ * @param {number} [seed]
  */
-export function createLevel3PipeHazards(slots, hazardGroup) {
+export function createLevel3PipeHazards(slots, hazardGroup, seed, startNow) {
   var assets = vfxAssets();
   var hazards = [];
   var i;
-  var now = performance.now();
+  var now = startNow == null ? performance.now() : startNow;
   for (i = 0; i < slots.length; i++) {
     var s = slots[i];
-    var kind = Math.random() < 0.5 ? "steam" : "acid";
+    var rng = mulberry32(((seed || 0) + i * 2654435761) | 0);
+    var kind = rng() < 0.5 ? "steam" : "acid";
     var vfx = new THREE.Mesh(
       assets.geo,
       kind === "acid" ? assets.acidMat : assets.steamMat
@@ -57,16 +69,17 @@ export function createLevel3PipeHazards(slots, hazardGroup) {
       z: s.z,
       y: s.y != null ? s.y : 1.4,
       kind: kind,
-      nextAt: now + 3000 + Math.random() * 12000,
+      nextAt: now + 3000 + rng() * 12000,
       activeUntil: 0,
       hitThisBurst: false,
+      rng: rng,
       vfx: vfx,
     });
   }
   return hazards;
 }
 
-export function updateLevel3PipeHazards(survival, hazards, px, pz, now) {
+export function updateLevel3PipeHazards(survival, hazards, px, pz, now, callbacks) {
   if (!hazards || !hazards.length) return null;
   var msg = null;
   var i;
@@ -75,7 +88,10 @@ export function updateLevel3PipeHazards(survival, hazards, px, pz, now) {
     if (now >= h.nextAt && now >= h.activeUntil) {
       h.activeUntil = now + BURST_DURATION_MS;
       h.hitThisBurst = false;
-      h.nextAt = now + 8000 + Math.random() * 16000;
+      h.nextAt = now + 8000 + (h.rng ? h.rng() : Math.random()) * 16000;
+      if (callbacks && typeof callbacks.onBurst === "function") {
+        callbacks.onBurst(h);
+      }
     }
     var active = now < h.activeUntil;
     if (h.vfx) h.vfx.visible = active;

@@ -29,6 +29,7 @@ export const CLUMP_TRIGGER_DIST = 9;
 export const CLUMP_CREEP_SPEED = 1.85;
 export const CLUMP_LUNGE_DURATION = 0.42;
 export const CLUMP_RADIUS = 0.52;
+export const CLUMP_HIT_DIST = 1.45;
 
 const L3_CLUMP_COUNT = 4;
 
@@ -156,20 +157,41 @@ function faceToward(clump, tx, tz) {
 }
 
 function moveClump(clump, nx, nz, opts) {
-  if (opts.mazeGrid) {
-    var out = resolveCircleAgainstLevel3Maze(nx, nz, CLUMP_RADIUS, opts.mazeGrid);
-    nx = out.x;
-    nz = out.z;
-  } else if (opts.wallColliders) {
-    var resolved = resolveBackroomsMoveCollisions(
-      nx,
-      nz,
-      CLUMP_RADIUS,
-      opts.wallColliders,
-      8
-    );
+  var fromX = clump.x;
+  var fromZ = clump.z;
+  var dx = nx - fromX;
+  var dz = nz - fromZ;
+  var steps = Math.max(1, Math.ceil(Math.sqrt(dx * dx + dz * dz) / (CLUMP_RADIUS * 0.4)));
+  var stepX = dx / steps;
+  var stepZ = dz / steps;
+  nx = fromX;
+  nz = fromZ;
+  for (var step = 0; step < steps; step++) {
+    var wantedX = nx + stepX;
+    var wantedZ = nz + stepZ;
+    var resolved;
+    if (opts.mazeGrid) {
+      resolved = resolveCircleAgainstLevel3Maze(
+        wantedX,
+        wantedZ,
+        CLUMP_RADIUS,
+        opts.mazeGrid,
+        opts.extraColliders
+      );
+    } else if (opts.wallColliders) {
+      resolved = resolveBackroomsMoveCollisions(
+        wantedX,
+        wantedZ,
+        CLUMP_RADIUS,
+        opts.wallColliders,
+        8
+      );
+    } else {
+      resolved = { x: wantedX, z: wantedZ };
+    }
     nx = resolved.x;
     nz = resolved.z;
+    if (Math.abs(nx - wantedX) > 0.0001 || Math.abs(nz - wantedZ) > 0.0001) break;
   }
   clump.x = nx;
   clump.z = nz;
@@ -185,6 +207,11 @@ function applyPounceDamage(clump, survival, toastFn, opts) {
   if (applied && typeof toastFn === "function") {
     toastFn((opts.name || "肢团") + "扑击！−" + damage + " 血量");
   }
+  if (applied && typeof opts.onAttack === "function") opts.onAttack("clump");
+}
+
+export function canClumpPounceHit(clumpX, clumpZ, playerX, playerZ) {
+  return distSq(clumpX, clumpZ, playerX, playerZ) <= CLUMP_HIT_DIST * CLUMP_HIT_DIST;
 }
 
 function updateSingleClump(clump, dt, px, pz, survival, toastFn, opts) {
@@ -200,15 +227,17 @@ function updateSingleClump(clump, dt, px, pz, survival, toastFn, opts) {
     var ease = p * p * (3 - 2 * p);
     var nx = clump.lungeFromX + (clump.lungeTargetX - clump.lungeFromX) * ease;
     var nz = clump.lungeFromZ + (clump.lungeTargetZ - clump.lungeFromZ) * ease;
-    clump.x = nx;
-    clump.z = nz;
-    clump.group.position.x = nx;
-    clump.group.position.z = nz;
+    moveClump(clump, nx, nz, opts);
     faceToward(clump, clump.lungeTargetX, clump.lungeTargetZ);
     var lungeScale = 1 + ease * 0.35;
     clump.group.scale.setScalar(lungeScale);
-    if (p >= 0.12 && p <= 0.55) {
-      if (!opts.playerSafe) applyPounceDamage(clump, survival, toastFn, opts);
+    if (p >= 0.12 && p <= 0.72) {
+      if (
+        !opts.playerSafe &&
+        canClumpPounceHit(clump.x, clump.z, px, pz)
+      ) {
+        applyPounceDamage(clump, survival, toastFn, opts);
+      }
     }
     if (clump.lungeLeft <= 0) {
       clump.mode = "cooldown";
@@ -319,10 +348,13 @@ function createClumpSystem(parent, spawns, opts) {
       var moveOpts = {
         mazeGrid: extra.mazeGrid != null ? extra.mazeGrid : opts.mazeGrid,
         wallColliders: extra.wallColliders != null ? extra.wallColliders : opts.wallColliders,
+        extraColliders:
+          extra.extraColliders != null ? extra.extraColliders : opts.extraColliders,
         playerSafe: !!extra.playerSafe,
         damage: opts.damage,
         cooldown: opts.cooldown,
         name: opts.name,
+        onAttack: extra.onAttack || opts.onAttack,
       };
       for (i = 0; i < clumps.length; i++) {
         updateSingleClump(clumps[i], dt, px, pz, survival, toastFn, moveOpts);

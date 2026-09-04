@@ -18,6 +18,36 @@ function ensureCtx() {
   return ctx;
 }
 
+function playTone(type, fromHz, toHz, duration, volume) {
+  var ac = ensureCtx();
+  if (!ac || ac.state !== "running") return;
+  var osc = ac.createOscillator();
+  var gain = ac.createGain();
+  var now = ac.currentTime;
+  osc.type = type;
+  osc.frequency.setValueAtTime(fromHz, now);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(20, toHz), now + duration);
+  gain.gain.setValueAtTime(volume, now);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+  osc.connect(gain);
+  gain.connect(ac.destination);
+  osc.start(now);
+  osc.stop(now + duration);
+}
+
+export function playLevel3PipeBurst(kind) {
+  playTone(kind === "acid" ? "sawtooth" : "triangle", kind === "acid" ? 180 : 520, 70, 0.28, 0.045);
+}
+
+export function playLevel3ElevatorStart() {
+  playTone("sine", 72, 150, 0.75, 0.06);
+  playTone("triangle", 116, 420, 1.4, 0.025);
+}
+
+export function playLevel3EntityAttack(kind) {
+  playTone("sawtooth", kind === "moth" ? 820 : 150, kind === "moth" ? 240 : 55, 0.2, 0.055);
+}
+
 export function startLevel3Hum() {
   if (started) return;
   var ac = ensureCtx();
@@ -60,7 +90,6 @@ export function startLevel3Hum() {
 }
 
 export function stopLevel3Hum() {
-  if (!started) return;
   var i;
   for (i = 0; i < oscillators.length; i++) {
     try {

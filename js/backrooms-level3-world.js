@@ -258,7 +258,12 @@ var PIPE_SPECS = [
   { r: 0.2, y: 2.08, xOff: 0.02 },
 ];
 
-const PIPE_WALL_INSET = 0.06;
+const PIPE_WALL_INSET = 0.03;
+const PIPE_COLLIDER_PAD = 0.03;
+
+export function getLevel3PipeClearWidth(radius) {
+  return CELL - (radius * 2 + PIPE_WALL_INSET + PIPE_COLLIDER_PAD);
+}
 
 function pickPrimaryWallSide(grid, x, z) {
   if (x + 1 < MAZE_W && grid[z][x + 1] === 1) return "e";
@@ -278,7 +283,7 @@ function wallSides(grid, x, z) {
 }
 
 function pushPipeCollider(colliders, side, wpos, spec, pipeLen) {
-  var pad = 0.05;
+  var pad = PIPE_COLLIDER_PAD;
   var half = CELL * 0.5;
   var halfLen = pipeLen * 0.5;
   if (side === "e") {
@@ -320,44 +325,51 @@ function pushPipeCollider(colliders, side, wpos, spec, pipeLen) {
   }
 }
 
-function addWallMountedPipes(group, colliders, grid, x, z, wpos, rng, pipeMat, pipeHazardSlots, pipeSide) {
+function addWallMountedPipes(
+  colliders,
+  grid,
+  x,
+  z,
+  wpos,
+  rng,
+  pipeHazardSlots,
+  pipeSide,
+  pipeInstances,
+  bracketInstances
+) {
   if (!pipeSide) return;
   var half = CELL * 0.5;
   var pipeLen = CELL * 0.86;
   var pi;
-  var bracketMat = pipeMat;
 
   for (pi = 0; pi < PIPE_SPECS.length; pi++) {
     var spec = PIPE_SPECS[pi];
-    var pipe = new THREE.Mesh(
-      new THREE.CylinderGeometry(spec.r, spec.r, pipeLen, 8, 1, false),
-      pipeMat
-    );
     var hx = wpos.x;
     var hz = wpos.z;
+    var rotX = 0;
+    var rotZ = 0;
     if (pipeSide === "e") {
-      pipe.rotation.x = Math.PI * 0.5;
+      rotX = Math.PI * 0.5;
       hx = wpos.x + half - spec.r - PIPE_WALL_INSET;
     } else if (pipeSide === "w") {
-      pipe.rotation.x = Math.PI * 0.5;
+      rotX = Math.PI * 0.5;
       hx = wpos.x - half + spec.r + PIPE_WALL_INSET;
     } else if (pipeSide === "n") {
-      pipe.rotation.z = Math.PI * 0.5;
+      rotZ = Math.PI * 0.5;
       hz = wpos.z + half - spec.r - PIPE_WALL_INSET;
     } else {
-      pipe.rotation.z = Math.PI * 0.5;
+      rotZ = Math.PI * 0.5;
       hz = wpos.z - half + spec.r + PIPE_WALL_INSET;
     }
-    pipe.position.set(hx, spec.y, hz);
-    group.add(pipe);
+    pipeInstances[pi].push({
+      x: hx,
+      y: spec.y,
+      z: hz,
+      rotX: rotX,
+      rotZ: rotZ,
+    });
     pushPipeCollider(colliders, pipeSide, wpos, spec, pipeLen);
-
-    var bracket = new THREE.Mesh(
-      new THREE.BoxGeometry(spec.r * 2.4, 0.08, spec.r * 2.4),
-      bracketMat
-    );
-    bracket.position.set(hx, spec.y, hz);
-    group.add(bracket);
+    bracketInstances[pi].push({ x: hx, y: spec.y, z: hz });
   }
 
   if (rng() < 0.38) {
@@ -376,6 +388,27 @@ function addWallMountedPipes(group, colliders, grid, x, z, wpos, rng, pipeMat, p
       side: pipeSide,
     });
   }
+}
+
+function addInstanceBatch(group, geometry, material, transforms, name) {
+  if (!transforms.length) {
+    geometry.dispose();
+    return null;
+  }
+  var mesh = new THREE.InstancedMesh(geometry, material, transforms.length);
+  mesh.name = name;
+  var dummy = new THREE.Object3D();
+  for (var i = 0; i < transforms.length; i++) {
+    var t = transforms[i];
+    dummy.position.set(t.x, t.y, t.z);
+    dummy.rotation.set(t.rotX || 0, t.rotY || 0, t.rotZ || 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(i, dummy.matrix);
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  group.add(mesh);
+  return mesh;
 }
 
 var _wallLampGeo = null;
@@ -469,6 +502,10 @@ export function buildLevel3World(mazeData) {
   var wallColliders = [];
   // 挂壁管道等非网格墙体单列一组：玩家/实体走迷宫网格查询时把它们作为 extraColliders
   var extraColliders = [];
+  var pipeInstances = [[], [], []];
+  var bracketInstances = [[], [], []];
+  var cableInstances = [];
+  var instanceBatches = [];
   var wallGeo = new THREE.BoxGeometry(CELL, WALL_H, CELL);
   var floorGeo = new THREE.BoxGeometry(CELL, 0.11, CELL);
   var wallCount = 0;
@@ -504,16 +541,16 @@ export function buildLevel3World(mazeData) {
         var pipeSide = pickPrimaryWallSide(grid, x, z);
         if (pipeSide && rng() < 0.22) {
           addWallMountedPipes(
-            group,
             extraColliders,
             grid,
             x,
             z,
             wpos,
             rng,
-            pipeMat,
             pipeHazardSlots,
-            pipeSide
+            pipeSide,
+            pipeInstances,
+            bracketInstances
           );
         }
         addWallLamp(
@@ -529,13 +566,12 @@ export function buildLevel3World(mazeData) {
         );
 
         if (rng() < 0.07) {
-          var cable = new THREE.Mesh(
-            new THREE.BoxGeometry(CELL * 0.82, 0.035, 0.05),
-            cableMat
-          );
-          cable.position.set(wpos.x, WALL_H - 0.07, wpos.z);
-          cable.rotation.y = rng() < 0.5 ? 0 : Math.PI * 0.5;
-          group.add(cable);
+          cableInstances.push({
+            x: wpos.x,
+            y: WALL_H - 0.07,
+            z: wpos.z,
+            rotY: rng() < 0.5 ? 0 : Math.PI * 0.5,
+          });
         }
       }
     }
@@ -545,12 +581,45 @@ export function buildLevel3World(mazeData) {
   group.add(wallMesh);
   group.add(floorMesh);
 
+  for (var pi = 0; pi < PIPE_SPECS.length; pi++) {
+    var spec = PIPE_SPECS[pi];
+    var pipeBatch = addInstanceBatch(
+      group,
+      new THREE.CylinderGeometry(spec.r, spec.r, CELL * 0.86, 8, 1, false),
+      pipeMat,
+      pipeInstances[pi],
+      "Level3PipeBatch_" + pi
+    );
+    var bracketBatch = addInstanceBatch(
+      group,
+      new THREE.BoxGeometry(spec.r * 2.4, 0.08, spec.r * 2.4),
+      pipeMat,
+      bracketInstances[pi],
+      "Level3PipeBracketBatch_" + pi
+    );
+    if (pipeBatch) instanceBatches.push(pipeBatch);
+    if (bracketBatch) instanceBatches.push(bracketBatch);
+  }
+  var cableBatch = addInstanceBatch(
+    group,
+    new THREE.BoxGeometry(CELL * 0.82, 0.035, 0.05),
+    cableMat,
+    cableInstances,
+    "Level3CableBatch"
+  );
+  if (cableBatch) instanceBatches.push(cableBatch);
+
   return {
     group: group,
     colliders: wallColliders,
     extraColliders: extraColliders,
     flickerLights: flickerLights,
     pipeHazardSlots: pipeHazardSlots,
+    instanceBatches: instanceBatches,
+    decorInstanceCount:
+      pipeInstances.reduce(function (sum, list) { return sum + list.length; }, 0) +
+      bracketInstances.reduce(function (sum, list) { return sum + list.length; }, 0) +
+      cableInstances.length,
     decorPointLights: [],
     materials: { wall: wallMat, floor: floorMat, pipe: pipeMat, lamp: lampMat },
   };

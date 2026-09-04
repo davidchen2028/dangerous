@@ -204,7 +204,13 @@ function faceToward(moth, tx, tz) {
 
 function moveMoth(moth, nx, nz, opts) {
   if (opts.mazeGrid) {
-    var out = resolveCircleAgainstLevel3Maze(nx, nz, DEATH_MOTH_RADIUS, opts.mazeGrid);
+    var out = resolveCircleAgainstLevel3Maze(
+      nx,
+      nz,
+      DEATH_MOTH_RADIUS,
+      opts.mazeGrid,
+      opts.extraColliders
+    );
     nx = out.x;
     nz = out.z;
   } else if (opts.wallColliders) {
@@ -257,6 +263,7 @@ function updateSingleMoth(moth, dt, px, pz, survival, toastFn, opts) {
         if (applied && toastFn) {
           toastFn("死亡飞蛾毒液！−" + DEATH_MOTH_SPRAY_DAMAGE + " 血量");
         }
+        if (applied && typeof opts.onAttack === "function") opts.onAttack("moth");
       }
       moth.sprayApplied = true;
     }
@@ -346,9 +353,12 @@ function createDeathMothSystem(parent, spawns, opts) {
       var moveOpts = {
         mazeGrid: extra.mazeGrid != null ? extra.mazeGrid : opts.mazeGrid,
         wallColliders: extra.wallColliders != null ? extra.wallColliders : opts.wallColliders,
+        extraColliders:
+          extra.extraColliders != null ? extra.extraColliders : opts.extraColliders,
         pipeHazards: extra.pipeHazards,
         now: extra.now,
         playerSafe: !!extra.playerSafe,
+        onAttack: extra.onAttack || opts.onAttack,
       };
       for (i = 0; i < moths.length; i++) {
         updateSingleMoth(moths[i], dt, px, pz, survival, toastFn, moveOpts);

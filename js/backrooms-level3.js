@@ -29,20 +29,32 @@ import {
   updateLevel3FlickerLights,
   resolveCircleAgainstLevel3Maze,
   WALL_H,
-} from "./backrooms-level3-world.js";
+} from "./backrooms-level3-world.js?v=2";
 import {
   createLevel3PipeHazards,
   updateLevel3PipeHazards,
-} from "./backrooms-level3-hazards.js";
-import { createLevel3DeathMoths } from "./backrooms-death-moth.js";
-import { createLevel3Clumps } from "./backrooms-clump-ai.js";
+} from "./backrooms-level3-hazards.js?v=2";
+import { createLevel3DeathMoths } from "./backrooms-death-moth.js?v=2";
+import { createLevel3Clumps } from "./backrooms-clump-ai.js?v=2";
 import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
-import { bindLevel3HumOnGesture, startLevel3Hum, stopLevel3Hum } from "./backrooms-level3-audio.js";
+import {
+  bindLevel3HumOnGesture,
+  startLevel3Hum,
+  stopLevel3Hum,
+  playLevel3PipeBurst,
+  playLevel3ElevatorStart,
+  playLevel3EntityAttack,
+} from "./backrooms-level3-audio.js?v=2";
 import {
   buildLevel3ElevatorShaft,
   isNearLevel3Elevator,
   updateLevel3ElevatorGlow,
-} from "./backrooms-level3-elevator.js";
+} from "./backrooms-level3-elevator.js?v=2";
+import {
+  canStartLevel3Elevator,
+  createLevel3TapInteraction,
+  getLevel3ElevatorRiseAction,
+} from "./backrooms-level3-transition.js?v=1";
 import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
@@ -144,6 +156,15 @@ let elevatorRiseT = 0;
 const ELEVATOR_RISE_DURATION = 3.6;
 const ELEVATOR_RISE_HEIGHT = 88;
 let elevatorStartPitch = 0;
+let transitionLock = false;
+let audioStoppedForDeath = false;
+const _hazardCallbacks = {
+  onBurst: function (hazard) {
+    var dx = fps.player.x - hazard.x;
+    var dz = fps.player.z - hazard.z;
+    if (dx * dx + dz * dz <= 12 * 12) playLevel3PipeBurst(hazard.kind);
+  },
+};
 
 function showError(msg) {
   if (!errorEl) return;
@@ -313,8 +334,16 @@ function updateElevatorHint() {
 }
 
 function tryStartElevator() {
-  if (elevatorRising || isInventoryOpen() || !survival || survival.dead) return;
-  if (!isNearLevel3Elevator(fps.player.x, fps.player.z, level3Elevator)) return;
+  if (
+    !canStartLevel3Elevator({
+      transitionLock: transitionLock,
+      elevatorRising: elevatorRising,
+      inventoryOpen: isInventoryOpen(),
+      dead: !survival || survival.dead,
+      near: isNearLevel3Elevator(fps.player.x, fps.player.z, level3Elevator),
+    })
+  ) return;
+  transitionLock = true;
   elevatorRising = true;
   elevatorRiseT = 0;
   elevatorStartPitch = fps.pitch;
@@ -324,17 +353,41 @@ function tryStartElevator() {
   fps.move.right = false;
   if (elevatorHintEl) elevatorHintEl.hidden = true;
   showLootToast("电梯上升…");
+  playLevel3ElevatorStart();
   if (document.exitPointerLock) document.exitPointerLock();
+}
+
+function cancelElevatorRise() {
+  if (!elevatorRising) return;
+  elevatorRising = false;
+  transitionLock = false;
+  elevatorRiseT = 0;
+  fps.feetY = 0;
+  fps.velY = 0;
+  fps.pitch = elevatorStartPitch;
 }
 
 function updateElevatorRise(dt) {
   if (!elevatorRising) return false;
+  var action = getLevel3ElevatorRiseAction(
+    elevatorRising,
+    !survival || survival.dead,
+    elevatorRiseT / ELEVATOR_RISE_DURATION
+  );
+  if (action === "cancel") {
+    cancelElevatorRise();
+    return false;
+  }
   elevatorRiseT += dt;
   var p = Math.min(1, elevatorRiseT / ELEVATOR_RISE_DURATION);
   var ease = p * p * (3 - 2 * p);
   fps.feetY = ease * ELEVATOR_RISE_HEIGHT;
   fps.pitch = elevatorStartPitch + (-0.42 - elevatorStartPitch) * ease;
   if (p >= 1) {
+    if (!survival || survival.dead) {
+      cancelElevatorRise();
+      return false;
+    }
     try {
       saveBackroomsSurvival(survival);
       grantLevelPass("l4", fps.yaw);
@@ -350,11 +403,13 @@ function updateElevatorRise(dt) {
 
 function bindControls() {
   bindLevel3HumOnGesture();
+  var tapInteraction = createLevel3TapInteraction(tryStartElevator);
   bindBackroomsFpsControls({
     canvas: canvas,
     inputEl: inputEl,
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
+    onTapInteract: tapInteraction.onTapInteract,
     shouldBlockPointerLock: function () {
       return isInventoryOpen() || isTaskUiOpen();
     },
@@ -428,7 +483,11 @@ function init() {
   hazardVfxGroup = new THREE.Group();
   hazardVfxGroup.name = "L3HazardVfx";
   root.add(hazardVfxGroup);
-  pipeHazards = createLevel3PipeHazards(built.pipeHazardSlots, hazardVfxGroup);
+  pipeHazards = createLevel3PipeHazards(
+    built.pipeHazardSlots,
+    hazardVfxGroup,
+    mazeData.seed
+  );
   level3DeathMoths = createLevel3DeathMoths(root, mazeData);
   level3Clumps = createLevel3Clumps(root, mazeData);
   firesalt = createBackroomsFiresaltController({
@@ -497,6 +556,10 @@ function init() {
       _survCtx.sprinting = sprinting && !elevatorRising;
       survival.update(dt, _survCtx);
     }
+    if (survival && survival.dead && !audioStoppedForDeath) {
+      audioStoppedForDeath = true;
+      stopLevel3Hum();
+    }
     if (elevatorRising) {
       updateElevatorRise(dt);
       fps.velY = 0;
@@ -527,18 +590,21 @@ function init() {
     }
 
     var hazardMsg = updateLevel3PipeHazards(
-      survival,
+      elevatorRising ? null : survival,
       pipeHazards,
       fps.player.x,
       fps.player.z,
-      now
+      now,
+      _hazardCallbacks
     );
     if (hazardMsg) showLootToast(hazardMsg);
     if (level3DeathMoths && survival && !survival.dead) {
       level3DeathMoths.update(dt, fps.player.x, fps.player.z, survival, showLootToast, {
         pipeHazards: pipeHazards,
         mazeGrid: mazeData ? mazeData.grid : null,
+        extraColliders: extraColliders,
         now: now,
+        onAttack: playLevel3EntityAttack,
         playerSafe:
           elevatorRising ||
           isNearLevel3Elevator(fps.player.x, fps.player.z, level3Elevator),
@@ -547,6 +613,8 @@ function init() {
     if (level3Clumps && survival && !survival.dead) {
       level3Clumps.update(dt, fps.player.x, fps.player.z, survival, showLootToast, {
         mazeGrid: mazeData ? mazeData.grid : null,
+        extraColliders: extraColliders,
+        onAttack: playLevel3EntityAttack,
         playerSafe:
           elevatorRising ||
           isNearLevel3Elevator(fps.player.x, fps.player.z, level3Elevator),
