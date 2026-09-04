@@ -119,9 +119,35 @@ function segmentInfo(segment) {
   };
 }
 
+export const L2_FEATURE_ROOM_DEPTH = 5;
+
+/** 特征支路末端的房间尺寸。挖墙与建房必须用同一套数字。 */
+export function featureRoomBox(s) {
+  var depth = L2_FEATURE_ROOM_DEPTH;
+  var width = Math.max(6.2, s.width + 1);
+  var tx = s.dx / s.length;
+  var tz = s.dz / s.length;
+  return {
+    x: s.b.x + tx * depth * 0.5,
+    z: s.b.z + tz * depth * 0.5,
+    tx: s.tx,
+    tz: s.tz,
+    nx: s.nx,
+    nz: s.nz,
+    rotation: s.rotation,
+    length: depth,
+    width: width,
+    height: s.height,
+    isFeatureRoom: true,
+  };
+}
+
 /**
  * 走廊墙沿整段铺设，只在别的走廊真正压过来的地方开口。
  * 邻块也要参与，否则区块接缝处的墙会横插进对面的走廊。
+ *
+ * 特征房间（EL3A 办公室等）在支路终点之外另起一块净空，也必须参与挖墙，
+ * 否则别的走廊会把墙和管道直接横在房间入口上。
  */
 function collectCarvers(cx, cz) {
   var own = [];
@@ -135,6 +161,9 @@ function collectCarvers(cx, cz) {
         var info = segmentInfo(segments[i]);
         if (center) own.push(info);
         if (info.length > 0.1) all.push(info);
+        if (info.length > 0.1 && segments[i].kind === "diagonal_branch" && segments[i].feature) {
+          all.push(featureRoomBox(info));
+        }
       }
     }
   }
@@ -229,6 +258,60 @@ function addBox(group, geometry, material, x, y, z, rotation) {
   return mesh;
 }
 
+function addPipeCylinder(group, geometry, material, x, y, z, tx, tz) {
+  var mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(x, y, z);
+  mesh.quaternion.setFromUnitVectors(
+    new THREE.Vector3(0, 1, 0),
+    new THREE.Vector3(tx, 0, tz).normalize()
+  );
+  group.add(mesh);
+  return mesh;
+}
+
+/**
+ * 管线规格保持确定性。窄支路只放高位细管；宽走廊才允许低位粗管参与碰撞。
+ */
+export function deriveLevel2PipeProfile(width, detailSeed) {
+  var narrow = width < 3.1;
+  var count = narrow ? 1 : 2 + (detailSeed % 2);
+  var firstSide = ((detailSeed >>> 3) & 1) ? 1 : -1;
+  var pipes = [];
+  for (var i = 0; i < count; i++) {
+    pipes.push({
+      side: i % 2 === 0 ? firstSide : -firstSide,
+      radius: narrow ? 0.085 : 0.11 + i * 0.025,
+      y: narrow ? 2.35 : 0.92 + i * 0.62,
+      collidable: !narrow && i === 0 && width >= 3.4,
+    });
+  }
+  return pipes;
+}
+
+/**
+ * 将管线限制在实体墙 span 内；两端收缩，给门框、路口和接头留空。
+ */
+export function deriveLevel2PipeRuns(segment, spansBySide, detailSeed) {
+  var profile = deriveLevel2PipeProfile(segment.width, detailSeed);
+  var runs = [];
+  for (var i = 0; i < profile.length; i++) {
+    var pipe = profile[i];
+    var spans = spansBySide[pipe.side] || [];
+    for (var si = 0; si < spans.length; si++) {
+      var start = spans[si][0] + 0.22;
+      var finish = spans[si][1] - 0.22;
+      if (finish - start < 0.65) continue;
+      runs.push(Object.assign({}, pipe, {
+        start: start,
+        end: finish,
+        length: finish - start,
+        along: (start + finish) * 0.5,
+      }));
+    }
+  }
+  return runs;
+}
+
 function sharedMaterials() {
   var wallCanvas = document.createElement("canvas");
   wallCanvas.width = 128;
@@ -245,6 +328,22 @@ function sharedMaterials() {
   wallMap.wrapS = THREE.RepeatWrapping;
   wallMap.wrapT = THREE.RepeatWrapping;
   wallMap.repeat.set(3, 2);
+
+  var signCanvas = document.createElement("canvas");
+  signCanvas.width = 256;
+  signCanvas.height = 96;
+  var sc = signCanvas.getContext("2d");
+  sc.fillStyle = "#111820";
+  sc.fillRect(0, 0, 256, 96);
+  sc.strokeStyle = "#9fc8de";
+  sc.lineWidth = 5;
+  sc.strokeRect(5, 5, 246, 86);
+  sc.fillStyle = "#d7edf7";
+  sc.font = "bold 54px sans-serif";
+  sc.textAlign = "center";
+  sc.textBaseline = "middle";
+  sc.fillText("EL3A", 128, 50);
+  var signMap = new THREE.CanvasTexture(signCanvas);
 
   return {
     wall: new THREE.MeshStandardMaterial({
@@ -285,6 +384,25 @@ function sharedMaterials() {
       metalness: 0.38,
     }),
     wood: new THREE.MeshStandardMaterial({ color: 0x60452e, roughness: 0.96 }),
+    office: new THREE.MeshStandardMaterial({
+      color: 0x8b887e,
+      emissive: 0x292b2d,
+      emissiveIntensity: 0.32,
+      roughness: 0.9,
+    }),
+    monitor: new THREE.MeshStandardMaterial({
+      color: 0x172a30,
+      emissive: 0x285f6b,
+      emissiveIntensity: 0.7,
+      roughness: 0.4,
+    }),
+    el3aSign: new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0x8ac6df,
+      emissiveIntensity: 0.45,
+      map: signMap,
+      roughness: 0.5,
+    }),
     lamp: new THREE.MeshStandardMaterial({
       color: 0xe7dec6,
       emissive: 0xc8b990,
@@ -309,14 +427,15 @@ function addCorridorSegment(ctx, record, segment, index, s, carvers, doorCuts) {
   addBox(group, floorGeo, ctx.materials.floor, s.x, 0.04, s.z, s.rotation);
   addBox(group, ceilGeo, ctx.materials.ceil, s.x, s.height, s.z, s.rotation);
 
-  var wallLength = Math.max(1, s.length - 1.2);
   var nx = s.nx;
   var nz = s.nz;
   var wallMat = (hashText(record.key + ":brick:" + index) % 5 === 0)
     ? ctx.materials.brick
     : ctx.materials.wall;
+  var spansBySide = { "-1": [], "1": [] };
   for (var side = -1; side <= 1; side += 2) {
     var spans = solidWallSpans(s, side, carvers, doorCuts);
+    spansBySide[side] = spans;
     var offX = nx * side * s.width * 0.5;
     var offZ = nz * side * s.width * 0.5;
     for (var si = 0; si < spans.length; si++) {
@@ -358,12 +477,13 @@ function addCorridorSegment(ctx, record, segment, index, s, carvers, doorCuts) {
   }
 
   if (segment.kind === "diagonal_branch" && segment.feature) {
-    var roomDepth = 5;
-    var roomWidth = Math.max(6.2, s.width + 1);
+    var room = featureRoomBox(s);
+    var roomDepth = room.length;
+    var roomWidth = room.width;
     var tx = s.dx / s.length;
     var tz = s.dz / s.length;
-    var roomX = s.b.x + tx * roomDepth * 0.5;
-    var roomZ = s.b.z + tz * roomDepth * 0.5;
+    var roomX = room.x;
+    var roomZ = room.z;
     var roomFloorGeo = new THREE.BoxGeometry(roomWidth, 0.12, roomDepth);
     var roomCeilGeo = new THREE.BoxGeometry(roomWidth, 0.1, roomDepth);
     var roomSideGeo = new THREE.BoxGeometry(WALL_THICK, s.height, roomDepth);
@@ -419,21 +539,57 @@ function addCorridorSegment(ctx, record, segment, index, s, carvers, doorCuts) {
 
   var detailSeed = hashText(record.key + ":segment:" + index);
   var random = rngFor(detailSeed);
-  var pipeCount = 2 + (detailSeed % 3);
-  for (var p = 0; p < pipeCount; p++) {
-    var pipeLength = Math.max(1, wallLength - p * 0.35);
-    var pipeGeo = new THREE.BoxGeometry(0.13 + p * 0.035, 0.13 + p * 0.035, pipeLength);
+  var pipeRuns = deriveLevel2PipeRuns(s, spansBySide, detailSeed);
+  for (var p = 0; p < pipeRuns.length; p++) {
+    var run = pipeRuns[p];
+    var pipeGeo = new THREE.CylinderGeometry(run.radius, run.radius, run.length, 8, 1, false);
     record.geometries.push(pipeGeo);
-    var pipeSide = p % 2 ? -1 : 1;
-    addBox(
+    // 略嵌入墙面，减少对通道净宽的侵占。
+    var inset = s.width * 0.5 - run.radius * 0.35;
+    var pipeX = s.x + s.tx * run.along + nx * run.side * inset;
+    var pipeZ = s.z + s.tz * run.along + nz * run.side * inset;
+    var pipe = addPipeCylinder(
       group,
       pipeGeo,
       ctx.materials.pipe,
-      s.x + nx * pipeSide * (s.width * 0.5 - 0.22),
-      1.05 + p * 0.52,
-      s.z + nz * pipeSide * (s.width * 0.5 - 0.22),
-      s.rotation
+      pipeX,
+      run.y,
+      pipeZ,
+      s.tx,
+      s.tz
     );
+    pipe.name = "Level2WallPipe";
+    if (run.collidable) {
+      addCollider(
+        ctx,
+        record,
+        createObb(pipeX, pipeZ, run.radius, run.length * 0.5, -s.rotation, "pipe")
+      );
+    }
+    // 每段端点加法兰，让断开的管线看起来由阀件封闭，而非悬空。
+    var flangeGeo = new THREE.CylinderGeometry(
+      run.radius * 1.45,
+      run.radius * 1.45,
+      0.08,
+      8
+    );
+    record.geometries.push(flangeGeo);
+    for (var fe = -1; fe <= 1; fe += 2) {
+      var endAlong = fe < 0 ? run.start : run.end;
+      var flangeX = s.x + s.tx * endAlong + nx * run.side * inset;
+      var flangeZ = s.z + s.tz * endAlong + nz * run.side * inset;
+      var flange = addPipeCylinder(
+        group,
+        flangeGeo,
+        ctx.materials.rust,
+        flangeX,
+        run.y,
+        flangeZ,
+        s.tx,
+        s.tz
+      );
+      flange.name = "Level2PipeFlange";
+    }
   }
 
   var lampStep = 5;
@@ -459,6 +615,7 @@ function addCorridorSegment(ctx, record, segment, index, s, carvers, doorCuts) {
       x: lx,
       y: s.height - 0.35,
       z: lz,
+      baseIntensity: 0.95,
       intensity: record.blackout ? 0.04 : 0.95,
       // 照射半径与走廊宽度脱钩，否则窄隧道会连墙面都照不亮
       distance: Math.max(12, s.width * 2.6),
@@ -480,6 +637,21 @@ function addCorridorSegment(ctx, record, segment, index, s, carvers, doorCuts) {
   }
 }
 
+/** 特征所在支路的净高。房间天花板跟着它走，灯和标牌不能写死高度。 */
+function featureHeight(record, feature) {
+  var best = null;
+  var bestDist = Infinity;
+  for (var i = 0; i < record.navSegments.length; i++) {
+    var seg = record.navSegments[i];
+    var dist = Math.hypot(seg.b.x - feature.x, seg.b.z - feature.z);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = seg;
+    }
+  }
+  return best && bestDist < 0.5 ? best.height : 3.8;
+}
+
 function featurePosition(record, feature) {
   if (Number.isFinite(feature.x) && Number.isFinite(feature.z)) {
     var rotation = feature.rotation || 0;
@@ -489,12 +661,22 @@ function featurePosition(record, feature) {
         feature.z - feature.approachFrom.z
       );
     }
-    return { x: feature.x, z: feature.z, rotation: rotation };
+    return {
+      x: feature.x,
+      z: feature.z,
+      rotation: rotation,
+      height: featureHeight(record, feature),
+    };
   }
   var seg = record.navSegments[feature.segmentIndex || 0] || record.navSegments[0];
   return seg
-    ? { x: seg.x, z: seg.z, rotation: seg.rotation }
-    : { x: record.cx * CHUNK_SIZE, z: record.cz * CHUNK_SIZE, rotation: 0 };
+    ? { x: seg.x, z: seg.z, rotation: seg.rotation, height: seg.height }
+    : {
+        x: record.cx * CHUNK_SIZE,
+        z: record.cz * CHUNK_SIZE,
+        rotation: 0,
+        height: 3.8,
+      };
 }
 
 function addPickRoot(ctx, record, x, y, z, data) {
@@ -594,6 +776,131 @@ function deriveDoorSpecs(record, carvers) {
   return specs;
 }
 
+function addEl3aOffice(ctx, record, feature, pos, id) {
+  var tx = Math.sin(pos.rotation);
+  var tz = Math.cos(pos.rotation);
+  var nx = Math.cos(pos.rotation);
+  var nz = -Math.sin(pos.rotation);
+  var height = Math.max(3.4, Number(pos.height) || 3.8);
+
+  // 入口上方的 EL3A 识别牌，挂在门楣与天花板之间。
+  var signGeo = new THREE.BoxGeometry(1.55, 0.56, 0.07);
+  record.geometries.push(signGeo);
+  var sign = addBox(
+    record.group,
+    signGeo,
+    ctx.materials.el3aSign,
+    pos.x + tx * 0.12,
+    height - 0.62,
+    pos.z + tz * 0.12,
+    pos.rotation
+  );
+  sign.name = "Level2EL3ASign";
+
+  // 办公桌靠房间深处，椅子留在玩家侧，中央仍可绕行。
+  var deskX = pos.x + tx * 3.15;
+  var deskZ = pos.z + tz * 3.15;
+  var deskGeo = new THREE.BoxGeometry(2.05, 0.76, 0.72);
+  record.geometries.push(deskGeo);
+  var desk = addBox(
+    record.group,
+    deskGeo,
+    ctx.materials.wood,
+    deskX,
+    0.38,
+    deskZ,
+    pos.rotation
+  );
+  desk.name = "Level2EL3ADesk";
+  addCollider(ctx, record, createObb(deskX, deskZ, 1.025, 0.36, -pos.rotation, "obstacle"));
+
+  var chairX = pos.x + tx * 1.92 - nx * 0.68;
+  var chairZ = pos.z + tz * 1.92 - nz * 0.68;
+  var chairGeo = new THREE.BoxGeometry(0.62, 0.82, 0.62);
+  record.geometries.push(chairGeo);
+  var chair = addBox(
+    record.group,
+    chairGeo,
+    ctx.materials.office,
+    chairX,
+    0.41,
+    chairZ,
+    pos.rotation
+  );
+  chair.name = "Level2EL3AChair";
+  addCollider(ctx, record, createObb(chairX, chairZ, 0.31, 0.31, -pos.rotation, "obstacle"));
+
+  var monitorX = deskX - tx * 0.08;
+  var monitorZ = deskZ - tz * 0.08;
+  var monitorGeo = new THREE.BoxGeometry(0.82, 0.52, 0.12);
+  record.geometries.push(monitorGeo);
+  var monitor = addBox(
+    record.group,
+    monitorGeo,
+    ctx.materials.monitor,
+    monitorX,
+    1.08,
+    monitorZ,
+    pos.rotation
+  );
+  monitor.name = "Level2EL3AMonitor";
+
+  var cabinetX = pos.x + tx * 3.75 + nx * 2.25;
+  var cabinetZ = pos.z + tz * 3.75 + nz * 2.25;
+  var cabinetGeo = new THREE.BoxGeometry(0.82, 1.75, 0.62);
+  record.geometries.push(cabinetGeo);
+  var cabinet = addBox(
+    record.group,
+    cabinetGeo,
+    ctx.materials.office,
+    cabinetX,
+    0.875,
+    cabinetZ,
+    pos.rotation
+  );
+  cabinet.name = "Level2EL3AFileCabinet";
+  addCollider(ctx, record, createObb(cabinetX, cabinetZ, 0.41, 0.31, -pos.rotation, "obstacle"));
+
+  var lampX = pos.x + tx * 2.65;
+  var lampZ = pos.z + tz * 2.65;
+  var lampGeo = new THREE.BoxGeometry(1.35, 0.06, 0.28);
+  record.geometries.push(lampGeo);
+  var lamp = addBox(
+    record.group,
+    lampGeo,
+    record.blackout ? ctx.materials.blackoutLamp : ctx.materials.lamp,
+    lampX,
+    height - 0.1,
+    lampZ,
+    pos.rotation
+  );
+  lamp.name = "Level2EL3AOfficeLamp";
+  record.lampMeshes.push(lamp);
+  var light = {
+    x: lampX,
+    y: height - 0.44,
+    z: lampZ,
+    baseIntensity: 0.82,
+    intensity: record.blackout ? 0.04 : 0.82,
+    distance: 9,
+  };
+  record.lights.push(light);
+  ctx.lightCandidates.push(light);
+
+  // 桌面维护记录沿用 L2 的 session 交互状态。
+  var noteX = deskX - nx * 0.5;
+  var noteZ = deskZ - nz * 0.5;
+  var noteGeo = new THREE.BoxGeometry(0.42, 0.035, 0.3);
+  record.geometries.push(noteGeo);
+  addBox(record.group, noteGeo, ctx.materials.office, noteX, 0.79, noteZ, pos.rotation);
+  addPickRoot(ctx, record, noteX, 1.0, noteZ, {
+    kind: "l2_el3a_record",
+    id: id + ":record",
+    code: feature.code || "EL3A",
+    text: "EL3A 办公室维护记录：墙内管线与隧道图纸存在偏移。门洞附近的管道已经被强制截断。",
+  });
+}
+
 function addChunkFeatures(ctx, record) {
   var features = deriveFeatures(record);
   for (var i = 0; i < features.length; i++) {
@@ -619,31 +926,28 @@ function addChunkFeatures(ctx, record) {
         id: id,
         text: "褪色维护记录：每段隧道仍遵循测绘尺度，但供电与管线并不服从同一套图纸。",
       });
-    } else if (
-      feature.type === "equipment" ||
-      feature.type === "storage" ||
-      feature.type === "office"
-    ) {
+    } else if (feature.type === "office") {
+      addEl3aOffice(ctx, record, feature, pos, id);
+    } else if (feature.type === "equipment" || feature.type === "storage") {
       var tangentX = Math.sin(pos.rotation);
       var tangentZ = Math.cos(pos.rotation);
       var propX = pos.x + tangentX * 2.7;
       var propZ = pos.z + tangentZ * 2.7;
-      var isOffice = feature.type === "office";
-      var propGeo = new THREE.BoxGeometry(isOffice ? 1.8 : 1.25, isOffice ? 0.76 : 1.45, 0.72);
+      var propGeo = new THREE.BoxGeometry(1.25, 1.45, 0.72);
       record.geometries.push(propGeo);
       addBox(
         record.group,
         propGeo,
-        isOffice ? ctx.materials.wood : ctx.materials.rust,
+        ctx.materials.rust,
         propX,
-        isOffice ? 0.38 : 0.725,
+        0.725,
         propZ,
         pos.rotation
       );
       addCollider(
         ctx,
         record,
-        createObb(propX, propZ, isOffice ? 0.9 : 0.625, 0.36, -pos.rotation, "obstacle")
+        createObb(propX, propZ, 0.625, 0.36, -pos.rotation, "obstacle")
       );
     }
   }
@@ -873,7 +1177,10 @@ export function buildBackroomsLevel2World(root, opts) {
           : materials.lamp;
       }
       for (var ci = 0; ci < chunk.lights.length; ci++) {
-        chunk.lights[ci].intensity = dark ? 0.04 : 0.95;
+        var candidate = chunk.lights[ci];
+        candidate.intensity = dark
+          ? 0.04
+          : (candidate.baseIntensity != null ? candidate.baseIntensity : 0.95);
       }
     });
     lightPool.update(px, pz, lightCandidates);
@@ -979,6 +1286,9 @@ export function buildBackroomsLevel2World(root, opts) {
       if (info.kind === "l2_record") {
         return interactionState[info.id] ? "工业维护记录 · 已读" : "工业维护记录 · 按 Q 阅读";
       }
+      if (info.kind === "l2_el3a_record") {
+        return interactionState[info.id] ? "EL3A 办公室记录 · 已读" : "EL3A 办公室记录 · 按 Q 阅读";
+      }
       return "";
     },
     interact: function (data, callbacks) {
@@ -999,7 +1309,7 @@ export function buildBackroomsLevel2World(root, opts) {
         if (callbacks.showToast) callbacks.showToast("取得工业维修补给。", 1800);
         return true;
       }
-      if (info.kind === "l2_record") {
+      if (info.kind === "l2_record" || info.kind === "l2_el3a_record") {
         interactionState[info.id] = true;
         writeInteractionState(interactionState);
         if (callbacks.showToast) callbacks.showToast(info.text, 4800);

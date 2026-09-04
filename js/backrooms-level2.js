@@ -25,7 +25,7 @@ import {
   buildBackroomsLevel2World,
   CORRIDOR_HEIGHT,
   SPAWN_Z,
-} from "./backrooms-level2-streaming-world.js?v=2";
+} from "./backrooms-level2-streaming-world.js?v=3";
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
 import {
   resolveBackroomsGfxProfile,

@@ -90,6 +90,12 @@ assertEq(spawn.cx, 0, "spawn cx");
 assertEq(spawn.cz, 0, "spawn cz");
 assert(spawn.layout.safe, "spawn layout safe");
 assert(
+  spawn.layout.features.every(function (feature) {
+    return feature.type !== "office";
+  }),
+  "spawn safe chunk excludes EL3A office"
+);
+assert(
   spawn.x >= spawn.bounds.minX && spawn.x < spawn.bounds.maxX,
   "spawn x in bounds"
 );
@@ -136,6 +142,10 @@ for (var x = -4; x <= 4; x++) {
     }
     for (var fi = 0; fi < lay.features.length; fi++) {
       seenFeatures[lay.features[fi].type] = true;
+      if (lay.features[fi].type === "office") {
+        assertEq(lay.features[fi].code, "EL3A", "office feature uses EL3A code");
+        assert(!lay.safe, "EL3A office is outside safe chunks");
+      }
     }
     var segs = lay.segments;
     assert(segs.length > 0, "segments non-empty " + x + "," + z);
@@ -178,6 +188,10 @@ for (var sx = -12; sx <= 12; sx++) {
     var ly = getLevel2ChunkLayout(SEED, sx, sz);
     for (var fj = 0; fj < ly.features.length; fj++) {
       seenFeatures[ly.features[fj].type] = true;
+      if (ly.features[fj].type === "office") {
+        assertEq(ly.features[fj].code, "EL3A", "sampled office uses EL3A code");
+        assert(!ly.safe, "sampled EL3A office is outside safe chunks");
+      }
     }
     seenKinds[ly.template] = true;
   }

@@ -352,7 +352,7 @@ function pickTemplate(rng, safe) {
   if (roll < 0.66) return "fork_t";
   if (roll < 0.78) return "diagonal_branch";
   if (roll < 0.86) return "equipment_hall";
-  if (roll < 0.93) return "storage";
+  if (roll < 0.91) return "storage";
   return "office";
 }
 
@@ -400,6 +400,7 @@ function addDiagonalBranch(state, rng, fromX, fromZ, featureType) {
   state.features.push({
     id: "feature-" + featureType + "-" + state.features.length,
     type: featureType,
+    code: featureType === "office" ? "EL3A" : null,
     nodeId: nid,
     x: tx,
     z: tz,
