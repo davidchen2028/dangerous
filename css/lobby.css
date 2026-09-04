@@ -144,6 +144,20 @@ body:not(.hub-home) .hub-top {
   left: max(1.25rem, env(safe-area-inset-left, 0px));
 }
 
+.btn-hub--author {
+  top: calc(5.75rem + env(safe-area-inset-top, 0px));
+  left: max(1.25rem, env(safe-area-inset-left, 0px));
+  text-decoration: none;
+  background: rgba(24, 48, 62, 0.9);
+  border-color: rgba(116, 190, 220, 0.52);
+  color: rgba(222, 245, 255, 0.98);
+}
+
+body:not(.hub-home) .btn-hub--author {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .btn-hub--backrooms {
   top: 50%;
   left: max(1.25rem, env(safe-area-inset-left, 0px));

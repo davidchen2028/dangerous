@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#090d13">
+  <title>作者模型展示 · 极危行动</title>
+  <link rel="stylesheet" href="css/author-showcase.css?v=1">
+</head>
+<body>
+  <a class="author-back" href="index.html" aria-label="返回行动基地">‹ <span>返回</span></a>
+
+  <main class="author-shell" id="authorShell" hidden>
+    <header class="author-head">
+      <p class="author-kicker">JIWEI ACTION · DEVELOPMENT ARCHIVE</p>
+      <h1>作者模型展示</h1>
+      <p>门、空间入口、人物、实体与声音资料库</p>
+    </header>
+
+    <nav class="author-tabs" aria-label="展示分类">
+      <button class="author-tab is-active" type="button" data-category="doors">门</button>
+      <button class="author-tab" type="button" data-category="offices">办公室</button>
+      <button class="author-tab" type="button" data-category="people">人物</button>
+      <button class="author-tab" type="button" data-category="monsters">怪物</button>
+      <button class="author-tab" type="button" data-category="audio">声音</button>
+    </nav>
+
+    <section class="author-gallery" id="modelGallery">
+      <aside class="author-list" id="modelList" aria-label="模型列表"></aside>
+      <section class="author-viewer">
+        <canvas id="authorCanvas" aria-label="模型三维预览"></canvas>
+        <div class="author-viewer__tools">
+          <button type="button" id="toggleRotate">暂停旋转</button>
+          <button type="button" id="resetCamera">重置视角</button>
+        </div>
+        <p class="author-viewer__hint">拖动旋转 · 滚轮或双指缩放</p>
+      </section>
+      <article class="author-info">
+        <span id="modelType">模型</span>
+        <h2 id="modelTitle">—</h2>
+        <p id="modelSource">—</p>
+        <p id="modelDescription">选择左侧条目查看模型。</p>
+      </article>
+    </section>
+
+    <section class="audio-gallery" id="audioGallery" hidden>
+      <div class="audio-card">
+        <div><strong>Level 0 背景音乐</strong><small>文件音频 · MP4</small></div>
+        <button type="button" data-track="audio/level0-music.mp4">试听</button>
+      </div>
+      <div class="audio-card">
+        <div><strong>Level 4 背景音乐</strong><small>文件音频 · MP4</small></div>
+        <button type="button" data-track="audio/level4-music.mp4">试听</button>
+      </div>
+      <div class="audio-card">
+        <div><strong>大型爆炸</strong><small>Web Audio 程序化合成</small></div>
+        <button type="button" data-sfx="explosion">播放一次</button>
+      </div>
+      <div class="audio-card">
+        <div><strong>枪声</strong><small>Web Audio 程序化合成</small></div>
+        <button type="button" data-sfx="gunshot">播放一次</button>
+      </div>
+      <div class="audio-card">
+        <div><strong>开锁成功</strong><small>Web Audio 音阶</small></div>
+        <button type="button" data-sfx="unlock">播放一次</button>
+      </div>
+      <div class="audio-card">
+        <div><strong>工业隧道嗡鸣</strong><small>3 秒环境音</small></div>
+        <button type="button" data-sfx="hum">播放 3 秒</button>
+      </div>
+      <div class="audio-player" id="audioPlayer" hidden>
+        <strong id="audioNow">正在播放</strong>
+        <audio id="showcaseAudio" controls preload="metadata"></audio>
+        <button type="button" id="stopAudio">停止</button>
+      </div>
+    </section>
+  </main>
+
+  <section class="author-lock" id="authorLock" aria-labelledby="lockTitle">
+    <form class="author-lock__card" id="authorLogin">
+      <p class="author-kicker">RESTRICTED ARCHIVE</p>
+      <h1 id="lockTitle">作者资料库</h1>
+      <p>请输入访问密码</p>
+      <label>
+        <span>密码</span>
+        <input id="authorPassword" type="password" autocomplete="current-password" maxlength="64" required autofocus>
+      </label>
+      <button type="submit">进入展示页</button>
+      <p class="author-lock__error" id="authorError" role="alert"></p>
+    </form>
+  </section>
+
+  <script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
+  <script type="module" src="js/author-showcase.js?v=1"></script>
+</body>
+</html>

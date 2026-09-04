@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List
 
 # 发版时递增，Service Worker 会换缓存名并重新下载。
-CLIENT_PACK_VERSION = 5
+CLIENT_PACK_VERSION = 6
 
 _SKIP_HTML = {
     "backrooms-sandbox.html",
@@ -69,6 +69,7 @@ def list_client_pack_files(root: Path) -> List[str]:
             continue
         add(path.name)
 
+    add("author-showcase.html")
     add("index.html")
     files.sort()
     return files
