@@ -12,6 +12,7 @@ import {
 export const L4_ENTITY_STATE_KEY = "backrooms_l4_entities_v1";
 export const L4_MAX_ACTIVE_ENTITIES = 3;
 export const L4_ENTITY_SAFE_RADIUS = 34;
+const L4_ACTIVE_RETAIN_DISTANCE = 30;
 
 function readState() {
   try {
@@ -171,17 +172,41 @@ export function createLevel4EntityManager(parent, colliders) {
     if (stored && Number.isFinite(stored.hp)) {
       system.health.hp = Math.max(1, Math.min(system.health.maxHp, stored.hp));
     }
-    active.set(spec.id, { id: spec.id, kind: spec.kind, system: system });
+    active.set(spec.id, { id: spec.id, kind: spec.kind, system: system, spec: spec });
   }
 
   function reconcile(specs, px, pz) {
+    var deadIds = [];
+    active.forEach(function (entry, id) {
+      if (
+        entry.system &&
+        entry.system.health &&
+        (!entry.system.health.alive || entry.system.health.hp <= 0)
+      ) {
+        deadIds.push(id);
+      }
+    });
+    deadIds.forEach(remove);
+
+    var listed = Object.create(null);
     var candidates = (specs || [])
       .filter(function (spec) {
-        return spec && Math.hypot(spec.x, spec.z - 2) >= L4_ENTITY_SAFE_RADIUS;
+        if (!spec || (state[spec.id] && state[spec.id].dead)) return false;
+        listed[spec.id] = true;
+        return Math.hypot(spec.x, spec.z - 2) >= L4_ENTITY_SAFE_RADIUS;
       })
       .map(function (spec) {
         return { spec: spec, distance: Math.hypot(spec.x - px, spec.z - pz) };
-      })
+      });
+    active.forEach(function (entry, id) {
+      if (listed[id] || !entry.system || !entry.system.group) return;
+      var group = entry.system.group;
+      var distance = Math.hypot(group.position.x - px, group.position.z - pz);
+      if (distance <= L4_ACTIVE_RETAIN_DISTANCE) {
+        candidates.push({ spec: entry.spec, distance: distance });
+      }
+    });
+    candidates = candidates
       .sort(function (a, b) {
         return a.distance - b.distance;
       })

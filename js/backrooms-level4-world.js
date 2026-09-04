@@ -588,7 +588,13 @@ function addWindowWall(
     // 拾取盒探入房间一侧，确保射线先命中警告区而不是墙体 collider。
     pick.position.set(along ? wx : wx + 0.32, winY, along ? wz + 0.46 : wz);
     pick.scale.set(along ? 21.6 : 0.45, winH + 0.45, along ? 0.45 : 21.6);
-    pick.userData.brInteract = { kind: "l4_false_window", id: trapId };
+    pick.userData.brInteract = {
+      kind: "l4_false_window",
+      id: trapId,
+      x: wx,
+      z: wz,
+      along: !!along,
+    };
     group.add(pick);
     interactRoots.push(pick);
   }

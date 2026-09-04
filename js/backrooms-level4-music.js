@@ -25,10 +25,13 @@ function ensureAmbient() {
 }
 
 function startOfficeHum() {
-  if (humOsc) return;
   var ac = ensureAmbient();
   if (!ac) return;
-  if (ac.state === "suspended") ac.resume();
+  if (ac.state === "suspended" || ac.state === "interrupted") {
+    var resumed = ac.resume();
+    if (resumed && typeof resumed.catch === "function") resumed.catch(function () {});
+  }
+  if (humOsc) return;
   humGain = ac.createGain();
   humGain.gain.value = 0.018;
   humGain.connect(ac.destination);
@@ -41,21 +44,30 @@ function startOfficeHum() {
 
 export function playLevel4Sfx(kind) {
   var ac = ensureAmbient();
-  if (!ac || ac.state !== "running") return;
-  var osc = ac.createOscillator();
-  var gain = ac.createGain();
-  var now = ac.currentTime;
-  var from = kind === "danger" ? 680 : kind === "water" ? 240 : kind === "entity" ? 110 : 160;
-  var to = kind === "danger" ? 90 : kind === "water" ? 420 : kind === "entity" ? 55 : 360;
-  osc.type = kind === "danger" || kind === "entity" ? "sawtooth" : "sine";
-  osc.frequency.setValueAtTime(from, now);
-  osc.frequency.exponentialRampToValueAtTime(to, now + 0.24);
-  gain.gain.setValueAtTime(0.045, now);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
-  osc.connect(gain);
-  gain.connect(ac.destination);
-  osc.start(now);
-  osc.stop(now + 0.25);
+  if (!ac) return;
+  function emit() {
+    if (ambientCtx !== ac || ac.state !== "running") return;
+    var osc = ac.createOscillator();
+    var gain = ac.createGain();
+    var now = ac.currentTime;
+    var from = kind === "danger" ? 680 : kind === "water" ? 240 : kind === "entity" ? 110 : 160;
+    var to = kind === "danger" ? 90 : kind === "water" ? 420 : kind === "entity" ? 55 : 360;
+    osc.type = kind === "danger" || kind === "entity" ? "sawtooth" : "sine";
+    osc.frequency.setValueAtTime(from, now);
+    osc.frequency.exponentialRampToValueAtTime(to, now + 0.24);
+    gain.gain.setValueAtTime(0.045, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+    osc.connect(gain);
+    gain.connect(ac.destination);
+    osc.start(now);
+    osc.stop(now + 0.25);
+  }
+  if (ac.state === "running") {
+    emit();
+  } else if (ac.state === "suspended" || ac.state === "interrupted") {
+    var resumed = ac.resume();
+    if (resumed && typeof resumed.then === "function") resumed.then(emit).catch(function () {});
+  }
 }
 
 function ensureAudio() {

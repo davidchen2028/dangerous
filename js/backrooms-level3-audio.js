@@ -20,19 +20,28 @@ function ensureCtx() {
 
 function playTone(type, fromHz, toHz, duration, volume) {
   var ac = ensureCtx();
-  if (!ac || ac.state !== "running") return;
-  var osc = ac.createOscillator();
-  var gain = ac.createGain();
-  var now = ac.currentTime;
-  osc.type = type;
-  osc.frequency.setValueAtTime(fromHz, now);
-  osc.frequency.exponentialRampToValueAtTime(Math.max(20, toHz), now + duration);
-  gain.gain.setValueAtTime(volume, now);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-  osc.connect(gain);
-  gain.connect(ac.destination);
-  osc.start(now);
-  osc.stop(now + duration);
+  if (!ac) return;
+  function emit() {
+    if (ctx !== ac || ac.state !== "running") return;
+    var osc = ac.createOscillator();
+    var gain = ac.createGain();
+    var now = ac.currentTime;
+    osc.type = type;
+    osc.frequency.setValueAtTime(fromHz, now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, toHz), now + duration);
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.connect(gain);
+    gain.connect(ac.destination);
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+  if (ac.state === "running") {
+    emit();
+  } else if (ac.state === "suspended" || ac.state === "interrupted") {
+    var resumed = ac.resume();
+    if (resumed && typeof resumed.then === "function") resumed.then(emit).catch(function () {});
+  }
 }
 
 export function playLevel3PipeBurst(kind) {

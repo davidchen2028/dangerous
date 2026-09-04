@@ -27,3 +27,10 @@ export function chooseLevel4Interaction(kind, mode, state) {
 export function canCompleteLevel4Transition(survival) {
   return !!survival && !survival.dead;
 }
+
+export function isPlayerNearLevel4FalseWindow(px, pz, data) {
+  if (!data || data.kind !== "l4_false_window") return false;
+  var normalDistance = data.along ? Math.abs(pz - data.z) : Math.abs(px - data.x);
+  var spanDistance = data.along ? Math.abs(px - data.x) : Math.abs(pz - data.z);
+  return normalDistance <= 0.82 && spanDistance <= 10.8;
+}

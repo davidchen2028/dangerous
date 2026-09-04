@@ -35,7 +35,7 @@ import {
   updateLevel3PipeHazards,
 } from "./backrooms-level3-hazards.js?v=2";
 import { createLevel3DeathMoths } from "./backrooms-death-moth.js?v=2";
-import { createLevel3Clumps } from "./backrooms-clump-ai.js?v=2";
+import { createLevel3Clumps } from "./backrooms-clump-ai.js?v=3";
 import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
 import {
   bindLevel3HumOnGesture,
@@ -44,7 +44,7 @@ import {
   playLevel3PipeBurst,
   playLevel3ElevatorStart,
   playLevel3EntityAttack,
-} from "./backrooms-level3-audio.js?v=2";
+} from "./backrooms-level3-audio.js?v=3";
 import {
   buildLevel3ElevatorShaft,
   isNearLevel3Elevator,
@@ -153,6 +153,7 @@ let spawnZ = 0;
 let level3Elevator = null;
 let elevatorRising = false;
 let elevatorRiseT = 0;
+let elevatorCompleted = false;
 const ELEVATOR_RISE_DURATION = 3.6;
 const ELEVATOR_RISE_HEIGHT = 88;
 let elevatorStartPitch = 0;
@@ -346,6 +347,7 @@ function tryStartElevator() {
   transitionLock = true;
   elevatorRising = true;
   elevatorRiseT = 0;
+  elevatorCompleted = false;
   elevatorStartPitch = fps.pitch;
   fps.move.forward = false;
   fps.move.back = false;
@@ -360,6 +362,7 @@ function tryStartElevator() {
 function cancelElevatorRise() {
   if (!elevatorRising) return;
   elevatorRising = false;
+  elevatorCompleted = false;
   transitionLock = false;
   elevatorRiseT = 0;
   fps.feetY = 0;
@@ -369,6 +372,7 @@ function cancelElevatorRise() {
 
 function updateElevatorRise(dt) {
   if (!elevatorRising) return false;
+  if (elevatorCompleted) return true;
   var action = getLevel3ElevatorRiseAction(
     elevatorRising,
     !survival || survival.dead,
@@ -388,6 +392,7 @@ function updateElevatorRise(dt) {
       cancelElevatorRise();
       return false;
     }
+    elevatorCompleted = true;
     try {
       saveBackroomsSurvival(survival);
       grantLevelPass("l4", fps.yaw);

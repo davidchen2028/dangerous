@@ -10,6 +10,7 @@ import {
   CLUMP_RADIUS,
   canClumpPounceHit,
   createClumpsAt,
+  isClumpPouncePathClear,
 } from "./backrooms-clump-ai.js";
 
 function openMaze() {
@@ -95,4 +96,14 @@ test("blocked clump lunge cannot cross a pipe or damage through it", () => {
   assert.equal(damage, 0);
   assert.equal(canClumpPounceHit(clump.x, clump.z, 1, 0), false);
   system.dispose();
+});
+
+test("a wall pipe blocks pounce damage even when both sides are in hit range", () => {
+  const clumpX = pipeBarrier.minX - CLUMP_RADIUS;
+  const playerX = pipeBarrier.maxX + 0.32;
+  assert.equal(canClumpPounceHit(clumpX, 0, playerX, 0), true);
+  assert.equal(
+    isClumpPouncePathClear(clumpX, 0, playerX, 0, [pipeBarrier]),
+    false
+  );
 });

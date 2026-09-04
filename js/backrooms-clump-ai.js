@@ -15,6 +15,7 @@ import {
   resolveCircleAgainstLevel3Maze,
 } from "./backrooms-level3-world.js";
 import { resolveBackroomsMoveCollisions } from "./backrooms-fps-controller.js";
+import { raycastWallBlockDistance } from "./backrooms-collide.js";
 import {
   BACKROOMS_ENTITY_HEALTH,
   registerBackroomsEntityTarget,
@@ -214,6 +215,23 @@ export function canClumpPounceHit(clumpX, clumpZ, playerX, playerZ) {
   return distSq(clumpX, clumpZ, playerX, playerZ) <= CLUMP_HIT_DIST * CLUMP_HIT_DIST;
 }
 
+export function isClumpPouncePathClear(clumpX, clumpZ, playerX, playerZ, colliders) {
+  if (!colliders || !colliders.length) return true;
+  var dx = playerX - clumpX;
+  var dz = playerZ - clumpZ;
+  var distance = Math.hypot(dx, dz);
+  if (distance < 0.001) return true;
+  var blockedAt = raycastWallBlockDistance(
+    { x: clumpX, y: 0.7, z: clumpZ },
+    { x: dx / distance, y: 0, z: dz / distance },
+    distance,
+    colliders,
+    0,
+    2
+  );
+  return blockedAt >= distance - 0.08;
+}
+
 function updateSingleClump(clump, dt, px, pz, survival, toastFn, opts) {
   if (clump.dead) return;
   clump.animT += dt;
@@ -234,7 +252,14 @@ function updateSingleClump(clump, dt, px, pz, survival, toastFn, opts) {
     if (p >= 0.12 && p <= 0.72) {
       if (
         !opts.playerSafe &&
-        canClumpPounceHit(clump.x, clump.z, px, pz)
+        canClumpPounceHit(clump.x, clump.z, px, pz) &&
+        isClumpPouncePathClear(
+          clump.x,
+          clump.z,
+          px,
+          pz,
+          opts.extraColliders || opts.wallColliders
+        )
       ) {
         applyPounceDamage(clump, survival, toastFn, opts);
       }

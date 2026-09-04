@@ -60,3 +60,30 @@ test("duller movement respects office colliders", () => {
   assert.ok(entry.system.group.position.x <= barrier.minX - 0.34 + 1e-6);
   manager.dispose();
 });
+
+test("dead entities free a population slot for the next live candidate", () => {
+  store.clear();
+  const manager = createLevel4EntityManager(new THREE.Group(), []);
+  const specs = Array.from({ length: 4 }, (_, index) => spec(index));
+  const survival = { dead: false, takeDamage() { return true; } };
+  manager.update(0.016, 80, 80, survival, null, specs, false);
+  const deadId = manager.getActiveEntries()[0].id;
+  manager.getActiveEntries()[0].system.health.takeDamage(999);
+  manager.update(0.016, 80, 80, survival, null, specs, false);
+  assert.equal(manager.getActiveCount(), L4_MAX_ACTIVE_ENTITIES);
+  assert.equal(manager.getActiveEntries().some((entry) => entry.id === deadId), false);
+  assert.ok(manager.getActiveEntries().some((entry) => entry.id === "entity_3"));
+  manager.dispose();
+});
+
+test("an entity near the player survives origin chunk descriptor unload", () => {
+  store.clear();
+  const manager = createLevel4EntityManager(new THREE.Group(), []);
+  const survival = { dead: false, takeDamage() { return true; } };
+  manager.update(0.016, 80, 80, survival, null, [spec(0)], false);
+  manager.update(0.016, 80, 80, survival, null, [], false);
+  assert.equal(manager.getActiveCount(), 1);
+  manager.update(0.016, 200, 200, survival, null, [], false);
+  assert.equal(manager.getActiveCount(), 0);
+  manager.dispose();
+});

@@ -28,7 +28,7 @@ import {
   formatNightVisionRemaining,
   useNightVisionPotionFromBackpack,
 } from "./backrooms-night-vision.js";
-import { buildLevel4World, getSpawnChunkBounds, L4_WALL_H } from "./backrooms-level4-world.js?v=4";
+import { buildLevel4World, getSpawnChunkBounds, L4_WALL_H } from "./backrooms-level4-world.js?v=5";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -49,7 +49,7 @@ import {
   fadeOutLevel4Music,
   playLevel4Sfx,
   LEVEL4_MUSIC_FADE_OUT_MS as MUSIC_FADE_OUT_MS,
-} from "./backrooms-level4-music.js?v=2";
+} from "./backrooms-level4-music.js?v=3";
 import {
   openTaskBoard,
   isTaskBoardUnlocked,
@@ -96,11 +96,12 @@ import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
 import {
   canCompleteLevel4Transition,
   chooseLevel4Interaction,
-} from "./backrooms-level4-interaction.js?v=1";
+  isPlayerNearLevel4FalseWindow,
+} from "./backrooms-level4-interaction.js?v=2";
 import {
   createLevel4EntityManager,
   L4_ENTITY_SAFE_RADIUS,
-} from "./backrooms-level4-entities.js?v=1";
+} from "./backrooms-level4-entities.js?v=2";
 
 const FOG_COLOR = 0xe8ebf0;
 const FOG_NEAR = 6;
@@ -734,6 +735,18 @@ function triggerFalseWindow() {
   showLootToast("窗外的景象突然贴近——这是陷阱！−12 血量");
 }
 
+function updateFalseWindowContact() {
+  if (!survival || survival.dead) return;
+  for (var i = 0; i < interactRoots.length; i++) {
+    var data = interactRoots[i].userData && interactRoots[i].userData.brInteract;
+    if (!data || data.kind !== "l4_false_window") continue;
+    if (isPlayerNearLevel4FalseWindow(fps.player.x, fps.player.z, data)) {
+      triggerFalseWindow();
+      return;
+    }
+  }
+}
+
 function tryStairsQ() {
   if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
   if (!isAimStairsDown()) return;
@@ -756,7 +769,10 @@ function tryLevel4Interact(mode) {
   if (action === "exit_l3") exitToLevel3();
   else if (action === "exit_l5") exitToLevel5();
   else if (action === "exit_l61") exitToLevel61();
-  else if (action === "false_window") triggerFalseWindow();
+  else if (action === "false_window") {
+    playLevel4Sfx("danger");
+    showLootToast("M.E.G 警告：未涂黑的窗户是陷阱，立即远离");
+  }
   else if (action === "bntg") openBntgDialogue();
   else if (action === "meg") openMegDialogue();
   else if (action === "storage") openL4MegStorage();
@@ -993,6 +1009,7 @@ function init() {
       });
     }
     if (level4World) level4World.update(fps.player.x, fps.player.z);
+    updateFalseWindowContact();
     if (wandererManager && survival && !survival.dead) {
       wandererManager.update(dt, fps.player.x, fps.player.z);
     }
