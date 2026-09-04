@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List
 
 # 发版时递增，Service Worker 会换缓存名并重新下载。
-CLIENT_PACK_VERSION = 9
+CLIENT_PACK_VERSION = 10
 
 _SKIP_HTML = {
     "backrooms-sandbox.html",

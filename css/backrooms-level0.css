@@ -897,6 +897,22 @@ body.backrooms-meg-guide-open .backrooms-hud__prompt {
   font-size: 13px;
   color: #a8cce8;
   pointer-events: auto;
+  /* 商店选项可达 50 条以上：没有高度上限时列表会溢出对话框，滚轮也就没有滚动对象 */
+  max-height: min(40vh, 300px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140, 190, 240, 0.45) transparent;
+}
+
+.backrooms-dialogue__choices::-webkit-scrollbar {
+  width: 8px;
+}
+
+.backrooms-dialogue__choices::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: rgba(140, 190, 240, 0.35);
 }
 
 .backrooms-dialogue__choice {

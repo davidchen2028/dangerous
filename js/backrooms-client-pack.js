@@ -2,7 +2,7 @@
  * 注册客户端资源包 Service Worker，并在需要时等待首次打包完成。
  */
 (function (global) {
-  var PACK_VERSION = 9;
+  var PACK_VERSION = 10;
   var lastProgress = { done: 0, total: 0, version: PACK_VERSION };
   var waiters = [];
 

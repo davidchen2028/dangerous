@@ -635,16 +635,14 @@ function renderVendorMenu(note) {
         it.id +
         '"' +
         (afford ? "" : ' style="opacity:0.5"') +
-        "><kbd>" +
-        (i + 1) +
-        "</kbd> " +
+        ">" +
         it.label +
         " · " +
         it.cost +
         " 积分点</button>";
     }
     html +=
-      '<button type="button" class="backrooms-dialogue__choice" data-vendor="close"><kbd>Esc</kbd> 离开</button>' +
+      '<button type="button" class="backrooms-dialogue__choice" data-vendor="close">离开</button>' +
       aiChoiceHtml("l11_vendor");
     dialogueChoicesEl.innerHTML = html;
   }
@@ -654,11 +652,11 @@ function renderVendorConfirm(def) {
   if (!dialogueTextEl || !dialogueChoicesEl) return;
   pendingVendorPurchase = def;
   dialogueTextEl.textContent =
-    def.label + "，价格 " + def.cost + " 积分点。按 A 确认购买。";
+    def.label + "，价格 " + def.cost + " 积分点。点击「确认购买」成交。";
   dialogueChoicesEl.hidden = false;
   dialogueChoicesEl.innerHTML =
-    '<button type="button" class="backrooms-dialogue__choice" data-vendor-confirm="yes"><kbd>A</kbd> 确认购买</button>' +
-    '<button type="button" class="backrooms-dialogue__choice" data-vendor-confirm="back"><kbd>B</kbd> 返回商品列表</button>';
+    '<button type="button" class="backrooms-dialogue__choice" data-vendor-confirm="yes">确认购买</button>' +
+    '<button type="button" class="backrooms-dialogue__choice" data-vendor-confirm="back">返回商品列表</button>';
 }
 
 function openBntgVendor() {
@@ -832,7 +830,7 @@ function setSellChoicesIdle() {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
   dialogueChoicesEl.innerHTML =
-    '<button type="button" class="backrooms-dialogue__choice" data-sell="close"><kbd>Esc</kbd> 离开</button>' +
+    '<button type="button" class="backrooms-dialogue__choice" data-sell="close">离开</button>' +
     aiChoiceHtml("l11_buyer");
 }
 
@@ -840,8 +838,8 @@ function setSellChoicesConfirm() {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
   dialogueChoicesEl.innerHTML =
-    '<button type="button" class="backrooms-dialogue__choice" data-sell="confirm"><kbd>A</kbd> 确认出售</button>' +
-    '<button type="button" class="backrooms-dialogue__choice" data-sell="close"><kbd>B</kbd> 离开</button>';
+    '<button type="button" class="backrooms-dialogue__choice" data-sell="confirm">确认出售</button>' +
+    '<button type="button" class="backrooms-dialogue__choice" data-sell="close">离开</button>';
 }
 
 function sellPromptText(note) {
@@ -882,7 +880,7 @@ function onSellItemPicked(item, source, index) {
   };
   if (dialogueTextEl) {
     dialogueTextEl.textContent =
-      "「" + item.name + "」我出 " + price + " 积分点。按 A 确认成交。";
+      "「" + item.name + "」我出 " + price + " 积分点。点击「确认出售」成交。";
   }
   setSellChoicesConfirm();
 }
@@ -947,13 +945,6 @@ function tryQAction() {
   else if (data && data.kind === "l11_level2_empty_door") exitLevel11ToL2();
 }
 
-function isChoiceKey(e, letter) {
-  if (e.repeat) return false;
-  if (e.code === "Key" + letter.toUpperCase()) return true;
-  var key = e.key;
-  return !!(key && key.length === 1 && key.toLowerCase() === letter);
-}
-
 function bindControls() {
   bindBackroomsFpsControls({
     canvas: canvas,
@@ -971,55 +962,10 @@ function bindControls() {
       }
       if (dialogueOpen) {
         if (isAiChatOpen()) return true;
-        if (buyerMode) {
-          if (e.code === "Escape" && !e.repeat) {
-            e.preventDefault();
-            closeDialogue();
-            return true;
-          }
-          if (pendingSale && isChoiceKey(e, "a")) {
-            e.preventDefault();
-            confirmSellPendingItem();
-            return true;
-          }
-          if (isChoiceKey(e, "b")) {
-            e.preventDefault();
-            closeDialogue();
-            return true;
-          }
-          return true;
-        }
-        if (vendorMode) {
-          if (e.code === "Escape" && !e.repeat) {
-            e.preventDefault();
-            closeDialogue();
-            return true;
-          }
-          if (pendingVendorPurchase) {
-            if (isChoiceKey(e, "a")) {
-              e.preventDefault();
-              confirmVendorPurchase();
-              return true;
-            }
-            if (isChoiceKey(e, "b")) {
-              e.preventDefault();
-              renderVendorMenu(null);
-              return true;
-            }
-            return true;
-          }
-          if (!e.repeat && /^Digit[1-9]$/.test(e.code)) {
-            e.preventDefault();
-            var idx = parseInt(e.code.slice(5), 10) - 1;
-            if (BNTG_ITEMS[idx]) selectVendorPurchase(BNTG_ITEMS[idx].id);
-            return true;
-          }
-          return true;
-        }
-        if (isChoiceKey(e, "b") || (e.code === "Escape" && !e.repeat)) {
+        // 对话与商店选项一律点击操作，键盘只留 Esc 关闭，其余按键在对话期间吞掉。
+        if (e.code === "Escape" && !e.repeat) {
           e.preventDefault();
           closeDialogue();
-          return true;
         }
         return true;
       }
