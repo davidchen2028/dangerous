@@ -11,6 +11,52 @@ let audio = null;
 let gestureBound = false;
 let fadeFrame = 0;
 let audioFailed = false;
+let pagehideBound = false;
+let ambientCtx = null;
+let humOsc = null;
+let humGain = null;
+
+function ensureAmbient() {
+  if (ambientCtx) return ambientCtx;
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  ambientCtx = new AC();
+  return ambientCtx;
+}
+
+function startOfficeHum() {
+  if (humOsc) return;
+  var ac = ensureAmbient();
+  if (!ac) return;
+  if (ac.state === "suspended") ac.resume();
+  humGain = ac.createGain();
+  humGain.gain.value = 0.018;
+  humGain.connect(ac.destination);
+  humOsc = ac.createOscillator();
+  humOsc.type = "sine";
+  humOsc.frequency.value = 60;
+  humOsc.connect(humGain);
+  humOsc.start();
+}
+
+export function playLevel4Sfx(kind) {
+  var ac = ensureAmbient();
+  if (!ac || ac.state !== "running") return;
+  var osc = ac.createOscillator();
+  var gain = ac.createGain();
+  var now = ac.currentTime;
+  var from = kind === "danger" ? 680 : kind === "water" ? 240 : kind === "entity" ? 110 : 160;
+  var to = kind === "danger" ? 90 : kind === "water" ? 420 : kind === "entity" ? 55 : 360;
+  osc.type = kind === "danger" || kind === "entity" ? "sawtooth" : "sine";
+  osc.frequency.setValueAtTime(from, now);
+  osc.frequency.exponentialRampToValueAtTime(to, now + 0.24);
+  gain.gain.setValueAtTime(0.045, now);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+  osc.connect(gain);
+  gain.connect(ac.destination);
+  osc.start(now);
+  osc.stop(now + 0.25);
+}
 
 function ensureAudio() {
   if (audio) return audio;
@@ -42,6 +88,7 @@ function bindGestureOnce() {
 
 export function startLevel4Music() {
   if (audioFailed) return;
+  startOfficeHum();
   var el = ensureAudio();
   if (audioFailed) return;
   if (fadeFrame) {
@@ -110,17 +157,36 @@ export function stopLevel4Music() {
     cancelAnimationFrame(fadeFrame);
     fadeFrame = 0;
   }
-  if (!audio) return;
-  try {
-    audio.pause();
-    audio.currentTime = 0;
-    audio.volume = MUSIC_VOLUME;
-  } catch (err) {
-    /* ignore */
+  if (audio) {
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = MUSIC_VOLUME;
+    } catch (err) {
+      /* ignore */
+    }
+  }
+  if (humOsc) {
+    try {
+      humOsc.stop();
+      humOsc.disconnect();
+    } catch (err2) {
+      /* ignore */
+    }
+    humOsc = null;
+  }
+  if (humGain) humGain.disconnect();
+  humGain = null;
+  if (ambientCtx) {
+    ambientCtx.close();
+    ambientCtx = null;
   }
 }
 
 export function bindLevel4Music() {
   startLevel4Music();
-  window.addEventListener("pagehide", stopLevel4Music);
+  if (!pagehideBound) {
+    pagehideBound = true;
+    window.addEventListener("pagehide", stopLevel4Music);
+  }
 }

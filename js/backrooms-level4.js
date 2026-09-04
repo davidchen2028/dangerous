@@ -28,7 +28,7 @@ import {
   formatNightVisionRemaining,
   useNightVisionPotionFromBackpack,
 } from "./backrooms-night-vision.js";
-import { buildLevel4World, getSpawnChunkBounds, L4_WALL_H } from "./backrooms-level4-world.js?v=3";
+import { buildLevel4World, getSpawnChunkBounds, L4_WALL_H } from "./backrooms-level4-world.js?v=4";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -47,8 +47,9 @@ import {
   bindLevel4Music,
   startLevel4Music,
   fadeOutLevel4Music,
+  playLevel4Sfx,
   LEVEL4_MUSIC_FADE_OUT_MS as MUSIC_FADE_OUT_MS,
-} from "./backrooms-level4-music.js";
+} from "./backrooms-level4-music.js?v=2";
 import {
   openTaskBoard,
   isTaskBoardUnlocked,
@@ -92,6 +93,14 @@ import {
 } from "./backrooms-meg-career.js";
 import { createWandererManager } from "./backrooms-wanderers.js";
 import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
+import {
+  canCompleteLevel4Transition,
+  chooseLevel4Interaction,
+} from "./backrooms-level4-interaction.js?v=1";
+import {
+  createLevel4EntityManager,
+  L4_ENTITY_SAFE_RADIUS,
+} from "./backrooms-level4-entities.js?v=1";
 
 const FOG_COLOR = 0xe8ebf0;
 const FOG_NEAR = 6;
@@ -147,10 +156,14 @@ let interactRoots = [];
 let currentAimPick = null;
 let lootToastUntil = 0;
 let transitionLock = false;
+let aimPickEveryNFrames = 1;
+let aimPickFrame = 0;
+let falseWindowCooldownUntil = 0;
 let dialogueOpen = false;
 /** @type {ReturnType<createWandererManager> | null} */
 let wandererManager = null;
 let firesalt = null;
+let level4Entities = null;
 /** "bntg" | "meg" */
 let dialogueKind = "";
 /** 已接过水的饮水机 id；每台只出一瓶 */
@@ -220,7 +233,7 @@ function syncLookUi() {
   if (!hintEl) return;
   var nv = isNightVisionActive() ? " · 夜视 <strong>" + formatNightVisionRemaining() + "</strong>" : "";
   hintEl.innerHTML =
-    "Level 4 办公层 · <kbd>WASD</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>B</kbd> 背包" + nv;
+    "Level 4 废弃办公室 · <kbd>WASD</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>B</kbd> 背包 · 触屏点击交互" + nv;
 }
 
 function updateAimPick() {
@@ -263,6 +276,24 @@ function isAimStairsDown() {
   if (!currentAimPick || !currentAimPick.data) return false;
   if (currentAimPick.data.kind !== "l4_stairs_down") return false;
   return currentAimPick.distance <= AIM_INTERACT_MAX;
+}
+
+function isAimElevatorL3() {
+  return !!(
+    currentAimPick &&
+    currentAimPick.data &&
+    currentAimPick.data.kind === "l4_elevator_l3" &&
+    currentAimPick.distance <= AIM_INTERACT_MAX
+  );
+}
+
+function isAimFalseWindow() {
+  return !!(
+    currentAimPick &&
+    currentAimPick.data &&
+    currentAimPick.data.kind === "l4_false_window" &&
+    currentAimPick.distance <= AIM_INTERACT_MAX
+  );
 }
 
 function isAimVendingL61() {
@@ -387,6 +418,16 @@ function updateInteractHint() {
   if (isAimStairsDown()) {
     interactHintEl.hidden = false;
     interactHintEl.innerHTML = "按 <kbd>Q</kbd> 沿楼梯下行至 Level 5";
+    return;
+  }
+  if (isAimElevatorL3()) {
+    interactHintEl.hidden = false;
+    interactHintEl.innerHTML = "电梯 · 按 <kbd>Q</kbd> 返回 Level 3";
+    return;
+  }
+  if (isAimFalseWindow()) {
+    interactHintEl.hidden = false;
+    interactHintEl.innerHTML = "未涂黑的窗户 · 不要靠近";
     return;
   }
   if (isAimWanderer()) {
@@ -549,6 +590,7 @@ function acceptMegTaskBoard() {
   unlockTaskBoard();
   // colliders / interactRoots 是同一数组引用，区块重建后无需重新取。
   if (level4World && level4World.rebuildOutpost) level4World.rebuildOutpost();
+  playLevel4Sfx("task");
   showLootToast("M.E.G 成员在墙上挂出了任务白板 · 按 E 查看");
 }
 
@@ -562,11 +604,16 @@ function tryTaskBoardE() {
   });
 }
 
-function leaveLevel4(href) {
+function leaveLevel4(href, beforeNavigate) {
   var navigated = false;
   function go() {
     if (navigated) return;
+    if (!canCompleteLevel4Transition(survival)) {
+      transitionLock = false;
+      return;
+    }
     navigated = true;
+    if (beforeNavigate) beforeNavigate();
     window.location.href = href;
   }
   // 音乐淡出由 requestAnimationFrame 驱动，页面被后台节流或音频异常时可能永不结束。
@@ -576,14 +623,15 @@ function leaveLevel4(href) {
 }
 
 function exitToL1BntgBase() {
-  if (transitionLock) return;
+  if (transitionLock || !canCompleteLevel4Transition(survival)) return;
   transitionLock = true;
   closeBntgDialogue();
   showLootToast("B.N.T.G. 联络员带你前往独立基地…");
-  saveBackroomsSurvival(survival);
-  grantLevelPass("l1_bntg", fps.yaw);
-  queueEnterLevelBanner("Level 1 · B.N.T.G. 基地");
-  leaveLevel4("backrooms-level1-bntg-base.html");
+  leaveLevel4("backrooms-level1-bntg-base.html", function () {
+    saveBackroomsSurvival(survival);
+    grantLevelPass("l1_bntg", fps.yaw);
+    queueEnterLevelBanner("Level 1 · B.N.T.G. 基地");
+  });
 }
 
 function handleBntgChoice(choice) {
@@ -638,27 +686,52 @@ function tryWaterCoolerQ() {
   }
   markCoolerDrained(coolerId);
   saveBackroomsSurvival(survival);
+  playLevel4Sfx("water");
   showLootToast("接了一瓶杏仁水 · 这台饮水机空了");
 }
 
 function exitToLevel5() {
-  if (transitionLock) return;
+  if (transitionLock || !canCompleteLevel4Transition(survival)) return;
   transitionLock = true;
+  playLevel4Sfx("exit");
   showLootToast("你走下楼梯——猩红地毯与黄铜灯出现在下方…");
-  saveBackroomsSurvival(survival);
-  grantLevelPass("l5", fps.yaw);
-  queueEnterLevelNumber(5);
-  leaveLevel4("backrooms-level5.html");
+  leaveLevel4("backrooms-level5.html", function () {
+    saveBackroomsSurvival(survival);
+    grantLevelPass("l5", fps.yaw);
+    queueEnterLevelNumber(5);
+  });
 }
 
 function exitToLevel61() {
-  if (transitionLock) return;
+  if (transitionLock || !canCompleteLevel4Transition(survival)) return;
   transitionLock = true;
+  playLevel4Sfx("exit");
   showLootToast("你挤进了自动售货机…");
-  saveBackroomsSurvival(survival);
-  grantLevelPass("l6_1", fps.yaw);
-  queueEnterLevelNumber("6.1");
-  leaveLevel4("backrooms-level6-1.html");
+  leaveLevel4("backrooms-level6-1.html", function () {
+    saveBackroomsSurvival(survival);
+    grantLevelPass("l6_1", fps.yaw);
+    queueEnterLevelNumber("6.1");
+  });
+}
+
+function exitToLevel3() {
+  if (transitionLock || !canCompleteLevel4Transition(survival)) return;
+  transitionLock = true;
+  playLevel4Sfx("exit");
+  showLootToast("电梯下降，发电站的低鸣重新逼近…");
+  leaveLevel4("backrooms-level3.html", function () {
+    saveBackroomsSurvival(survival);
+    grantLevelPass("l3", fps.yaw);
+    queueEnterLevelNumber(3);
+  });
+}
+
+function triggerFalseWindow() {
+  if (!survival || survival.dead || performance.now() < falseWindowCooldownUntil) return;
+  falseWindowCooldownUntil = performance.now() + 5000;
+  survival.takeDamage(12);
+  playLevel4Sfx("danger");
+  showLootToast("窗外的景象突然贴近——这是陷阱！−12 血量");
 }
 
 function tryStairsQ() {
@@ -673,12 +746,38 @@ function tryVendingQ() {
   exitToLevel61();
 }
 
+function tryLevel4Interact(mode) {
+  if (hudBlocked() || !currentAimPick || !currentAimPick.data) return false;
+  var action = chooseLevel4Interaction(currentAimPick.data.kind, mode || "smart", {
+    inspectTask: isTaskAccepted("inspect_coolers"),
+    inspected: isCoolerInspected(aimedCoolerId()),
+  });
+  if (!action) return false;
+  if (action === "exit_l3") exitToLevel3();
+  else if (action === "exit_l5") exitToLevel5();
+  else if (action === "exit_l61") exitToLevel61();
+  else if (action === "false_window") triggerFalseWindow();
+  else if (action === "bntg") openBntgDialogue();
+  else if (action === "meg") openMegDialogue();
+  else if (action === "storage") openL4MegStorage();
+  else if (action === "wanderer" && wandererManager) {
+    wandererManager.interact(currentAimPick.data);
+  } else if (action === "task_board") tryTaskBoardE();
+  else if (action === "inspect_cooler") tryCoolerInspectE();
+  else if (action === "water") tryWaterCoolerQ();
+  return true;
+}
+
 function bindControls() {
   bindBackroomsFpsControls({
     canvas: canvas,
     inputEl: inputEl,
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
+    onTapInteract: function () {
+      updateAimPick();
+      tryLevel4Interact("smart");
+    },
     shouldBlockPointerLock: function () {
       return (
         isInventoryOpen() ||
@@ -731,19 +830,12 @@ function bindControls() {
       }
       if (e.code === "KeyE" && !e.repeat) {
         e.preventDefault();
-        if (isAimTaskBoard()) tryTaskBoardE();
-        else tryCoolerInspectE();
+        tryLevel4Interact("secondary");
         return true;
       }
       if (e.code === "KeyQ" && !e.repeat) {
         e.preventDefault();
-        if (isAimWanderer() && wandererManager) wandererManager.interact(currentAimPick.data);
-        else if (isAimStairsDown()) tryStairsQ();
-        else if (isAimVendingL61()) tryVendingQ();
-        else if (isAimBntgLiaison()) openBntgDialogue();
-        else if (isAimMegMember()) openMegDialogue();
-        else if (isAimStorageClerk()) openL4MegStorage();
-        else tryWaterCoolerQ();
+        tryLevel4Interact("primary");
         return true;
       }
       return false;
@@ -780,6 +872,7 @@ function init() {
 
   camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 90);
   var gfx = resolveBackroomsGfxProfile();
+  aimPickEveryNFrames = Math.max(1, gfx.aimPickEveryNFrames || 1);
   renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
   applyBackroomsRendererSize(renderer, window.innerWidth, window.innerHeight, gfx);
   applyBackroomsToneMapping(renderer);
@@ -844,6 +937,11 @@ function init() {
     camera: camera,
     showToast: showLootToast,
   });
+  level4Entities = createLevel4EntityManager(root, colliders);
+  window.addEventListener("pagehide", function () {
+    if (level4Entities) level4Entities.dispose();
+    if (level4World) level4World.dispose();
+  }, { once: true });
   installMegCheckpointDeathHooks(
     survival,
     function () {
@@ -898,7 +996,22 @@ function init() {
     if (wandererManager && survival && !survival.dead) {
       wandererManager.update(dt, fps.player.x, fps.player.z);
     }
-    updateAimPick();
+    if (level4Entities && survival && !survival.dead) {
+      level4Entities.update(
+        dt,
+        fps.player.x,
+        fps.player.z,
+        survival,
+        function (msg) {
+          playLevel4Sfx("entity");
+          showLootToast(msg);
+        },
+        level4World ? level4World.getEntitySpecs() : [],
+        Math.hypot(fps.player.x - spawnX, fps.player.z - spawnZ) < L4_ENTITY_SAFE_RADIUS
+      );
+    }
+    aimPickFrame += 1;
+    if (aimPickFrame % aimPickEveryNFrames === 0) updateAimPick();
     updateWaterHint();
     updateInteractHint();
     applyBackroomsCamera(fps, camera, EYE_HEIGHT);
@@ -914,11 +1027,14 @@ function init() {
       crosshairEl.classList.toggle(
         "backrooms-crosshair--interact",
         !hideXh &&
-          ((isAimWaterCooler() && !isAimedCoolerDrained()) ||
+          (isAimWaterCooler() ||
             isAimStairsDown() ||
+            isAimElevatorL3() ||
+            isAimFalseWindow() ||
             isAimVendingL61() ||
             isAimBntgLiaison() ||
             isAimMegMember() ||
+            isAimStorageClerk() ||
             isAimWanderer() ||
             isAimTaskBoard())
       );

@@ -12,6 +12,8 @@ class ClientPackTests(unittest.TestCase):
     def test_lists_level_scripts_and_skips_sandbox(self):
         files = client_pack.list_client_pack_files(ROOT)
         self.assertIn("js/backrooms-level1.js", files)
+        self.assertIn("js/backrooms-level4-layout.js", files)
+        self.assertIn("js/backrooms-level4-entities.js", files)
         self.assertIn("js/backrooms-presence.js", files)
         self.assertIn("js/vendor/three.module.min.js", files)
         self.assertIn("backrooms-level1.html", files)

@@ -5,15 +5,23 @@ import * as THREE from "three";
 import { resolveBackroomsGfxProfile } from "./backrooms-gfx-profile.js";
 import { createPointLightPool } from "./backrooms-point-light-pool.js";
 import { isTaskBoardUnlocked } from "./backrooms-tasks.js";
+import {
+  deriveLevel4ChunkLayout,
+  deriveLevel4EntitySpecs,
+  getLevel4LayoutSeed,
+  L4_OUTPOST_CX,
+  L4_OUTPOST_CZ,
+} from "./backrooms-level4-layout.js?v=1";
 
 export const L4_CHUNK_SIZE = 24;
 export const L4_WALL_H = 2.75;
 export const L4_STREAM_RADIUS = 2;
+export const L4_UNLOAD_RADIUS = 3;
 export const L4_SPAWN_X = 0;
 export const L4_SPAWN_Z = 2;
 /** M.E.G 前哨站所在的固定区块 */
-const OUTPOST_CX = 1;
-const OUTPOST_CZ = 0;
+const OUTPOST_CX = L4_OUTPOST_CX;
+const OUTPOST_CZ = L4_OUTPOST_CZ;
 
 const DESK_W = 1.45;
 const DESK_D = 0.72;
@@ -65,10 +73,11 @@ function voidWindowTexture() {
   g.addColorStop(1, "#3a4558");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 256, 256);
+  var rng = mulberry32(404);
   var i;
   for (i = 0; i < 1200; i++) {
-    ctx.fillStyle = "rgba(200,210,230," + (0.02 + Math.random() * 0.04) + ")";
-    ctx.fillRect(Math.random() * 256, Math.random() * 256, 1, 1);
+    ctx.fillStyle = "rgba(200,210,230," + (0.02 + rng() * 0.04) + ")";
+    ctx.fillRect(rng() * 256, rng() * 256, 1, 1);
   }
   _voidWindowTex = new THREE.CanvasTexture(c);
   _voidWindowTex.colorSpace = THREE.SRGBColorSpace;
@@ -78,6 +87,7 @@ function voidWindowTexture() {
 var _mats = null;
 var _unitBoxGeo = null;
 var _unitPlaneGeo = null;
+var _npcHeadGeo = null;
 var _instanceDummy = new THREE.Object3D();
 
 function sharedBoxGeometry() {
@@ -88,6 +98,11 @@ function sharedBoxGeometry() {
 function sharedPlaneGeometry() {
   if (!_unitPlaneGeo) _unitPlaneGeo = new THREE.PlaneGeometry(1, 1);
   return _unitPlaneGeo;
+}
+
+function sharedNpcHeadGeometry() {
+  if (!_npcHeadGeo) _npcHeadGeo = new THREE.SphereGeometry(0.24, 12, 8);
+  return _npcHeadGeo;
 }
 
 function sharedMaterials() {
@@ -121,6 +136,7 @@ function sharedMaterials() {
       map: voidTex || undefined,
       color: voidTex ? 0xffffff : 0x121820,
     }),
+    windowBlack: new THREE.MeshBasicMaterial({ color: 0x050608 }),
     desk: new THREE.MeshStandardMaterial({
       color: 0xb8b0a4,
       roughness: 0.72,
@@ -343,7 +359,8 @@ function flushInstanceBatches(group, batches) {
     if (!count) continue;
     var mesh = new THREE.InstancedMesh(batch.geometry, batch.material, count);
     mesh.name = "L4Instances_" + key;
-    mesh.castShadow = batch.castShadow;
+    // 高频重复办公家具不进入阴影 pass；局部实体/大型设施保留阴影。
+    mesh.castShadow = batch.castShadow && count < 16;
     mesh.receiveShadow = batch.receiveShadow;
     for (var i = 0; i < count; i++) {
       var tr = batch.transforms[i];
@@ -478,7 +495,19 @@ function addFluorescentGrid(batches, cx, cz, mats) {
   }
 }
 
-function addWindowWall(batches, colliders, wx, wz, rotY, along, mats) {
+function addWindowWall(
+  group,
+  batches,
+  colliders,
+  interactRoots,
+  wx,
+  wz,
+  rotY,
+  along,
+  mats,
+  trap,
+  trapId
+) {
   var segLen = 7.2;
   var winH = 1.35;
   var winY = 1.05;
@@ -503,8 +532,8 @@ function addWindowWall(batches, colliders, wx, wz, rotY, along, mats) {
       );
       queuePlane(
         batches,
-        "windowVoid",
-        mats.windowVoid,
+        trap ? "windowTrap" : "windowBlack",
+        trap ? mats.windowVoid : mats.windowBlack,
         wx + base,
         winY,
         wz + 0.07,
@@ -536,8 +565,8 @@ function addWindowWall(batches, colliders, wx, wz, rotY, along, mats) {
       );
       queuePlane(
         batches,
-        "windowVoid",
-        mats.windowVoid,
+        trap ? "windowTrap" : "windowBlack",
+        trap ? mats.windowVoid : mats.windowBlack,
         wx + 0.07,
         winY,
         wz + base,
@@ -553,6 +582,15 @@ function addWindowWall(batches, colliders, wx, wz, rotY, along, mats) {
         wz + base + segLen * 0.5
       );
     }
+  }
+  if (trap) {
+    var pick = new THREE.Mesh(sharedBoxGeometry(), mats.invisiblePick);
+    // 拾取盒探入房间一侧，确保射线先命中警告区而不是墙体 collider。
+    pick.position.set(along ? wx : wx + 0.32, winY, along ? wz + 0.46 : wz);
+    pick.scale.set(along ? 21.6 : 0.45, winH + 0.45, along ? 0.45 : 21.6);
+    pick.userData.brInteract = { kind: "l4_false_window", id: trapId };
+    group.add(pick);
+    interactRoots.push(pick);
   }
 }
 
@@ -653,7 +691,7 @@ function addWhiteboard(batches, colliders, wx, wz, mats) {
 }
 
 /** 出生区块自动售货机 → Level 6.1 */
-function addVendingMachineToL61(group, colliders, interactRoots, vx, vz, mats) {
+function addVendingMachineToL61(group, batches, colliders, interactRoots, vx, vz, mats) {
   var body = new THREE.Mesh(sharedBoxGeometry(), mats.vending);
   body.position.set(vx, 1.05, vz);
   body.scale.set(1.15, 2.1, 0.85);
@@ -676,13 +714,21 @@ function addVendingMachineToL61(group, colliders, interactRoots, vx, vz, mats) {
   var c;
   for (r = 0; r < 3; r++) {
     for (c = 0; c < 3; c++) {
-      var snack = new THREE.Mesh(
-        sharedBoxGeometry(),
-        snackMats[(r + c) % snackMats.length]
+      var snackIndex = (r + c) % snackMats.length;
+      queueBox(
+        batches,
+        "snack_" + snackIndex,
+        snackMats[snackIndex],
+        vx - 0.28 + c * 0.28,
+        0.75 + r * 0.38,
+        vz + 0.28,
+        0.2,
+        0.22,
+        0.16,
+        0,
+        false,
+        false
       );
-      snack.position.set(vx - 0.28 + c * 0.28, 0.75 + r * 0.38, vz + 0.28);
-      snack.scale.set(0.2, 0.22, 0.16);
-      group.add(snack);
     }
   }
 
@@ -751,7 +797,7 @@ function megL4SignTexture() {
   ctx.font = "bold 42px Arial, PingFang SC, Microsoft YaHei, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("M.E.G · LEVEL 4 前哨站", 256, 64);
+  ctx.fillText("M.E.G · OMEGA 基地", 256, 64);
   _megL4SignTex = new THREE.CanvasTexture(canvas);
   _megL4SignTex.colorSpace = THREE.SRGBColorSpace;
   return _megL4SignTex;
@@ -889,7 +935,7 @@ function addMegL4Outpost(group, batches, colliders, interactRoots, ox, oz, mats)
   megTorso.position.y = 1.18;
   megTorso.scale.set(0.68, 0.75, 0.38);
   megNpc.add(megTorso);
-  var megHead = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8), skinMat);
+  var megHead = new THREE.Mesh(sharedNpcHeadGeometry(), skinMat);
   megHead.position.y = 1.82;
   megNpc.add(megHead);
   var megBadge = new THREE.Mesh(sharedBoxGeometry(), mats.lightPanel);
@@ -917,7 +963,7 @@ function addMegL4Outpost(group, batches, colliders, interactRoots, ox, oz, mats)
   torso.position.y = 1.18;
   torso.scale.set(0.68, 0.75, 0.38);
   npc.add(torso);
-  var head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8), skinMat);
+  var head = new THREE.Mesh(sharedNpcHeadGeometry(), skinMat);
   head.position.y = 1.82;
   npc.add(head);
   var badge = new THREE.Mesh(sharedBoxGeometry(), mats.lightPanel);
@@ -945,7 +991,7 @@ function addMegL4Outpost(group, batches, colliders, interactRoots, ox, oz, mats)
   sTorso.position.y = 1.18;
   sTorso.scale.set(0.68, 0.75, 0.38);
   storageNpc.add(sTorso);
-  var sHead = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8), skinMat);
+  var sHead = new THREE.Mesh(sharedNpcHeadGeometry(), skinMat);
   sHead.position.y = 1.82;
   storageNpc.add(sHead);
   var sPick = new THREE.Mesh(sharedBoxGeometry(), mats.invisiblePick);
@@ -1007,19 +1053,28 @@ function loadChunk(cx, cz, ctx) {
 
   var colliders = [];
   var chunkInteractRoots = [];
+  var layout = deriveLevel4ChunkLayout(cx, cz, ctx.layoutSeed);
 
   addFluorescentGrid(batches, cx, cz, mats);
   var lightCand = registerChunkCeilingGlow(ctx, ox, oz);
 
-  if (Math.abs(cx) % 2 === 0) {
-    addWindowWall(batches, colliders, ox - half + 0.15, oz, Math.PI * 0.5, false, mats);
+  if (layout.westWindows) {
+    addWindowWall(
+      group, batches, colliders, chunkInteractRoots,
+      ox - half + 0.15, oz, Math.PI * 0.5, false, mats,
+      layout.westWindowTrap, key + "_west"
+    );
   }
-  if (Math.abs(cz) % 2 === 0) {
-    addWindowWall(batches, colliders, ox, oz - half + 0.15, 0, true, mats);
+  if (layout.northWindows) {
+    addWindowWall(
+      group, batches, colliders, chunkInteractRoots,
+      ox, oz - half + 0.15, 0, true, mats,
+      layout.northWindowTrap, key + "_north"
+    );
   }
 
-  var isMegOutpost = cx === OUTPOST_CX && cz === OUTPOST_CZ;
-  var rng = mulberry32((cx * 73856093) ^ (cz * 19349663));
+  var isMegOutpost = layout.isOutpost;
+  var rng = mulberry32((ctx.layoutSeed ^ (cx * 73856093) ^ (cz * 19349663)) | 0);
   var slots = [
     [-6, -5],
     [-6, 2],
@@ -1033,11 +1088,15 @@ function loadChunk(cx, cz, ctx) {
   ];
   var si;
   for (si = 0; si < slots.length; si++) {
-    if (isMegOutpost || rng() < 0.12) continue;
+    if (
+      !layout.desks[si] ||
+      (cx === 0 && cz === 0 &&
+        Math.hypot(slots[si][0] - L4_SPAWN_X, slots[si][1] - L4_SPAWN_Z) < 4)
+    ) continue;
     addDeskStation(batches, colliders, ox + slots[si][0], oz + slots[si][1], mats, rng);
   }
 
-  if (!isMegOutpost && rng() < 0.55) {
+  if (layout.cooler) {
     var cwx = ox + half - 1.2;
     var cwz = oz - half + 1.2;
     addWaterCooler(
@@ -1051,7 +1110,7 @@ function loadChunk(cx, cz, ctx) {
       key + "_cooler"
     );
   }
-  if (!isMegOutpost && rng() < 0.45) {
+  if (layout.whiteboard) {
     addWhiteboard(batches, colliders, ox - 2, oz + half - 0.2, mats);
   }
 
@@ -1066,10 +1125,24 @@ function loadChunk(cx, cz, ctx) {
     tagShadowMesh(shaft, true, true);
     group.add(shaft);
     pushBoxCollider(colliders, ox - 1.08, ox + 1.08, oz - 1 - 1.08, oz - 1 + 1.08);
+    var elevatorPick = new THREE.Mesh(sharedBoxGeometry(), mats.invisiblePick);
+    elevatorPick.position.set(ox, 1.3, oz + 0.22);
+    elevatorPick.scale.set(1.85, 2.3, 0.4);
+    elevatorPick.userData.brInteract = { kind: "l4_elevator_l3" };
+    group.add(elevatorPick);
+    chunkInteractRoots.push(elevatorPick);
     // 电梯井东侧：通往 Level 5 的向下楼梯
     addStairsDownToL5(group, colliders, chunkInteractRoots, ox + 4.2, oz + 1.2, mats);
     // 出生区西侧：写着“自动售货机”，Q 切入 Level 6.1
-    addVendingMachineToL61(group, colliders, chunkInteractRoots, ox - 8.2, oz + 3.5, mats);
+    addVendingMachineToL61(
+      group,
+      batches,
+      colliders,
+      chunkInteractRoots,
+      ox - 8.2,
+      oz + 3.5,
+      mats
+    );
   }
 
   flushInstanceBatches(group, batches);
@@ -1090,6 +1163,7 @@ function loadChunk(cx, cz, ctx) {
     colliders: colliders,
     interactRoots: chunkInteractRoots,
     lightCandidate: lightCand,
+    entitySpecs: deriveLevel4EntitySpecs(cx, cz, ctx.layoutSeed, L4_CHUNK_SIZE),
   });
 }
 
@@ -1100,9 +1174,15 @@ function disposeChunkMeshResources(group) {
   });
 }
 
-function unloadChunk(key, ctx) {
+export function isLevel4PinnedChunk(cx, cz) {
+  return (cx === 0 && cz === 0) || (cx === OUTPOST_CX && cz === OUTPOST_CZ);
+}
+
+function unloadChunk(key, ctx, force) {
   var record = ctx.chunks.get(key);
   if (!record) return;
+  var coords = key.split(",");
+  if (!force && isLevel4PinnedChunk(parseInt(coords[0], 10), parseInt(coords[1], 10))) return;
   var i;
   if (record.interactRoots) {
     for (i = 0; i < record.interactRoots.length; i++) {
@@ -1148,7 +1228,16 @@ function updateStreaming(px, pz, ctx) {
   }
   var toRemove = [];
   ctx.chunks.forEach(function (_rec, k) {
-    if (!want[k]) toRemove.push(k);
+    var coords = k.split(",");
+    var cx = parseInt(coords[0], 10);
+    var cz = parseInt(coords[1], 10);
+    if (
+      !isLevel4PinnedChunk(cx, cz) &&
+      (Math.abs(cx - here.cx) > L4_UNLOAD_RADIUS ||
+        Math.abs(cz - here.cz) > L4_UNLOAD_RADIUS)
+    ) {
+      toRemove.push(k);
+    }
   });
   for (var i = 0; i < toRemove.length; i++) unloadChunk(toRemove[i], ctx);
 }
@@ -1167,6 +1256,7 @@ export function buildLevel4World(root, gfxProfile) {
     colliders: colliders,
     interactRoots: interactRoots,
     lightCandidates: [],
+    layoutSeed: getLevel4LayoutSeed(),
   };
 
   var ambient = new THREE.AmbientLight(0xf2f4f8, 0.58);
@@ -1231,8 +1321,21 @@ export function buildLevel4World(root, gfxProfile) {
     rebuildOutpost: function () {
       var key = chunkKey(OUTPOST_CX, OUTPOST_CZ);
       if (!chunks.has(key)) return;
-      unloadChunk(key, ctx);
+      unloadChunk(key, ctx, true);
       loadChunk(OUTPOST_CX, OUTPOST_CZ, ctx);
+    },
+    getLoadedChunkCount: function () {
+      return chunks.size;
+    },
+    getLoadedChunkKeys: function () {
+      return Array.from(chunks.keys());
+    },
+    getEntitySpecs: function () {
+      var specs = [];
+      chunks.forEach(function (record) {
+        if (record.entitySpecs) specs.push.apply(specs, record.entitySpecs);
+      });
+      return specs;
     },
     dispose: function () {
       var keys = [];
@@ -1240,7 +1343,7 @@ export function buildLevel4World(root, gfxProfile) {
         keys.push(k);
       });
       var i;
-      for (i = 0; i < keys.length; i++) unloadChunk(keys[i], ctx);
+      for (i = 0; i < keys.length; i++) unloadChunk(keys[i], ctx, true);
       ceilingPool.dispose();
       if (chunksRoot.parent) chunksRoot.parent.remove(chunksRoot);
     },
@@ -1248,5 +1351,6 @@ export function buildLevel4World(root, gfxProfile) {
     interactRoots: interactRoots,
     spawnX: L4_SPAWN_X,
     spawnZ: L4_SPAWN_Z,
+    layoutSeed: ctx.layoutSeed,
   };
 }
