@@ -3,6 +3,7 @@
  * 沿 Z 轴流式生成；楼体有实体碰撞，楼后以空气墙封住不可见区域。
  */
 import * as THREE from "three";
+import { buildEntity81CallDoor } from "./backrooms-entity81-spawn.js";
 
 const SEGMENT_LEN = 48;
 const STREAM_RADIUS = 3;
@@ -785,6 +786,19 @@ function addBntgHouse(root, staticColliders, interactRoots) {
   addBntgNpc(root, interactRoots, x, z + 2);
   addBntgBuyerNpc(root, interactRoots, x + 3.4, z + 2);
   addBntgStorageNpc(root, interactRoots, x - 3.2, z + 1.6);
+
+  var e81 = buildEntity81CallDoor({
+    theme: "luxury",
+    originPass: "l11",
+    x: x,
+    z: z + D * 0.5 - 0.28,
+    yaw: Math.PI,
+  });
+  root.add(e81.group);
+  interactRoots.push(e81.pick);
+  staticColliders.push(
+    collider(e81.collider.minX, e81.collider.maxX, e81.collider.minZ, e81.collider.maxZ)
+  );
 }
 
 /** B.N.T.G 寄存柜管理员 */

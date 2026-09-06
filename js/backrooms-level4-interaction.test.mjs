@@ -8,6 +8,7 @@ import {
 
 test("smart tap routes exits, NPCs, and task board through one dispatcher", () => {
   assert.equal(chooseLevel4Interaction("l4_elevator_l3", "smart"), "exit_l3");
+  assert.equal(chooseLevel4Interaction("e81_call", "smart"), "enter_e81");
   assert.equal(chooseLevel4Interaction("l4_stairs_down", "smart"), "exit_l5");
   assert.equal(chooseLevel4Interaction("l4_meg_member", "smart"), "meg");
   assert.equal(chooseLevel4Interaction("l4_task_board", "smart"), "task_board");

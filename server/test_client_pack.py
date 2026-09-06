@@ -15,11 +15,19 @@ class ClientPackTests(unittest.TestCase):
         self.assertIn("js/backrooms-level4-layout.js", files)
         self.assertIn("js/backrooms-level4-entities.js", files)
         self.assertIn("js/backrooms-presence.js", files)
+        self.assertIn("js/backrooms-entity81.js", files)
+        self.assertIn("js/backrooms-entity81-catalog.js", files)
+        self.assertIn("backrooms-entity81.html", files)
         self.assertIn("js/vendor/three.module.min.js", files)
         self.assertIn("backrooms-level1.html", files)
+        self.assertIn("backrooms-level6.html", files)
         self.assertNotIn("backrooms-sandbox.html", files)
         self.assertNotIn("models/pirate-chest.glb", files)
         self.assertTrue(len(files) > 80)
+
+    def test_pack_version_is_positive_int(self):
+        self.assertIsInstance(client_pack.CLIENT_PACK_VERSION, int)
+        self.assertGreaterEqual(client_pack.CLIENT_PACK_VERSION, 13)
 
 
 if __name__ == "__main__":

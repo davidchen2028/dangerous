@@ -15,6 +15,7 @@ import {
   level5WorldToChunk,
   level5ChunkCenter,
 } from "./backrooms-level5-layout.js";
+import { buildEntity81CallDoor } from "./backrooms-entity81-spawn.js";
 
 const HALF = L5_CHUNK_SIZE * 0.5;
 const DOOR_HALF = 1.45;
@@ -264,6 +265,23 @@ function addLobby(chunk, center, mats) {
   elevator.position.set(center.x + 7.5, 0, center.z - 5.5);
   chunk.group.add(elevator);
   chunk.interacts.push(pick);
+
+  var e81 = buildEntity81CallDoor({
+    theme: "luxury",
+    originPass: "l5",
+    x: center.x - 7.5,
+    z: center.z - 5.5,
+    yaw: 0,
+  });
+  chunk.group.add(e81.group);
+  chunk.interacts.push(e81.pick);
+  pushCollider(
+    chunk.colliders,
+    e81.collider.minX,
+    e81.collider.maxX,
+    e81.collider.minZ,
+    e81.collider.maxZ
+  );
 }
 
 function addGrandHallFurniture(chunk, center, layout, mats) {

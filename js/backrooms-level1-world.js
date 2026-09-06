@@ -11,6 +11,7 @@ import {
 import { createPartygoersAt } from "./backrooms-partygoer.js";
 import { createClumpsAt } from "./backrooms-clump-ai.js";
 import { createDeathMothsAt } from "./backrooms-death-moth.js";
+import { buildEntity81CallDoor } from "./backrooms-entity81-spawn.js";
 
 export const BLOCK_SIZE = 4.0;
 export const WAREHOUSE_HEIGHT = 4.5;
@@ -651,6 +652,8 @@ var _megRecruiterNpc = null;
 var _level13Entrance = null;
 /** @type {THREE.Object3D | null} 通往 Level C-1「交点」的封锁楼梯间门 */
 var _levelC1Entrance = null;
+/** @type {THREE.Object3D | null} */
+var _e81CallPick = null;
 function resetMegModuleState() {
   _megBaseCenter = null;
   _megBaseOccluderGroup = null;
@@ -667,6 +670,7 @@ function resetMegModuleState() {
   _megRecruiterNpc = null;
   _level13Entrance = null;
   _levelC1Entrance = null;
+  _e81CallPick = null;
 }
 
 /** 出生区块 M.E.G 引导员 */
@@ -1020,6 +1024,24 @@ function buildMegAlphaBase(root, ctx) {
   c1Door.rotation.y = Math.PI;
   root.add(c1Door);
   _levelC1Entrance = c1Pick;
+
+  var e81Door = buildEntity81CallDoor({
+    theme: "industrial",
+    originPass: "clip",
+    x: center.x + 5.35,
+    z: center.z - hz - 0.18,
+    yaw: Math.PI,
+  });
+  root.add(e81Door.group);
+  _e81CallPick = e81Door.pick;
+  registerMegCollider(
+    ctx,
+    megColliders,
+    e81Door.collider.minX,
+    e81Door.collider.maxX,
+    e81Door.collider.minZ,
+    e81Door.collider.maxZ
+  );
 
   var backDoorStaff = buildMegStaffFigure(
     root,
@@ -2213,6 +2235,7 @@ export function buildBackroomsLevel1World(root, opts) {
       }
       if (_level13Entrance) roots.push(_level13Entrance);
       if (_levelC1Entrance) roots.push(_levelC1Entrance);
+      if (_e81CallPick) roots.push(_e81CallPick);
       for (var si = 0; si < ctx.sublevelInteracts.length; si++) {
         roots.push(ctx.sublevelInteracts[si]);
       }

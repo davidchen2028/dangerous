@@ -70,6 +70,8 @@ import {
   queueEnterLevelBanner,
 } from "./backrooms-level-enter.js";
 import { enforceLevel1Entry, grantLevelPass } from "./backrooms-level-pass.js";
+import { enterEntity81Cabin } from "./backrooms-entity81-spawn.js";
+import { E81_CALL_KIND, getEntity81CallHint } from "./backrooms-entity81-catalog.js";
 import { createHubRoute } from "./backrooms-hub-route.js";
 import { getHpMax } from "./backrooms-royal-rations.js";
 import { activateCanteenMealBuff } from "./backrooms-soy-milk.js";
@@ -550,6 +552,7 @@ function isAimKind(kind, role) {
   if (kind === "meg_npc" && currentAimPick.distance > AIM_NPC_MAX) return false;
   if (kind === "wanderer" && currentAimPick.distance > AIM_NPC_MAX) return false;
   if (kind === "meg_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
+  if (kind === "e81_call" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "l1_c101_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "l1_c1_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "l1_sublevel_entry" && currentAimPick.distance > AIM_DOOR_MAX) return false;
@@ -1421,6 +1424,10 @@ function tryMegQAction() {
     enterLevelC1();
     return;
   }
+  if (isAimKind(E81_CALL_KIND)) {
+    enterEntity81Cabin("clip", yaw);
+    return;
+  }
   if (hubRoute && hubRoute.isActive()) {
     if (hubRoute.handleDoor(getAimInteractData())) return;
   }
@@ -1800,6 +1807,11 @@ function updateMegDoorHint() {
     isNearMegRecruiter()
   ) {
     doorHintEl.hidden = true;
+    return;
+  }
+  if (isAimKind(E81_CALL_KIND)) {
+    doorHintEl.innerHTML = getEntity81CallHint();
+    doorHintEl.hidden = false;
     return;
   }
   if (

@@ -7,6 +7,7 @@ export function chooseLevel4Interaction(kind, mode, state) {
     return "";
   }
   if (kind === "l4_elevator_l3") return "exit_l3";
+  if (kind === "e81_call") return "enter_e81";
   if (kind === "l4_stairs_down") return "exit_l5";
   if (kind === "l4_vending_l61") return "exit_l61";
   if (kind === "l4_false_window") return "false_window";

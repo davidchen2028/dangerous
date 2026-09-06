@@ -35,6 +35,8 @@ import {
 import { pickCrosshairInteract, getCameraAimRay } from "./backrooms-interact-aim.js";
 import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import { enterEntity81Cabin } from "./backrooms-entity81-spawn.js";
+import { E81_CALL_KIND, getEntity81CallHint } from "./backrooms-entity81-catalog.js";
 import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
 import {
   createBackroomsFpsState,
@@ -145,6 +147,8 @@ function updateInteractionHint() {
     text = "客房 " + data.room + " · 按 <kbd>Q</kbd> 推门";
   } else if (data && data.kind === "l5_exit_l4") {
     text = "老式电梯 · 按 <kbd>Q</kbd> 返回 Level 4";
+  } else if (data && data.kind === E81_CALL_KIND) {
+    text = getEntity81CallHint();
   } else if (data && data.kind === "l5_exit_l6") {
     text = "没有灯的锅炉通道 · 按 <kbd>Q</kbd> 进入 Level 6";
   }
@@ -202,6 +206,8 @@ function interact() {
     );
   } else if (data.kind === "l5_exit_l4") {
     leaveTo("l4", 4, "backrooms-level4.html", "电梯缓慢上升，数字停在 4。");
+  } else if (data.kind === E81_CALL_KIND) {
+    enterEntity81Cabin("l5", fps.yaw);
   } else if (data.kind === "l5_exit_l6") {
     leaveTo("l6", 6, "backrooms-level6.html", "锅炉声消失了；前方只剩绝对的黑暗。");
   }

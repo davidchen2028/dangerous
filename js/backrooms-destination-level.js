@@ -48,6 +48,8 @@ import {
   queueEnterLevelBanner,
 } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import { enterEntity81Cabin } from "./backrooms-entity81-spawn.js";
+import { E81_CALL_KIND, getEntity81CallHint } from "./backrooms-entity81-catalog.js";
 import {
   isPetrifyActive,
   getPetrify,
@@ -85,7 +87,7 @@ import {
   DEFAULT_LOOK_SENS,
   DEFAULT_GRAVITY,
 } from "./backrooms-fps-controller.js";
-import { buildLevel11World } from "./backrooms-level11-world.js?v=2";
+import { buildLevel11World } from "./backrooms-level11-world.js?v=3";
 import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
 import { updatePastoralStareClip } from "./backrooms-c1298-stare.js";
 
@@ -538,6 +540,8 @@ function updateInteractUi() {
         interactHintEl.innerHTML = "B.N.T.G 寄存柜 · 按 <kbd>Q</kbd> 存取物品";
       } else if (data.kind === "l11_level2_empty_door") {
         interactHintEl.innerHTML = "没有内部陈设的建筑门 · 按 <kbd>Q</kbd> 进入";
+      } else if (data.kind === E81_CALL_KIND) {
+        interactHintEl.innerHTML = getEntity81CallHint();
       } else {
         interactHintEl.innerHTML = "B.N.T.G 员工 · 按 <kbd>Q</kbd> 交易";
       }
@@ -943,6 +947,7 @@ function tryQAction() {
   else if (data && data.kind === "l11_bntg_buyer") openBntgBuyer();
   else if (data && data.kind === "l11_bntg_storage") openBaseStorage({ toast: true });
   else if (data && data.kind === "l11_level2_empty_door") exitLevel11ToL2();
+  else if (data && data.kind === E81_CALL_KIND) enterEntity81Cabin("l11", fps.yaw);
 }
 
 function bindControls() {
@@ -953,6 +958,9 @@ function bindControls() {
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () {
       return isInventoryOpen() || isBaseStorageOpen() || dialogueOpen || isTaskUiOpen();
+    },
+    onTapInteract: function () {
+      tryQAction();
     },
     onJump: function () { tryBackroomsJump(fps, 8); },
     onKeyDown: function (e) {

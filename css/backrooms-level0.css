@@ -951,6 +951,19 @@ body.backrooms-dialogue-open .backrooms-hud__hint {
   pointer-events: none;
 }
 
+/* Level 6 的黑暗是视觉遮罩而非光源；HUD 与交互提示保持可读。 */
+.backrooms-level6-darkness {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, rgba(0, 0, 0, 0.1) 0 8%, rgba(0, 0, 0, 0.82) 76%),
+    rgba(0, 0, 0, 0.42);
+  opacity: 0.42;
+  transition: opacity 0.6s ease;
+}
+
 /* 死亡遮罩期间不保留对话框 */
 body.backrooms-dead .backrooms-dialogue {
   display: none;

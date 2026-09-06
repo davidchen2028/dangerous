@@ -474,7 +474,7 @@ function init() {
     },
   });
   installMegCheckpointDeathHooks(survival, function () {
-    return { level: "6.1" };
+    return { level: 6.1 };
   });
   initBackroomsTemperature("6.1", {
     rootEl: tempRootEl,

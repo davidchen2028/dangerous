@@ -12,6 +12,7 @@ import {
   L4_OUTPOST_CX,
   L4_OUTPOST_CZ,
 } from "./backrooms-level4-layout.js?v=1";
+import { buildEntity81CallDoor } from "./backrooms-entity81-spawn.js";
 
 export const L4_CHUNK_SIZE = 24;
 export const L4_WALL_H = 2.75;
@@ -1137,6 +1138,22 @@ function loadChunk(cx, cz, ctx) {
     elevatorPick.userData.brInteract = { kind: "l4_elevator_l3" };
     group.add(elevatorPick);
     chunkInteractRoots.push(elevatorPick);
+    var e81 = buildEntity81CallDoor({
+      theme: "luxury",
+      originPass: "l4",
+      x: ox - 5.2,
+      z: oz + 0.35,
+      yaw: 0,
+    });
+    group.add(e81.group);
+    chunkInteractRoots.push(e81.pick);
+    pushBoxCollider(
+      colliders,
+      e81.collider.minX,
+      e81.collider.maxX,
+      e81.collider.minZ,
+      e81.collider.maxZ
+    );
     // 电梯井东侧：通往 Level 5 的向下楼梯
     addStairsDownToL5(group, colliders, chunkInteractRoots, ox + 4.2, oz + 1.2, mats);
     // 出生区西侧：写着“自动售货机”，Q 切入 Level 6.1

@@ -28,7 +28,7 @@ import {
   formatNightVisionRemaining,
   useNightVisionPotionFromBackpack,
 } from "./backrooms-night-vision.js";
-import { buildLevel4World, getSpawnChunkBounds, L4_WALL_H } from "./backrooms-level4-world.js?v=5";
+import { buildLevel4World, getSpawnChunkBounds, L4_WALL_H } from "./backrooms-level4-world.js?v=6";
 import {
   resolveBackroomsGfxProfile,
   applyBackroomsRendererSize,
@@ -40,6 +40,8 @@ import {
   queueEnterLevelBanner,
 } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
+import { enterEntity81Cabin } from "./backrooms-entity81-spawn.js";
+import { getEntity81CallHint } from "./backrooms-entity81-catalog.js";
 import { aiChoiceHtml, isAiChatOpen, closeAiChat } from "./backrooms-ai-chat.js?v=2";
 import { startGuardedRafLoop } from "./backrooms-frame-guard.js";
 import { refreshLevel1_1OutpostChestsOnFirstL4Visit } from "./backrooms-level1-1-chests.js";
@@ -97,7 +99,7 @@ import {
   canCompleteLevel4Transition,
   chooseLevel4Interaction,
   isPlayerNearLevel4FalseWindow,
-} from "./backrooms-level4-interaction.js?v=2";
+} from "./backrooms-level4-interaction.js?v=3";
 import {
   createLevel4EntityManager,
   L4_ENTITY_SAFE_RADIUS,
@@ -424,6 +426,15 @@ function updateInteractHint() {
   if (isAimElevatorL3()) {
     interactHintEl.hidden = false;
     interactHintEl.innerHTML = "电梯 · 按 <kbd>Q</kbd> 返回 Level 3";
+    return;
+  }
+  if (
+    currentAimPick &&
+    currentAimPick.data &&
+    currentAimPick.data.kind === "e81_call"
+  ) {
+    interactHintEl.hidden = false;
+    interactHintEl.innerHTML = getEntity81CallHint();
     return;
   }
   if (isAimFalseWindow()) {
@@ -767,6 +778,7 @@ function tryLevel4Interact(mode) {
   });
   if (!action) return false;
   if (action === "exit_l3") exitToLevel3();
+  else if (action === "enter_e81") enterEntity81Cabin("l4", fps.yaw);
   else if (action === "exit_l5") exitToLevel5();
   else if (action === "exit_l61") exitToLevel61();
   else if (action === "false_window") {

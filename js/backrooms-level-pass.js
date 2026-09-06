@@ -6,12 +6,13 @@ import { resetBackroomsRun } from "./backrooms-survival.js";
 import { markLevelEscaped } from "./backrooms-tasks.js";
 
 export const LEVEL0_PAGE = "backrooms-level0.html";
-/** @typedef {"clip" | "hub" | "l0" | "l1_bntg" | "l2" | "l3" | "l4" | "l5" | "l6" | "l6_1" | "l7" | "l8" | "l9" | "l10" | "l11" | "l13" | "l14" | "l16" | "l21" | "l37" | "l46" | "l48" | "l57" | "l75" | "l110" | "l119" | "l121" | "l149" | "l283" | "l363" | "blue_channel" | "c1" | "c2" | "c2_1" | "c101" | "c102" | "c144" | "c192" | "c370" | "c1289" | "c1290" | "c1291" | "c1292" | "c1293" | "c1294" | "c1295" | "c1296" | "c1297" | "c1298" | "c1299" | "c1299_1"} BackroomsLevelPassId */
+/** @typedef {"clip" | "hub" | "e81" | "l0" | "l1_bntg" | "l2" | "l3" | "l4" | "l5" | "l6" | "l6_1" | "l7" | "l8" | "l9" | "l10" | "l11" | "l13" | "l14" | "l16" | "l21" | "l37" | "l46" | "l48" | "l57" | "l75" | "l110" | "l119" | "l121" | "l149" | "l283" | "l363" | "blue_channel" | "c1" | "c2" | "c2_1" | "c101" | "c102" | "c144" | "c192" | "c370" | "c1289" | "c1290" | "c1291" | "c1292" | "c1293" | "c1294" | "c1295" | "c1296" | "c1297" | "c1298" | "c1299" | "c1299_1"} BackroomsLevelPassId */
 
 /** @type {Record<BackroomsLevelPassId, { pass: string, yaw: string | null }>} */
 export const LEVEL_PASS_KEYS = {
   clip: { pass: "backrooms_clip_pass", yaw: null },
   hub: { pass: "backrooms_hub_pass", yaw: "backrooms_hub_yaw" },
+  e81: { pass: "backrooms_e81_pass", yaw: "backrooms_e81_yaw" },
   /** 从其他层级切回 L0：持有此令牌表示延续本局，不清档 */
   l0: { pass: "backrooms_l0_pass", yaw: "backrooms_l0_yaw" },
   l1_bntg: {
