@@ -146,7 +146,10 @@ export function createBackroomsFiresaltController(opts) {
           (killCount ? "，击杀" + killCount + "个" : "")
       );
     } else {
-      showToast("火盐爆炸，但未伤到实体");
+      showToast("火盐爆炸");
+    }
+    if (typeof window !== "undefined" && window.BackroomsMultiplayer) {
+      window.BackroomsMultiplayer.reportFireSaltExplosion(position);
     }
   }
 
@@ -230,13 +233,28 @@ export function createBackroomsFiresaltController(opts) {
     return locked;
   }
 
+  function aimPointInWorld() {
+    camera.updateMatrixWorld(true);
+    raycaster.setFromCamera(_ndc, camera);
+    raycaster.near = 0.2;
+    raycaster.far = FIRESALT_MAX_DISTANCE;
+    var hits = raycaster.intersectObjects(scene.children, true);
+    var j;
+    for (j = 0; j < hits.length; j++) {
+      var obj = hits[j].object;
+      if (!obj || !isBackroomsObjectVisible(obj)) continue;
+      if (obj.userData && obj.userData.brFireSaltProjectile) continue;
+      return hits[j].point.clone();
+    }
+    camera.getWorldPosition(_cameraPos);
+    camera.getWorldDirection(_delta);
+    return _cameraPos.clone().addScaledVector(_delta, 16);
+  }
+
   function useFireSalt() {
     if (countItem(FIRESALT_ITEM_ID) < 1) return false;
     var target = findAimedTarget();
-    if (!target) {
-      showToast("准星未对准 40 米内的实体");
-      return false;
-    }
+    var point = target ? null : aimPointInWorld();
     if (!removeFirstItem(FIRESALT_ITEM_ID)) return false;
     closeBackpack();
 
@@ -249,10 +267,11 @@ export function createBackroomsFiresaltController(opts) {
     projectiles.push({
       mesh: mesh,
       target: target,
+      point: point,
       life: 0,
       spin: Math.random() * Math.PI * 2,
     });
-    showToast("火盐飞向" + target.name + "！");
+    showToast(target ? "火盐飞向" + target.name + "！" : "投出火盐");
     refreshEntityLockUi();
     return true;
   }
@@ -263,12 +282,20 @@ export function createBackroomsFiresaltController(opts) {
     for (i = projectiles.length - 1; i >= 0; i--) {
       var p = projectiles[i];
       p.life += dt;
-      if (!p.target.alive || !p.target.group || !p.target.group.parent || p.life > 2) {
+      if (p.point) {
+        _targetPos.copy(p.point);
+      } else if (p.target && p.target.alive && p.target.group && p.target.group.parent) {
+        p.target.group.getWorldPosition(_targetPos);
+        _targetPos.y += p.target.aimHeight;
+      } else {
         removeProjectile(i);
         continue;
       }
-      p.target.group.getWorldPosition(_targetPos);
-      _targetPos.y += p.target.aimHeight;
+      if (p.life > 2) {
+        explodeAt(_targetPos);
+        removeProjectile(i);
+        continue;
+      }
       _delta.subVectors(_targetPos, p.mesh.position);
       var dist = _delta.length();
       var step = FIRESALT_SPEED * dt;

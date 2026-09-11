@@ -911,12 +911,6 @@ function addChunkFeatures(ctx, record) {
       var geo = new THREE.BoxGeometry(0.76, 0.48, 0.52);
       record.geometries.push(geo);
       addBox(record.group, geo, ctx.materials.rust, pos.x, 0.24, pos.z, pos.rotation);
-      addPickRoot(ctx, record, pos.x, 0.72, pos.z, {
-        kind: "l2_toolbox",
-        id: id,
-        itemId: "industrial_supplies",
-        amount: 1,
-      });
     } else if (feature.type === "record") {
       var noteGeo = new THREE.BoxGeometry(0.42, 0.035, 0.3);
       record.geometries.push(noteGeo);

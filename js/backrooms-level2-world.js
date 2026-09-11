@@ -858,12 +858,6 @@ export function buildBackroomsLevel2World(root) {
 
   var toolbox = addObstacle(group, colliders, mats.warning, 0.66, 0.42, 0.42, 0.98, 4.9, "toolbox");
   toolbox.name = "Level2SupplyToolbox";
-  addPickRoot(group, interactRoots, 0.98, 0.63, 4.9, 0.85, 0.8, 0.72, {
-    kind: "l2_toolbox",
-    id: "utility-toolbox",
-    itemId: "industrial_supplies",
-    amount: 1,
-  });
   var record = addBox(group, mats.office, 0.43, 0.03, 0.3, -0.82, 0.34, -28, 0.12);
   record.name = "Level2AbandonedRecord";
   addPickRoot(group, interactRoots, -0.82, 0.48, -28, 0.72, 0.55, 0.72, {

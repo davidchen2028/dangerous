@@ -22,12 +22,13 @@ export const DEFAULT_PITCH_MAX = 1.35;
  */
 export function createBackroomsFpsState(opts) {
   var po = (opts && opts.player) || {};
-  return {
+  var state = {
     keys: Object.create(null),
     move: { forward: false, back: false, left: false, right: false },
     yaw: 0,
     pitch: 0,
     pointerLocked: false,
+    incapacitated: false,
     player: {
       x: po.x != null ? po.x : 0,
       z: po.z != null ? po.z : 0,
@@ -38,6 +39,10 @@ export function createBackroomsFpsState(opts) {
     velY: 0,
     grounded: true,
   };
+  if (typeof window !== "undefined" && window.BackroomsMultiplayer) {
+    window.BackroomsMultiplayer.noteFpsState(state);
+  }
+  return state;
 }
 
 /**
@@ -71,6 +76,14 @@ export function readMoveInputWorldDir(move, yaw) {
  * @param {(nextX: number, nextZ: number) => { x: number, z: number }} resolvePosition
  */
 export function moveBackroomsPlayer(state, dt, speedMul, resolvePosition) {
+  if (state && state.incapacitated) return;
+  if (
+    typeof window !== "undefined" &&
+    window.BackroomsMultiplayer &&
+    window.BackroomsMultiplayer.shouldBlockMove()
+  ) {
+    return;
+  }
   var dir = readMoveInputWorldDir(state.move, state.yaw);
   if (!dir) return;
 
@@ -258,7 +271,14 @@ export function bindBackroomsFpsControls(opts) {
     if (opts.mobileLookRef) opts.mobileLookRef.current = mobileLook;
 
     // 触屏没有 KeyQ：短按准星区域等同交互，拖动仍只负责转动视角。
-    if (opts.onTapInteract) {
+    if (
+      opts.onTapInteract &&
+      !(
+        typeof window !== "undefined" &&
+        window.BackroomsMobileControls &&
+        window.BackroomsMobileControls.usesActionButtons
+      )
+    ) {
       var tapId = null;
       var tapX = 0;
       var tapY = 0;
@@ -350,4 +370,8 @@ export function applyBackroomsCamera(state, camera, eyeHeight) {
   camera.rotation.order = "YXZ";
   camera.rotation.y = state.yaw;
   camera.rotation.x = state.pitch;
+  if (typeof window !== "undefined" && window.BackroomsMultiplayer) {
+    window.BackroomsMultiplayer.noteFpsState(state);
+    window.BackroomsMultiplayer.noteCamera(camera);
+  }
 }

@@ -24,7 +24,6 @@ const SIGN_RED = 0xd23b2f;
 const LOOT_TABLE = [
   { itemId: "almond_water", name: "杏仁水", weight: 5 },
   { itemId: "fire_salt", name: "小块可爆炸火盐", weight: 3 },
-  { itemId: "industrial_supplies", name: "工具包", weight: 2 },
 ];
 
 function pickLoot(roll) {

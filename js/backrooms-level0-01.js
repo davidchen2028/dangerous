@@ -8,8 +8,6 @@ import { createLevel01Robots } from "./backrooms-level0-01-robots.js";
 export const LEVEL01_LOOT_SESSION_KEY = "backrooms_level01_zenith_loot_v1";
 
 var ITEM_NAMES = {
-  circuit: "电路板",
-  alloy_plate: "合金板",
   almond_water: "杏仁水",
   royal_rations: "皇家口粮",
 };
@@ -521,8 +519,6 @@ export function buildLevel01Station(scene, opts) {
 
   // 少量固定拾取点，不含武器。
   var lootSpecs = [
-    { id: "circuit_a", itemId: "circuit", x: 21.8, y: 0.78, z: -1.4 },
-    { id: "alloy_a", itemId: "alloy_plate", x: 14.1, y: 0.2, z: -14.5 },
     { id: "almond_a", itemId: "almond_water", x: -11.0, y: 0.82, z: 18.1 },
     { id: "rations_a", itemId: "royal_rations", x: -20.7, y: 1.05, z: 0.15 },
   ];

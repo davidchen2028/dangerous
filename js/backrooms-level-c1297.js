@@ -16,8 +16,6 @@ import {
   toggleBackpack,
   isInventoryOpen,
   setInventoryOpenHandler,
-  addItem,
-  removeFirstItem,
 } from "./backrooms-inventory.js";
 import { updateMegPointsDisplay } from "./backrooms-meg-points.js";
 import {
@@ -150,7 +148,6 @@ const materials = {
   exitWall: new THREE.MeshStandardMaterial({ color: 0xc8c0b0, roughness: 0.82 }),
   exitFloor: new THREE.MeshStandardMaterial({ color: 0xb0a898, roughness: 0.9 }),
   note: new THREE.MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.7 }),
-  bandage: new THREE.MeshStandardMaterial({ color: 0xf0ece4, roughness: 0.65 }),
   door: new THREE.MeshStandardMaterial({ color: 0x4a3424, roughness: 0.85 }),
 };
 
@@ -329,13 +326,9 @@ function buildApartment() {
   var exitPad = addBox(worldRoot, 1.4, 0.08, 1.4, 0, 0.05, exitZ + 0.6, materials.exitFloor, false);
   interactables.push({ mesh: exitPad, kind: "exit", x: 0, z: exitZ + 0.6 });
 
-  // MEG 外勤记录 + 绷带（中段房间附近）
+  // MEG 外勤记录（中段房间附近）
   var note = addBox(worldRoot, 0.45, 0.6, 0.04, -1.1, 1.35, SEG_LEN * 2.3, materials.note, false);
   interactables.push({ mesh: note, kind: "note", x: -1.1, z: SEG_LEN * 2.3 });
-  var bandageA = addBox(worldRoot, 0.35, 0.12, 0.25, 1.0, 0.12, SEG_LEN * 3.5, materials.bandage, false);
-  interactables.push({ mesh: bandageA, kind: "bandage", x: 1.0, z: SEG_LEN * 3.5 });
-  var bandageB = addBox(worldRoot, 0.35, 0.12, 0.25, -0.8, 0.12, SEG_LEN * 6.2, materials.bandage, false);
-  interactables.push({ mesh: bandageB, kind: "bandage", x: -0.8, z: SEG_LEN * 6.2 });
 
   worldRoot.add(new THREE.HemisphereLight(0xc9a878, 0x2a2018, 0.45));
   worldRoot.add(new THREE.AmbientLight(0x6a5538, 0.35));
@@ -389,8 +382,8 @@ function refreshBleedUi() {
   bleedStatusEl.hidden = false;
   bleedStatusEl.textContent =
     bleed >= 2
-      ? "重度流血中 · 使用绷带止血（腐败侵蚀不会因此清除）"
-      : "轻度流血中 · 使用绷带止血";
+      ? "重度流血中 · 使用杏仁水处理伤口（腐败侵蚀不会因此清除）"
+      : "轻度流血中 · 使用杏仁水处理伤口";
 }
 
 function setBleed(level) {
@@ -399,28 +392,11 @@ function setBleed(level) {
 }
 
 function stopBleed() {
-  if (bleed <= 0) {
-    showToast("伤口已经止住了。");
-    return false;
-  }
+  if (bleed <= 0) return false;
   bleed = 0;
   refreshBleedUi();
-  showToast("绷带包扎完毕，出血止住了。腐败侵蚀仍在继续。", 3600);
+  showToast("杏仁水处理了伤口，出血止住了。腐败侵蚀仍在继续。", 3600);
   return true;
-}
-
-function useBandageFromInventory() {
-  if (!survival || survival.dead) return;
-  if (bleed <= 0) {
-    showToast("现在没有需要包扎的伤口。");
-    return;
-  }
-  if (!removeFirstItem("bandage")) {
-    showToast("没有绷带。");
-    return;
-  }
-  stopBleed();
-  survival.refreshHud();
 }
 
 function puddleAt(x, z) {
@@ -627,7 +603,6 @@ function refreshAim() {
   var best = 2.2 * 2.2;
   for (var i = 0; i < interactables.length; i++) {
     var it = interactables[i];
-    if (it.kind === "bandage" && it.taken) continue;
     if (it.kind === "note" && readNote) continue;
     var dx = it.x - fps.player.x;
     var dz = it.z - fps.player.z;
@@ -650,8 +625,6 @@ function updateInteractUi() {
     interactHintEl.innerHTML = "干燥的封闭小房间 · 按 <kbd>Q</kbd> 撤离至 Level 4";
   } else if (aimKind === "note") {
     interactHintEl.innerHTML = "按 <kbd>Q</kbd> 阅读 M.E.G. 外勤记录";
-  } else if (aimKind === "bandage") {
-    interactHintEl.innerHTML = "按 <kbd>Q</kbd> 拾取绷带";
   }
 }
 
@@ -665,23 +638,6 @@ function tryInteract() {
     readNote = true;
     showToast(MEG_RECORD, 8000);
     return;
-  }
-  if (aimKind === "bandage") {
-    for (var i = 0; i < interactables.length; i++) {
-      var it = interactables[i];
-      if (it.kind !== "bandage" || it.taken) continue;
-      var dx = it.x - fps.player.x;
-      var dz = it.z - fps.player.z;
-      if (dx * dx + dz * dz > 2.2 * 2.2) continue;
-      if (!addItem({ id: "bandage", name: "绷带" })) {
-        showToast("背包已满");
-        return;
-      }
-      it.taken = true;
-      it.mesh.visible = false;
-      showToast("拾取了绷带 · 可用于止血");
-      return;
-    }
   }
 }
 
@@ -764,10 +720,11 @@ function init() {
   });
   registerBackroomsInventoryUseHandlers(survival, {
     onAlmondWaterUsed: function () {
-      showToast("杏仁水压住了灼痛，却清不掉渗进骨头的腐败。");
+      if (!stopBleed()) {
+        showToast("杏仁水压住了灼痛，却清不掉渗进骨头的腐败。");
+      }
     },
   });
-  window.__backroomsUseBandage = useBandageFromInventory;
 
   initBackroomsTemperature("c1297", {
     rootEl: tempRootEl,

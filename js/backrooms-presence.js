@@ -77,6 +77,13 @@ function connect() {
           page: window.location.pathname,
         });
       });
+      socket.on("auth_ok", function () {
+        try {
+          window.dispatchEvent(new CustomEvent("backrooms-presence-ready"));
+        } catch (err) {
+          /* ignore */
+        }
+      });
       socket.on("auth_error", function (data) {
         var message = data && data.message ? String(data.message) : "";
         if (/过期|登录|封禁|注销/.test(message)) stop(true);
@@ -101,5 +108,17 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
     disconnect: function () {
       stop(false);
     },
+    getSocket: function () {
+      return socket;
+    },
+    readToken: readToken,
   };
+}
+
+export function getBackroomsPresenceSocket() {
+  return socket;
+}
+
+export function getBackroomsLobbyToken() {
+  return readToken();
 }

@@ -112,8 +112,117 @@ body.backrooms-sanity-break #backroomsCanvas {
   transition: filter 0.35s ease;
 }
 
-body.backrooms-dead #backroomsCanvas {
-  filter: grayscale(0.85) brightness(0.45);
+body.backrooms-downed #backroomsCanvas {
+  filter: grayscale(0.45) brightness(0.7);
+}
+
+.br-mp-prompt {
+  position: fixed;
+  left: 50%;
+  /* 快捷栏 + 操作提示大约占底部 150px，再往上让开一截 */
+  bottom: 176px;
+  transform: translateX(-50%);
+  z-index: 7;
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: rgba(8, 12, 16, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #e8eef4;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.br-mobile-actions {
+  position: fixed;
+  left: 50%;
+  bottom: 164px;
+  z-index: 9;
+  display: flex;
+  width: min(340px, calc(100vw - 32px));
+  flex-direction: column;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.br-mobile-actions[hidden] {
+  display: none !important;
+}
+
+.br-mobile-actions__button {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  padding: 9px 14px;
+  border: 1px solid rgba(220, 235, 248, 0.38);
+  border-radius: 8px;
+  background: rgba(8, 13, 18, 0.88);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.42);
+  color: #eef6fb;
+  font: 600 14px/1.25 system-ui, -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: 0.025em;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.br-mobile-actions__button kbd {
+  flex: 0 0 auto;
+  min-width: 28px;
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.11);
+  font: inherit;
+  text-align: center;
+}
+
+.br-mobile-actions__button--held {
+  border-color: rgba(255, 218, 120, 0.9);
+  background: rgba(72, 56, 20, 0.92);
+  transform: scale(0.985);
+}
+
+@media (hover: none), (pointer: coarse) {
+  .backrooms-crosshair {
+    display: none !important;
+  }
+
+  .br-mobile-action-source {
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  .br-hotbar__cell {
+    touch-action: manipulation;
+  }
+}
+
+body.backrooms-mobile-touch .backrooms-crosshair {
+  display: none !important;
+}
+
+body.backrooms-mobile-touch .br-mobile-action-source {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+@media (max-width: 720px) and (pointer: coarse),
+  (max-width: 720px) and (hover: none) {
+  .br-mobile-actions,
+  .br-mp-prompt {
+    bottom: calc(260px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 720px) {
+  body.backrooms-mobile-touch .br-mobile-actions,
+  body.backrooms-mobile-touch .br-mp-prompt {
+    bottom: calc(260px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 .br-survival__death {

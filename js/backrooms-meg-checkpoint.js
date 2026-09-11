@@ -160,9 +160,9 @@ export function getMegSpawnFromCheckpoint() {
 }
 
 export function defaultMegBaseSpawn(center) {
-  if (!center) return { x: 0, z: 0, yaw: -Math.PI * 0.5 };
+  if (!center) return { x: 198, z: 18, yaw: -Math.PI * 0.5 };
   return {
-    x: center.x - 9,
+    x: center.x,
     z: center.z,
     yaw: -Math.PI * 0.5,
   };

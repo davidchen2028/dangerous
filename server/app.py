@@ -27,6 +27,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
 import client_pack
+import backrooms_world
 
 ROOT = Path(__file__).resolve().parent.parent
 LOBBY_ROOM = "lobby"
@@ -79,6 +80,7 @@ sid_by_user_id: Dict[int, str] = {}
 # 后室在关卡跳转时会整页刷新；短暂保留同一条在线记录，避免丢时长和虚增登录次数。
 BACKROOMS_PRESENCE_GRACE_SECONDS = 30
 pending_online_session_ends: Dict[int, dict] = {}
+_world_loop_started = False
 
 
 def _no_cache(resp: Any) -> Any:
@@ -267,6 +269,8 @@ def _bind_session(
     online_session_id = None
     old_sid = sid_by_user_id.get(user_id)
     if old_sid and old_sid != sid:
+        if scope == "backrooms":
+            backrooms_world.bind_sid(sid, user_id, nickname)
         old_sess = sessions_by_sid.pop(old_sid, None)
         leave_room(old_sid)
         if old_sess and old_sess.get("online_session_id"):
@@ -291,9 +295,13 @@ def _bind_session(
         "online_session_id": online_session_id,
         "client_device": client_device,
         "scope": scope,
+        "ip": _client_ip(),
     }
     sid_by_user_id[user_id] = sid
     join_room(LOBBY_ROOM, sid=sid)
+    if scope == "backrooms":
+        join_room(backrooms_world.BACKROOMS_WORLD_ROOM, sid=sid)
+        backrooms_world.bind_sid(sid, user_id, nickname)
 
 
 def _unbind_session(sid: str, *, end_online: bool = True) -> Optional[dict]:
@@ -306,6 +314,9 @@ def _unbind_session(sid: str, *, end_online: bool = True) -> Optional[dict]:
     if sid_by_user_id.get(uid) == sid:
         sid_by_user_id.pop(uid, None)
     leave_room(LOBBY_ROOM, sid=sid)
+    leave_room(backrooms_world.BACKROOMS_WORLD_ROOM, sid=sid)
+    if sess.get("scope") == "backrooms":
+        backrooms_world.mark_disconnect(int(sess["user_id"]), sid)
     return sess
 
 
@@ -335,7 +346,45 @@ def _schedule_backrooms_session_end(sess: dict) -> None:
         db.end_online_session(online_session_id, disconnected_at)
         _notify_friends_presence(user_id, False)
 
-    socketio.start_background_task(finish_after_grace)
+        socketio.start_background_task(finish_after_grace)
+
+
+def _world_loop_step(acc: float) -> float:
+    """执行一次世界帧；单帧异常只记日志，不让整个后台任务永久退出。"""
+    try:
+        events = backrooms_world.tick(0.05)
+        if events:
+            backrooms_world.emit_events(socketio.emit, events)
+        acc += 0.05
+        if acc >= 0.08:
+            acc = 0.0
+            backrooms_world.emit_snapshots(socketio.emit)
+        return acc
+    except Exception:
+        app.logger.exception("后室世界帧执行失败；下一帧将继续")
+        return -1.0
+
+
+def _ensure_world_loop() -> None:
+    global _world_loop_started
+    if _world_loop_started:
+        return
+    _world_loop_started = True
+
+    def loop() -> None:
+        acc = 0.0
+        while True:
+            socketio.sleep(0.05)
+            acc = _world_loop_step(acc)
+            if acc < 0:
+                acc = 0.0
+                socketio.sleep(0.5)
+
+    try:
+        socketio.start_background_task(loop)
+    except Exception:
+        _world_loop_started = False
+        raise
 
 
 def _disconnect_user(
@@ -1435,6 +1484,105 @@ def on_auth_resume(data: dict) -> None:
     )
     _emit_auth_ok(sid, user, token, message="")
     _notify_friends_presence(int(user["id"]), True)
+    if scope == "backrooms":
+        _ensure_world_loop()
+
+
+def _world_sess():
+    from flask import request
+
+    return sessions_by_sid.get(request.sid), request.sid
+
+
+def _notify_world_detention(payload: Optional[dict]) -> None:
+    if not payload:
+        return
+    detention = payload.get("detention")
+    uids = payload.get("notifyUserIds") or []
+    if not detention:
+        return
+    for uid in uids:
+        sid = sid_by_user_id.get(int(uid))
+        if sid:
+            socketio.emit("world_detention", detention, to=sid)
+
+
+@socketio.on("game_hello")
+def on_game_hello(data: dict) -> None:
+    sess, sid = _world_sess()
+    if not sess or sess.get("scope") != "backrooms":
+        emit("game_error", {"message": "未进入后室会话"})
+        return
+    _ensure_world_loop()
+    payload = backrooms_world.hello(sid, sess, data or {})
+    _notify_world_detention(payload)
+    payload = dict(payload)
+    payload.pop("notifyUserIds", None)
+    emit("game_hello_ok", payload)
+
+
+@socketio.on("game_input")
+def on_game_input(data: dict) -> None:
+    sess, sid = _world_sess()
+    if not sess or sess.get("scope") != "backrooms":
+        return
+    backrooms_world.apply_input(sid, data or {})
+
+
+@socketio.on("weapon_fire")
+def on_weapon_fire(data: dict) -> None:
+    sess, sid = _world_sess()
+    if not sess or sess.get("scope") != "backrooms":
+        return
+    result = backrooms_world.weapon_fire(sid, data or {})
+    emit("weapon_fire_result", result)
+    if result.get("ok") and result.get("hits"):
+        emit("combat_event", {"type": "fire", **result}, to=sid)
+        for hit in result["hits"]:
+            other = backrooms_world.get_actor(int(hit["userId"]))
+            if other and other.get("sid"):
+                socketio.emit(
+                    "combat_event",
+                    {"type": "hit", "from": sess["user_id"], **hit},
+                    to=other["sid"],
+                )
+
+
+@socketio.on("revive_hold")
+def on_revive_hold(data: dict) -> None:
+    sess, sid = _world_sess()
+    if not sess or sess.get("scope") != "backrooms":
+        return
+    emit("revive_hold_ok", backrooms_world.revive_hold(sid, data or {}))
+
+
+@socketio.on("revive_cancel")
+def on_revive_cancel(_data: dict) -> None:
+    sess, sid = _world_sess()
+    if not sess or sess.get("scope") != "backrooms":
+        return
+    backrooms_world.revive_cancel(sid)
+
+
+@socketio.on("status_down")
+def on_status_down(data: dict) -> None:
+    sess, sid = _world_sess()
+    if not sess or sess.get("scope") != "backrooms":
+        return
+    emit("combat_event", {"type": "downed", **backrooms_world.request_downed(sid)})
+
+
+@socketio.on("item_pickup")
+def on_item_pickup(data: dict) -> None:
+    sess, sid = _world_sess()
+    if not sess or sess.get("scope") != "backrooms":
+        emit("item_pickup_result", {"ok": False, "reason": "auth"})
+        return
+    result = backrooms_world.claim_pickup(sid, data or {})
+    _notify_world_detention(result)
+    result = dict(result)
+    result.pop("notifyUserIds", None)
+    emit("item_pickup_result", result)
 
 
 def _verify_session_token(token: str) -> tuple[bool, str]:
@@ -1705,6 +1853,7 @@ def main() -> None:
         print("  在线统计: http://127.0.0.1:8082/admin/online-stats?key=<密钥> （./run-admin.sh）")
     print("  按 Ctrl+C 停止\n")
     socketio.start_background_task(_poll_admin_kick_requests)
+    _ensure_world_loop()
     socketio.run(
         app,
         host=args.host,

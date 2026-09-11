@@ -51,6 +51,9 @@ export function loadBackroomsSurvival(survival) {
 
 export function registerBackroomsSurvivalPersist(survival) {
   boundSurvival = survival;
+  if (typeof window !== "undefined" && window.BackroomsMultiplayer) {
+    window.BackroomsMultiplayer.noteSurvival(survival);
+  }
   if (typeof window === "undefined" || window.__backroomsSurvivalPersistBound) return;
   window.__backroomsSurvivalPersistBound = true;
   function flush() {

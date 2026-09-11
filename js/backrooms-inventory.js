@@ -25,18 +25,29 @@ const ITEM_ICONS = {
   fire_salt: "img/backrooms/fire-salt.png",
   archive_c11: "img/backrooms/archive-viewer.png",
   roulette: "img/backrooms/roulette-revolver.png",
-  roulette_revolver: "img/backrooms/roulette-revolver.png",
   package_l1: "img/backrooms/package.png",
-  package_l159: "img/backrooms/package.png",
   sample_can_c144: "img/backrooms/package.png",
   sample_can_c1299: "img/backrooms/sample-can-c1299.png",
   beacon_c1299: "img/backrooms/archive-viewer.png",
   scrap_page_c1299: "img/backrooms/archive-viewer.png",
   level_key_l14: "img/backrooms/archive-viewer.png",
   meg_recorder: "img/backrooms/archive-viewer.png",
-  mechanism_room_pass: "img/backrooms/archive-viewer.png",
-  stasis_room_pass: "img/backrooms/archive-viewer.png",
 };
+
+const RETIRED_ITEM_IDS = new Set([
+  "bandage",
+  "industrial_supplies",
+  "circuit",
+  "alloy_plate",
+  "roulette_revolver",
+  "package_l159",
+  "mechanism_room_pass",
+  "stasis_room_pass",
+]);
+
+export function isRetiredBackroomsItemId(itemId) {
+  return RETIRED_ITEM_IDS.has(String(itemId || ""));
+}
 
 /** @type {(null | { id: string, name: string })[]} */
 export const backpackSlots = new Array(BACKPACK_CAPACITY).fill(null);
@@ -106,7 +117,11 @@ function loadSlotsArray(raw, target, capacity) {
     var slot = parsed[i];
     if (slot == null) {
       target[i] = null;
-    } else if (slot && typeof slot.id === "string") {
+    } else if (
+      slot &&
+      typeof slot.id === "string" &&
+      !isRetiredBackroomsItemId(slot.id)
+    ) {
       target[i] = { id: slot.id, name: slot.name || slot.id };
     } else {
       target[i] = null;
@@ -287,6 +302,16 @@ function findEmptyBackpackIndex() {
 /** 获得物品：优先进快捷栏空位，其次背包 */
 export function addItem(item) {
   if (!item || !item.id) return false;
+  if (isRetiredBackroomsItemId(item.id)) return false;
+  if (item.worldKey && typeof window !== "undefined" && window.BackroomsMultiplayer) {
+    return window.BackroomsMultiplayer.claimPickup(item);
+  }
+  return addItemUnchecked(item);
+}
+
+export function addItemUnchecked(item) {
+  if (!item || !item.id) return false;
+  if (isRetiredBackroomsItemId(item.id)) return false;
   var packed = cloneItem(item);
   var hotIdx = findEmptyHotbarIndex();
   if (hotIdx >= 0) {
@@ -416,6 +441,22 @@ export function removeFirstItem(itemId) {
     }
   }
   return false;
+}
+
+/** 联机权威背包：快捷栏先填，其余进背包。 */
+export function applyServerInventory(items) {
+  var i;
+  for (i = 0; i < backpackSlots.length; i++) backpackSlots[i] = null;
+  for (i = 0; i < hotbarSlots.length; i++) hotbarSlots[i] = null;
+  if (!Array.isArray(items)) {
+    persistAll();
+    renderGrid();
+    renderHotbar();
+    return;
+  }
+  for (i = 0; i < items.length; i++) {
+    addItemUnchecked(items[i]);
+  }
 }
 
 export function resetBackpack() {
@@ -549,10 +590,6 @@ function dispatchUseItemId(itemId) {
   } else if (itemId === "roulette") {
     if (typeof window.__backroomsUseRoulette === "function") {
       window.__backroomsUseRoulette();
-    }
-  } else if (itemId === "bandage") {
-    if (typeof window.__backroomsUseBandage === "function") {
-      window.__backroomsUseBandage();
     }
   } else if (itemId === "scrap_page_c1299") {
     if (typeof window.__backroomsUseScrapPage === "function") {
@@ -884,7 +921,60 @@ export function mountHotbar(parent) {
     '<p class="br-hotbar__hint"><kbd>1</kbd>–<kbd>6</kbd> / <kbd>←</kbd><kbd>→</kbd> 切换 · <kbd>R</kbd> 使用</p>';
   host.appendChild(hotbarEl);
   hotbarSlotsEl = hotbarEl.querySelector(".br-hotbar__slots");
+  var hotbarHintEl = hotbarEl.querySelector(".br-hotbar__hint");
+  if (
+    hotbarHintEl &&
+    typeof window !== "undefined" &&
+    window.BackroomsMobileControls &&
+    window.BackroomsMobileControls.usesActionButtons
+  ) {
+    hotbarHintEl.textContent = "点击格子直接使用";
+  }
   bindDragAndDrop(hotbarEl);
+  var hotbarTouch = null;
+  hotbarEl.addEventListener("pointerdown", function (e) {
+    if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+    var cell = e.target.closest(".br-hotbar__cell");
+    if (!cell) return;
+    hotbarTouch = {
+      id: e.pointerId,
+      slot: parseInt(cell.dataset.slot, 10),
+      x: e.clientX,
+      y: e.clientY,
+      moved: false,
+    };
+  });
+  window.addEventListener("pointermove", function (e) {
+    if (!hotbarTouch || e.pointerId !== hotbarTouch.id) return;
+    if (Math.hypot(e.clientX - hotbarTouch.x, e.clientY - hotbarTouch.y) > 12) {
+      hotbarTouch.moved = true;
+    }
+  });
+  hotbarEl.addEventListener("pointerup", function (e) {
+    if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+    if (sellPickHandler || isAnyModalOverlayOpen()) return;
+    var cell = e.target.closest(".br-hotbar__cell");
+    if (!cell) return;
+    var idx = parseInt(cell.dataset.slot, 10);
+    if (!Number.isFinite(idx)) return;
+    if (
+      !hotbarTouch ||
+      hotbarTouch.id !== e.pointerId ||
+      hotbarTouch.slot !== idx ||
+      hotbarTouch.moved
+    ) {
+      hotbarTouch = null;
+      return;
+    }
+    hotbarTouch = null;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedHotbarIndex(idx);
+    useSelectedHotbarItem();
+  });
+  hotbarEl.addEventListener("pointercancel", function (e) {
+    if (hotbarTouch && hotbarTouch.id === e.pointerId) hotbarTouch = null;
+  });
   hotbarEl.addEventListener("click", function (e) {
     var cell = e.target.closest(".br-hotbar__cell");
     if (!cell) return;
@@ -999,6 +1089,26 @@ export function closeBackpack() {
   notifyUiOpenChange();
 }
 
+/** 联机快照：快捷栏 + 背包非空格 */
+export function snapshotInventory() {
+  var out = [];
+  var i;
+  for (i = 0; i < hotbarSlots.length; i++) {
+    if (hotbarSlots[i] && hotbarSlots[i].id) {
+      out.push({ id: hotbarSlots[i].id, name: hotbarSlots[i].name || hotbarSlots[i].id });
+    }
+  }
+  for (i = 0; i < backpackSlots.length; i++) {
+    if (backpackSlots[i] && backpackSlots[i].id) {
+      out.push({
+        id: backpackSlots[i].id,
+        name: backpackSlots[i].name || backpackSlots[i].id,
+      });
+    }
+  }
+  return out;
+}
+
 export function toggleSettings() {
   if (!settingsEl) mountSettingsPanel();
   if (!settingsOpen) closeBackpack();
@@ -1052,6 +1162,7 @@ if (typeof window !== "undefined") {
     removeFirstItem: removeFirstItem,
     countItem: countItem,
     resetBackpack: resetBackpack,
+    applyServerInventory: applyServerInventory,
     loadBackpackFromSession: loadBackpackFromSession,
     useSelectedHotbarItem: useSelectedHotbarItem,
     setSelectedHotbarIndex: setSelectedHotbarIndex,

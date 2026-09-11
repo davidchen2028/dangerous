@@ -121,6 +121,8 @@ def init_db() -> None:
     _migrate_users_player_state_json()
     _migrate_market_stock_table()
     _migrate_backrooms_governance()
+    _migrate_backrooms_world()
+    _migrate_backrooms_ip_detention()
 
 
 def _migrate_backrooms_governance() -> None:
@@ -235,6 +237,221 @@ def _migrate_backrooms_governance() -> None:
             );
             """
         )
+
+
+def _migrate_backrooms_world() -> None:
+    with connect() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS backrooms_world_actors (
+                user_id INTEGER PRIMARY KEY,
+                state_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS backrooms_world_pickups (
+                pickup_key TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                item_id TEXT NOT NULL,
+                claimed_at TEXT NOT NULL
+            );
+            """
+        )
+
+
+def save_backrooms_world_actor(user_id: int, state: Dict[str, Any]) -> None:
+    payload = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
+    now = _utc_now()
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO backrooms_world_actors (user_id, state_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                state_json = excluded.state_json,
+                updated_at = excluded.updated_at
+            """,
+            (user_id, payload, now),
+        )
+
+
+def load_backrooms_world_actor(user_id: int) -> Optional[Dict[str, Any]]:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT state_json FROM backrooms_world_actors WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    if not row or not row["state_json"]:
+        return None
+    try:
+        data = json.loads(row["state_json"])
+        return data if isinstance(data, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _migrate_backrooms_ip_detention() -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS backrooms_ip_detention (
+                ip TEXT PRIMARY KEY,
+                until TEXT NOT NULL,
+                strike_count INTEGER NOT NULL DEFAULT 0,
+                last_reason TEXT NOT NULL DEFAULT '',
+                last_strike_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+
+def get_active_backrooms_detention(ip: str) -> Optional[Dict[str, Any]]:
+    ip = normalize_ip(ip)
+    if not ip:
+        return None
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT ip, until, strike_count, last_reason, last_strike_at
+            FROM backrooms_ip_detention WHERE ip = ?
+            """,
+            (ip,),
+        ).fetchone()
+    if not row:
+        return None
+    end = _parse_iso(row["until"])
+    now = datetime.now(timezone.utc)
+    if not end:
+        return None
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    if end <= now:
+        return None
+    return {
+        "ip": row["ip"],
+        "until": row["until"],
+        "until_ts": end.timestamp(),
+        "strike_count": int(row["strike_count"] or 0),
+        "last_reason": str(row["last_reason"] or ""),
+        "last_strike_at": row["last_strike_at"],
+        "left_sec": max(0, int((end - now).total_seconds())),
+    }
+
+
+def record_backrooms_detention(
+    ip: str,
+    *,
+    weight: float,
+    reason: str,
+    base_sec: int,
+    max_sec: int,
+    strike_cooldown_sec: float,
+) -> Dict[str, Any]:
+    """按 IP 记一次作弊：加重隔离，冷却内只刷新到期时间不叠加次数。"""
+    ip = normalize_ip(ip)
+    now = datetime.now(timezone.utc)
+    now_iso = now.replace(microsecond=0).isoformat()
+    if not ip:
+        duration = min(
+            max_sec,
+            max(60, int(base_sec * float(weight) * (3 ** 4))),
+        )
+        until = now + timedelta(seconds=duration)
+        until_iso = until.replace(microsecond=0).isoformat()
+        return {
+            "ip": "",
+            "until": until_iso,
+            "until_ts": until.timestamp(),
+            "strike_count": 1,
+            "last_reason": reason,
+            "left_sec": int((until - now).total_seconds()),
+            "extended": True,
+        }
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT until, strike_count, last_reason, last_strike_at
+            FROM backrooms_ip_detention WHERE ip = ?
+            """,
+            (ip,),
+        ).fetchone()
+        strike = int(row["strike_count"] or 0) if row else 0
+        last_strike = _parse_iso(row["last_strike_at"]) if row else None
+        in_cooldown = False
+        if last_strike:
+            if last_strike.tzinfo is None:
+                last_strike = last_strike.replace(tzinfo=timezone.utc)
+            in_cooldown = (now - last_strike).total_seconds() < strike_cooldown_sec
+        extended = not in_cooldown
+        if extended:
+            strike += 1
+        duration = min(
+            max_sec,
+            max(60, int(base_sec * float(weight) * (3 ** (strike + 3)))),
+        )
+        new_until = now + timedelta(seconds=duration)
+        old_until = _parse_iso(row["until"]) if row else None
+        if old_until:
+            if old_until.tzinfo is None:
+                old_until = old_until.replace(tzinfo=timezone.utc)
+            if old_until > new_until:
+                new_until = old_until
+        until_iso = new_until.replace(microsecond=0).isoformat()
+        conn.execute(
+            """
+            INSERT INTO backrooms_ip_detention
+                (ip, until, strike_count, last_reason, last_strike_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ip) DO UPDATE SET
+                until = excluded.until,
+                strike_count = excluded.strike_count,
+                last_reason = excluded.last_reason,
+                last_strike_at = CASE
+                    WHEN excluded.strike_count > backrooms_ip_detention.strike_count
+                    THEN excluded.last_strike_at
+                    ELSE backrooms_ip_detention.last_strike_at
+                END,
+                updated_at = excluded.updated_at
+            """,
+            (
+                ip,
+                until_iso,
+                strike,
+                reason[:32],
+                now_iso if extended else (row["last_strike_at"] if row else now_iso),
+                now_iso,
+            ),
+        )
+    return {
+        "ip": ip,
+        "until": until_iso,
+        "until_ts": new_until.timestamp(),
+        "strike_count": strike,
+        "last_reason": reason,
+        "left_sec": max(0, int((new_until - now).total_seconds())),
+        "extended": extended,
+    }
+
+
+def claim_backrooms_world_pickup(
+    pickup_key: str, user_id: int, item_id: str
+) -> Tuple[bool, bool]:
+    """Return (claimed, duplicate)."""
+    now = _utc_now()
+    try:
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO backrooms_world_pickups
+                    (pickup_key, user_id, item_id, claimed_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (pickup_key, user_id, item_id, now),
+            )
+        return True, False
+    except sqlite3.IntegrityError:
+        return False, True
 
 
 def _migrate_users_banned_until() -> None:

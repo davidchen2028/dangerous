@@ -156,6 +156,7 @@ export class BackroomsSurvival {
     this.sanity = 100;
     this.stamina = 100;
     this.dead = false;
+    this.downed = false;
     this.sanityBreaking = false;
     /** @type {{ hp?: number, sanity?: number, stamina?: number } | null} */
     this._deathSnapshot = null;
@@ -317,7 +318,7 @@ export class BackroomsSurvival {
       this.triggerSanityBreak();
     }
 
-    if (this.hp <= 0 && !this.dead) {
+    if (this.hp <= 0 && !this.dead && !this.downed) {
       this.triggerDeath("hp");
     }
 
@@ -425,7 +426,7 @@ export class BackroomsSurvival {
   }
 
   takeDamage(amount) {
-    if (this.dead) return;
+    if (this.dead || this.downed) return;
     var dmg = amount || 0;
     var was = this.hp;
     this.hp = Math.max(0, this.hp - dmg);
@@ -615,13 +616,14 @@ export class BackroomsSurvival {
     clearSoyMilkBuffs();
     clearLuck();
     this.dead = false;
+    this.downed = false;
     this.sanityBreaking = false;
     this._deathSnapshot = null;
     if (this._deathTimer) {
       clearTimeout(this._deathTimer);
       this._deathTimer = null;
     }
-    document.body.classList.remove("backrooms-sanity-break", "backrooms-dead");
+    document.body.classList.remove("backrooms-sanity-break", "backrooms-dead", "backrooms-downed");
     if (this.deathEl) this.deathEl.classList.remove("br-survival__death--show");
     this.refreshHud();
   }

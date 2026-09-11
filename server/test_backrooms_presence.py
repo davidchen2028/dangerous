@@ -26,6 +26,9 @@ class BackroomsPresenceTest(unittest.TestCase):
         app_module.sessions_by_sid.clear()
         app_module.sid_by_user_id.clear()
         app_module.pending_online_session_ends.clear()
+        import backrooms_world as world
+
+        world.reset_world()
 
         self.user_id = db.create_user("后室计时员", generate_password_hash("secret12"))
         self.token = "presence-test-token"

@@ -1897,6 +1897,21 @@ function updatePointsHud() {
   updateMegPointsDisplay(megPointsEl);
 }
 
+function lootWorldItem(chest, spec, suffix) {
+  var key =
+    "l1:chest:" +
+    Math.round(Number(chest.x) || 0) +
+    ":" +
+    Math.round(Number(chest.z) || 0) +
+    ":" +
+    (suffix || spec.id);
+  return addItem({
+    id: spec.id,
+    name: spec.name,
+    worldKey: key,
+  });
+}
+
 function tryLootFixedChest(chest) {
   if (!survival || chest.opened) return;
   if (chest.lootKind === "almond_x2") {
@@ -1922,7 +1937,7 @@ function tryLootFixedChest(chest) {
     return;
   }
   if (chest.lootKind === "royal_rations") {
-    if (!addItem({ id: "royal_rations", name: "最小有效分量皇家口粮" })) {
+    if (!lootWorldItem(chest, { id: "royal_rations", name: "最小有效分量皇家口粮" }, "rations")) {
       showLootToast("背包已满");
       return;
     }
@@ -1932,7 +1947,7 @@ function tryLootFixedChest(chest) {
     return;
   }
   if (chest.lootKind === "royal_rations_trap") {
-    if (!addItem({ id: "royal_rations", name: "最小有效分量皇家口粮" })) {
+    if (!lootWorldItem(chest, { id: "royal_rations", name: "最小有效分量皇家口粮" }, "trap")) {
       showLootToast("背包已满");
       return;
     }
@@ -1980,7 +1995,7 @@ function tryLootChest() {
     return;
   }
   if (resourceRoll < 0.24) {
-    if (!addItem({ id: "royal_rations", name: "最小有效分量皇家口粮" })) {
+    if (!lootWorldItem(chest, { id: "royal_rations", name: "最小有效分量皇家口粮" }, "rations")) {
       showLootToast("背包已满");
       return;
     }
@@ -1990,7 +2005,7 @@ function tryLootChest() {
     return;
   }
   if (resourceRoll < 0.36) {
-    if (!addItem({ id: "fire_salt", name: "火盐" })) {
+    if (!lootWorldItem(chest, { id: "fire_salt", name: "火盐" }, "firesalt")) {
       showLootToast("背包已满");
       return;
     }
@@ -2060,6 +2075,21 @@ function depenetratePlayer(maxIter) {
 }
 
 function placePlayerAtSpawn() {
+  if (level1World && level1World.ensureMegBase) {
+    var center = level1World.ensureMegBase();
+    var megSpawn = defaultMegBaseSpawn(center);
+    spawnPoint.x = megSpawn.x;
+    spawnPoint.z = megSpawn.z;
+    player.x = megSpawn.x;
+    player.z = megSpawn.z;
+    feetY = 0;
+    velY = 0;
+    yaw = megSpawn.yaw;
+    pitch = 0.08;
+    depenetratePlayer(24);
+    if (level1World) level1World.update(player.x, player.z);
+    return;
+  }
   var colliders = level1World ? level1World.colliders : wallColliders;
   var spawnPos = resolveClipEntrySpawn(colliders, player.radius);
   spawnPoint.x = spawnPos.x;
@@ -2790,6 +2820,30 @@ function validateMatrix() {
 }
 
 function startLoop() {
+  if (typeof window !== "undefined" && window.BackroomsMultiplayer) {
+    window.BackroomsMultiplayer.bindPoseReader(function () {
+      return { x: player.x, z: player.z, y: feetY, yaw: yaw, pitch: pitch };
+    });
+    window.BackroomsMultiplayer.noteFpsState({
+      keys: keys,
+      player: player,
+      get yaw() {
+        return yaw;
+      },
+      get pitch() {
+        return pitch;
+      },
+      get feetY() {
+        return feetY;
+      },
+    });
+    window.BackroomsMultiplayer.bindTeleport(function (x, z) {
+      player.x = x;
+      player.z = z;
+    });
+    window.BackroomsMultiplayer.noteSurvival(survival);
+    window.BackroomsMultiplayer.hello();
+  }
   var clock = new THREE.Clock();
   function frame() {
     requestAnimationFrame(frame);
@@ -2860,7 +2914,15 @@ function startLoop() {
         speedMul *= level1_1Zones.getMovementSpeedMul();
       }
       if (inLevel1Sublevel) speedMul *= level1Sublevels.getMovementSpeedMul();
-      if (!isCorridorL2SequenceActive()) {
+      if (
+        !isCorridorL2SequenceActive() &&
+        !(survival && survival.downed) &&
+        !(
+          typeof window !== "undefined" &&
+          window.BackroomsMultiplayer &&
+          window.BackroomsMultiplayer.shouldBlockMove()
+        )
+      ) {
         movePlayer(dt, speedMul);
       }
     }
