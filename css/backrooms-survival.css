@@ -186,6 +186,59 @@ body.backrooms-downed #backroomsCanvas {
   transform: scale(0.985);
 }
 
+.br-landscape-guard {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  padding: max(24px, env(safe-area-inset-top, 0px))
+    max(24px, env(safe-area-inset-right, 0px))
+    max(24px, env(safe-area-inset-bottom, 0px))
+    max(24px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(56, 72, 82, 0.3), transparent 42%),
+    #06090c;
+  color: #eef6fb;
+  text-align: center;
+  font: 500 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  touch-action: none;
+}
+
+.br-landscape-guard[hidden] {
+  display: none !important;
+}
+
+.br-landscape-guard__icon {
+  font-size: 58px;
+  line-height: 1;
+  transform: rotate(-35deg);
+}
+
+.br-landscape-guard strong {
+  font-size: 21px;
+  letter-spacing: 0.04em;
+}
+
+.br-landscape-guard button {
+  min-width: 150px;
+  min-height: 46px;
+  margin-top: 8px;
+  border: 1px solid rgba(220, 235, 248, 0.55);
+  border-radius: 8px;
+  background: rgba(34, 49, 59, 0.94);
+  color: inherit;
+  font: 600 15px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body.backrooms-portrait-blocked {
+  overflow: hidden !important;
+}
+
 @media (hover: none), (pointer: coarse) {
   .backrooms-crosshair {
     display: none !important;

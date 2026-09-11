@@ -7,6 +7,12 @@ import { isTouchPrimaryDevice } from "./backrooms-fps-look.js";
 const PROMPT_SELECTOR = ".backrooms-hud__prompt:not([hidden]), .br-mp-prompt:not([hidden])";
 const ACTION_RE = /按(住)?\s*([EQ])\s*/gi;
 
+export function isPortraitViewport(width, height) {
+  const w = Number(width);
+  const h = Number(height);
+  return Number.isFinite(w) && Number.isFinite(h) && h > w;
+}
+
 export function parseMobileActions(text) {
   const source = String(text || "").replace(/\s+/g, " ").trim();
   const matches = Array.from(source.matchAll(ACTION_RE));
@@ -50,9 +56,73 @@ function dispatchKey(action, type) {
   );
 }
 
+function installLandscapeGuard() {
+  const guard = document.createElement("div");
+  guard.id = "backroomsLandscapeGuard";
+  guard.className = "br-landscape-guard";
+  guard.hidden = true;
+  guard.setAttribute("role", "dialog");
+  guard.setAttribute("aria-modal", "true");
+  guard.setAttribute("aria-label", "请横屏游玩");
+
+  const icon = document.createElement("span");
+  icon.className = "br-landscape-guard__icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "↻";
+  const title = document.createElement("strong");
+  title.textContent = "请将手机横过来";
+  const text = document.createElement("span");
+  text.textContent = "本游戏仅支持横屏游玩";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "进入横屏";
+  guard.append(icon, title, text, button);
+  document.body.appendChild(guard);
+
+  function portrait() {
+    if (typeof window.matchMedia === "function") {
+      return window.matchMedia("(orientation: portrait)").matches;
+    }
+    return isPortraitViewport(window.innerWidth, window.innerHeight);
+  }
+
+  function syncOrientation() {
+    const blocked = portrait();
+    guard.hidden = !blocked;
+    document.body.classList.toggle("backrooms-portrait-blocked", blocked);
+  }
+
+  async function requestLandscape() {
+    try {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch (_err) {
+      // iOS Safari 等环境不允许网页进入全屏，继续要求用户手动旋转。
+    }
+    try {
+      if (screen.orientation && typeof screen.orientation.lock === "function") {
+        await screen.orientation.lock("landscape");
+      }
+    } catch (_err) {
+      // 不支持方向锁定时，竖屏遮罩仍会阻止继续游戏。
+    }
+    syncOrientation();
+  }
+
+  button.addEventListener("click", requestLandscape);
+  window.addEventListener("resize", syncOrientation);
+  window.addEventListener("orientationchange", syncOrientation);
+  if (screen.orientation && typeof screen.orientation.addEventListener === "function") {
+    screen.orientation.addEventListener("change", syncOrientation);
+  }
+  syncOrientation();
+}
+
 function boot() {
   if (!isTouchPrimaryDevice()) return;
   document.body.classList.add("backrooms-mobile-touch");
+  installLandscapeGuard();
 
   const host = document.createElement("div");
   host.id = "backroomsMobileActions";

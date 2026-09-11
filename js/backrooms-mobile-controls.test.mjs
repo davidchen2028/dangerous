@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseMobileActions } from "./backrooms-mobile-controls.js";
+import {
+  isPortraitViewport,
+  parseMobileActions,
+} from "./backrooms-mobile-controls.js";
+
+test("mobile orientation guard blocks only portrait viewports", () => {
+  assert.equal(isPortraitViewport(390, 844), true);
+  assert.equal(isPortraitViewport(844, 390), false);
+  assert.equal(isPortraitViewport(600, 600), false);
+  assert.equal(isPortraitViewport("bad", 844), false);
+});
 
 test("mobile actions split simultaneous Q and E prompts in display order", () => {
   assert.deepEqual(
