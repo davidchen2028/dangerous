@@ -7,8 +7,26 @@
   <meta name="mobile-web-app-capable" content="yes">
   <title>backrooms（3.0）</title>
   <link rel="stylesheet" href="css/backrooms-index.css?v=5">
+  <link rel="stylesheet" href="css/mobile-landscape-guard.css?v=2">
+  <script>
+    (function () {
+      var ua = navigator.userAgent || "";
+      if (/MicroMessenger|wxwork|iPhone|iPad|iPod|Android|HarmonyOS|Mobile/i.test(ua)) {
+        document.documentElement.classList.add("force-landscape");
+        if (window.innerHeight > window.innerWidth) {
+          document.documentElement.classList.add("portrait-like");
+        }
+      }
+    })();
+  </script>
 </head>
 <body>
+  <div id="mobileLandscapeGuard" class="mobile-landscape-guard" hidden role="dialog" aria-modal="true" aria-label="请横屏游玩">
+    <span class="mobile-landscape-guard__icon" aria-hidden="true">↻</span>
+    <strong>请将手机横过来</strong>
+    <span>微信内请先把手机横置，再继续游戏</span>
+    <button type="button">我已横屏</button>
+  </div>
   <main class="br-home">
     <h1 class="br-home__title">backrooms（<span class="br-home__version">3.0</span>）</h1>
     <a class="br-home__start" id="brHomeStart" href="backrooms-level0.html">开始游戏</a>
@@ -41,7 +59,7 @@
   </div>
 
   <script src="js/backrooms-client-pack.js?v=13"></script>
-  <script type="module" src="js/mobile-landscape-guard.js?v=1"></script>
+  <script src="js/mobile-landscape-guard.js?v=2"></script>
   <script src="js/backrooms-auth.js?v=1"></script>
   <script>
     (function () {

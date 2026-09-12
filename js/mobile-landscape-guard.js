@@ -1,144 +1,153 @@
 /**
- * 手机横屏守卫：竖屏时阻断页面操作，并在用户点击后尝试锁定横屏。
- * 自带样式，可独立用于大厅、后室入口和所有后室关卡。
+ * 手机横屏守卫（普通脚本，微信内置浏览器可用）。
+ * 不用 orientation 媒体查询：微信会谎报横屏。
  */
-import { isTouchPrimaryDevice } from "./backrooms-fps-look.js";
+(function () {
+  var STYLE_ID = "mobileLandscapeGuardStyle";
+  var GUARD_ID = "mobileLandscapeGuard";
 
-const STYLE_ID = "mobileLandscapeGuardStyle";
-const GUARD_ID = "mobileLandscapeGuard";
-
-export function isPortraitViewport(width, height) {
-  const w = Number(width);
-  const h = Number(height);
-  return Number.isFinite(w) && Number.isFinite(h) && h > w;
-}
-
-function installStyles() {
-  if (document.getElementById(STYLE_ID)) return;
-  const style = document.createElement("style");
-  style.id = STYLE_ID;
-  style.textContent = `
-    .mobile-landscape-guard {
-      position: fixed;
-      inset: 0;
-      z-index: 2147483647;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 12px;
-      padding: max(24px, env(safe-area-inset-top, 0px))
-        max(24px, env(safe-area-inset-right, 0px))
-        max(24px, env(safe-area-inset-bottom, 0px))
-        max(24px, env(safe-area-inset-left, 0px));
-      box-sizing: border-box;
-      background:
-        radial-gradient(circle at 50% 38%, rgba(56, 72, 82, .3), transparent 42%),
-        #06090c;
-      color: #eef6fb;
-      text-align: center;
-      font: 500 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
-      touch-action: none;
-    }
-    .mobile-landscape-guard[hidden] { display: none !important; }
-    .mobile-landscape-guard__icon {
-      font-size: 58px;
-      line-height: 1;
-      transform: rotate(-35deg);
-    }
-    .mobile-landscape-guard strong {
-      font-size: 21px;
-      letter-spacing: .04em;
-    }
-    .mobile-landscape-guard button {
-      min-width: 150px;
-      min-height: 46px;
-      margin-top: 8px;
-      border: 1px solid rgba(220, 235, 248, .55);
-      border-radius: 8px;
-      background: rgba(34, 49, 59, .94);
-      color: inherit;
-      font: 600 15px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
-    }
-    body.mobile-portrait-blocked { overflow: hidden !important; }
-  `;
-  document.head.appendChild(style);
-}
-
-function isPortraitNow() {
-  if (typeof window.matchMedia === "function") {
-    return window.matchMedia("(orientation: portrait)").matches;
+  function ua() {
+    return (typeof navigator !== "undefined" && navigator.userAgent) || "";
   }
-  return isPortraitViewport(window.innerWidth, window.innerHeight);
-}
 
-export function installMobileLandscapeGuard() {
-  if (!isTouchPrimaryDevice() || document.getElementById(GUARD_ID)) return;
-  installStyles();
+  function isWeChatBrowser() {
+    return /MicroMessenger|wxwork|miniProgram/i.test(ua());
+  }
 
-  const guard = document.createElement("div");
-  guard.id = GUARD_ID;
-  guard.className = "mobile-landscape-guard";
-  guard.hidden = true;
-  guard.setAttribute("role", "dialog");
-  guard.setAttribute("aria-modal", "true");
-  guard.setAttribute("aria-label", "请横屏游玩");
+  function isHandheldContext() {
+    var text = ua();
+    if (isWeChatBrowser()) return true;
+    if (/iPad/i.test(text)) return true;
+    if (typeof navigator !== "undefined" && navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) {
+      return true;
+    }
+    if (/iPhone|iPod|Android|HarmonyOS|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(text)) {
+      return true;
+    }
+    if (typeof navigator !== "undefined" && navigator.maxTouchPoints > 1) {
+      var shortest = Math.min(screen.width || 0, screen.height || 0);
+      if (shortest && shortest <= 920) return true;
+    }
+    return false;
+  }
 
-  const icon = document.createElement("span");
-  icon.className = "mobile-landscape-guard__icon";
-  icon.setAttribute("aria-hidden", "true");
-  icon.textContent = "↻";
-  const title = document.createElement("strong");
-  title.textContent = "请将手机横过来";
-  const text = document.createElement("span");
-  text.textContent = "本游戏仅支持横屏游玩";
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = "进入横屏";
-  guard.append(icon, title, text, button);
-  document.body.appendChild(guard);
+  function isPortraitViewport(width, height) {
+    var w = Number(width);
+    var h = Number(height);
+    return isFinite(w) && isFinite(h) && h > w;
+  }
+
+  function viewportSize() {
+    var view = typeof window !== "undefined" ? window.visualViewport : null;
+    var w = (view && view.width) || window.innerWidth || document.documentElement.clientWidth || 0;
+    var h = (view && view.height) || window.innerHeight || document.documentElement.clientHeight || 0;
+    return { w: w, h: h };
+  }
+
+  function isPortraitNow() {
+    var size = viewportSize();
+    if (size.w > 0 && size.h > 0) return isPortraitViewport(size.w, size.h);
+    return false;
+  }
+
+  function markHtml() {
+    if (!document.documentElement) return;
+    document.documentElement.classList.toggle("force-landscape", isHandheldContext());
+    document.documentElement.classList.toggle("portrait-like", isHandheldContext() && isPortraitNow());
+  }
+
+  function ensureStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent =
+      ".mobile-landscape-guard{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:24px;box-sizing:border-box;background:#06090c;color:#eef6fb;text-align:center;font:500 15px/1.45 system-ui,sans-serif;touch-action:none}" +
+      "html.force-landscape.portrait-like .mobile-landscape-guard,html.force-landscape.portrait-like .mobile-landscape-guard[hidden]{display:flex!important}" +
+      "body.mobile-portrait-blocked{overflow:hidden!important}";
+    document.head.appendChild(style);
+  }
+
+  function ensureGuard() {
+    var guard = document.getElementById(GUARD_ID);
+    if (guard) return guard;
+    guard = document.createElement("div");
+    guard.id = GUARD_ID;
+    guard.className = "mobile-landscape-guard";
+    guard.setAttribute("role", "dialog");
+    guard.setAttribute("aria-modal", "true");
+    guard.setAttribute("aria-label", "请横屏游玩");
+    guard.innerHTML =
+      '<span class="mobile-landscape-guard__icon" aria-hidden="true">↻</span>' +
+      "<strong>请将手机横过来</strong>" +
+      "<span>微信内请先把手机横置，再继续游戏</span>" +
+      '<button type="button">我已横屏</button>';
+    document.body.appendChild(guard);
+    return guard;
+  }
 
   function syncOrientation() {
-    const blocked = isPortraitNow();
+    if (!isHandheldContext()) return;
+    markHtml();
+    var guard = document.getElementById(GUARD_ID);
+    if (!guard) return;
+    var blocked = isPortraitNow();
     guard.hidden = !blocked;
     document.body.classList.toggle("mobile-portrait-blocked", blocked);
   }
 
-  async function requestLandscape() {
+  function requestLandscape() {
+    var done = function () {
+      syncOrientation();
+    };
     try {
       if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-        await document.documentElement.requestFullscreen();
+        document.documentElement.requestFullscreen().catch(function () {});
       }
-    } catch (_err) {
-      // iOS Safari 等环境不允许网页全屏，仍要求用户手动旋转。
-    }
+    } catch (_err) {}
     try {
       if (screen.orientation && typeof screen.orientation.lock === "function") {
-        await screen.orientation.lock("landscape");
+        screen.orientation.lock("landscape").then(done).catch(done);
+        return;
       }
-    } catch (_err) {
-      // 不支持方向锁定时，竖屏遮罩仍会阻止继续操作。
+    } catch (_err2) {}
+    done();
+  }
+
+  function installMobileLandscapeGuard() {
+    if (!isHandheldContext() || !document.body) return;
+    ensureStyles();
+    var guard = ensureGuard();
+    var button = guard.querySelector("button");
+    if (button && !button.getAttribute("data-bound")) {
+      button.setAttribute("data-bound", "1");
+      button.addEventListener("click", requestLandscape);
+    }
+    window.addEventListener("resize", syncOrientation);
+    window.addEventListener("orientationchange", syncOrientation);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", syncOrientation);
+    }
+    if (screen.orientation && typeof screen.orientation.addEventListener === "function") {
+      screen.orientation.addEventListener("change", syncOrientation);
     }
     syncOrientation();
   }
 
-  button.addEventListener("click", requestLandscape);
-  window.addEventListener("resize", syncOrientation);
-  window.addEventListener("orientationchange", syncOrientation);
-  if (screen.orientation && typeof screen.orientation.addEventListener === "function") {
-    screen.orientation.addEventListener("change", syncOrientation);
-  }
-  syncOrientation();
-}
+  var api = {
+    isPortraitViewport: isPortraitViewport,
+    isWeChatBrowser: isWeChatBrowser,
+    isHandheldContext: isHandheldContext,
+    isPortraitNow: isPortraitNow,
+    installMobileLandscapeGuard: installMobileLandscapeGuard,
+  };
 
-function boot() {
-  installMobileLandscapeGuard();
-}
-
-if (typeof window !== "undefined" && typeof document !== "undefined") {
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot, { once: true });
-  } else {
-    boot();
+  if (typeof window !== "undefined") {
+    window.MobileLandscapeGuard = api;
+    markHtml();
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", installMobileLandscapeGuard, { once: true });
+    } else {
+      installMobileLandscapeGuard();
+    }
   }
-}
+})();

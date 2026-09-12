@@ -3,11 +3,24 @@
  * 从当前可见交互提示中提取 E / Q；两项同时可用时纵向显示两个按钮。
  */
 import { isTouchPrimaryDevice } from "./backrooms-fps-look.js";
-import "./mobile-landscape-guard.js";
-export { isPortraitViewport } from "./mobile-landscape-guard.js";
 
 const PROMPT_SELECTOR = ".backrooms-hud__prompt:not([hidden]), .br-mp-prompt:not([hidden])";
 const ACTION_RE = /按(住)?\s*([EQ])\s*/gi;
+
+export function isPortraitViewport(width, height) {
+  const w = Number(width);
+  const h = Number(height);
+  return Number.isFinite(w) && Number.isFinite(h) && h > w;
+}
+
+function ensureClassicLandscapeGuard() {
+  if (typeof document === "undefined") return;
+  if (document.querySelector("script[data-landscape-guard]")) return;
+  const script = document.createElement("script");
+  script.src = new URL("./mobile-landscape-guard.js", import.meta.url).href;
+  script.setAttribute("data-landscape-guard", "1");
+  document.head.appendChild(script);
+}
 
 export function parseMobileActions(text) {
   const source = String(text || "").replace(/\s+/g, " ").trim();
@@ -53,6 +66,7 @@ function dispatchKey(action, type) {
 }
 
 function boot() {
+  ensureClassicLandscapeGuard();
   if (!isTouchPrimaryDevice()) return;
   document.body.classList.add("backrooms-mobile-touch");
 
