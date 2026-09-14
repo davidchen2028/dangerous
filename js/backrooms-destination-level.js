@@ -326,6 +326,20 @@ function buildLevel10(root) {
   // 谷仓放左侧，避开右侧岔路
   addBox(root, 11, 5, 8, -15, 2.5, 8, barn);
   colliders.push(wallCollider(-20.5, -9.5, 4, 12));
+  var barnDoor = new THREE.Mesh(
+    new THREE.BoxGeometry(0.12, 2.3, 1.15),
+    new THREE.MeshStandardMaterial({ color: 0x5a3a28, roughness: 0.86 })
+  );
+  barnDoor.position.set(-9.42, 1.2, 8);
+  root.add(barnDoor);
+  var barnPick = new THREE.Mesh(
+    new THREE.BoxGeometry(0.45, 2.4, 1.4),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  barnPick.position.set(-9.15, 1.2, 8);
+  barnPick.userData.brInteract = { kind: "l10_office_door" };
+  root.add(barnPick);
+  interactRoots.push(barnPick);
 
   // 田野边界，避免走出场景
   colliders.push(wallCollider(-45.5, -44.5, -45, 45));
@@ -341,6 +355,18 @@ function buildLevel10(root) {
 
 function isLevel10ForkToL11(px, pz) {
   return px >= L10_FORK_EXIT_X && Math.abs(pz - L10_FORK_Z) <= 1.7;
+}
+
+function exitLevel10ToL81() {
+  if (transitionLock) return;
+  transitionLock = true;
+  showToast("办公门后的喧嚣褪尽，只剩旧毛毯和柠檬清香…");
+  if (survival) saveBackroomsSurvival(survival);
+  grantLevelPass("l81", fps.yaw);
+  queueEnterLevelNumber(81);
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level81.html";
+  }, 500);
 }
 
 function exitLevel10ToL11() {
@@ -470,7 +496,7 @@ function restoreDefaultHint() {
   if (!hintEl) return;
   if (level === 10) {
     hintEl.innerHTML =
-      "Level 10 · 沿土路前进 · 留意岔路小道 · <kbd>WASD</kbd> 移动 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包";
+      "Level 10 · 沿土路前进 · 谷仓有一扇办公门 · <kbd>WASD</kbd> 移动 · <kbd>Q</kbd> · <kbd>B</kbd>";
   } else if (level === 75) {
     hintEl.innerHTML =
       "Level 75 · 管道深处有一块橙色的地面 · <kbd>WASD</kbd> 移动 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包";
@@ -542,6 +568,8 @@ function updateInteractUi() {
         interactHintEl.innerHTML = "没有内部陈设的建筑门 · 按 <kbd>Q</kbd> 进入";
       } else if (data.kind === E81_CALL_KIND) {
         interactHintEl.innerHTML = getEntity81CallHint();
+      } else if (data.kind === "l10_office_door") {
+        interactHintEl.innerHTML = "谷仓里的办公门 · 按 <kbd>Q</kbd> 进入";
       } else {
         interactHintEl.innerHTML = "B.N.T.G 员工 · 按 <kbd>Q</kbd> 交易";
       }
@@ -948,6 +976,7 @@ function tryQAction() {
   else if (data && data.kind === "l11_bntg_storage") openBaseStorage({ toast: true });
   else if (data && data.kind === "l11_level2_empty_door") exitLevel11ToL2();
   else if (data && data.kind === E81_CALL_KIND) enterEntity81Cabin("l11", fps.yaw);
+  else if (data && data.kind === "l10_office_door") exitLevel10ToL81();
 }
 
 function bindControls() {

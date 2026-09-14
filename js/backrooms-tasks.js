@@ -393,6 +393,7 @@ export const ACHIEVEMENT_DEFS = [
   { id: "cold_buildings", title: "冰冷楼宇", category: "explore", levelId: "l13", reward: 0, condition: "进入 Level 13" },
   { id: "sweet_heaven", title: "美好的天堂", category: "explore", levelId: "l14", reward: 0, condition: "进入 Level 14（本层级极难逃生）" },
   { id: "choose_door", title: "选择你的门", category: "explore", levelId: "l21", reward: 0, condition: "进入 Level 21" },
+  { id: "afterhours_ending", title: "赋闲结局", category: "explore", levelId: "l81", reward: 0, condition: "进入 Level 81" },
   { id: "beach_holiday", title: "沙滩度假", category: "explore", levelId: "l48", reward: 0, condition: "进入 Level 48" },
   { id: "painting", title: "画", category: "explore", levelId: "l57", reward: 0, condition: "进入 Level 57" },
   { id: "have_fun", title: "尽情欢乐吧", category: "explore", levelId: "l283", reward: 0, condition: "进入 Level 283" },
@@ -564,7 +565,7 @@ const MAINLINE_LEVELS = [
   "l14",
 ];
 const SUB_LEVELS = ["0.2", "0.5", "0.7", "l1.1", "l1.2", "l1.3", "l1.5", "l6_1"];
-const FAR_LEVELS = ["l21", "l48", "l57", "l283"];
+const FAR_LEVELS = ["l21", "l48", "l57", "l81", "l283"];
 
 function getAchievementDef(id) {
   for (var i = 0; i < ACHIEVEMENT_DEFS.length; i++) {

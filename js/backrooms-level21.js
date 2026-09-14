@@ -81,6 +81,13 @@ const DOOR_TABLE = [
   { num: 19, level: 19, page: "backrooms-level19.html", pass: "l19", prob: 0.06, made: false },
   { num: 20, level: 20, page: "backrooms-level20.html", pass: "l20", prob: 0.06, made: false },
 ];
+const L81_DOOR = {
+  num: 204,
+  level: 81,
+  page: "backrooms-level81.html",
+  pass: "l81",
+  made: true,
+};
 const RUST_DOOR = {
   rust: true,
   level: 46,
@@ -217,6 +224,10 @@ function assignSpecialDoors() {
   // 生锈门独立进行一次 5% 判定，不参与编号门的概率表。
   if (freeIdx.length > 0 && Math.random() < RUST_DOOR.prob) {
     doorSlots[freeIdx[cursor]].door = RUST_DOOR;
+    cursor += 1;
+  }
+  if (freeIdx.length > cursor) {
+    doorSlots[freeIdx[cursor]].door = L81_DOOR;
     cursor += 1;
   }
   var e;

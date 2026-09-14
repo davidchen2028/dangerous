@@ -582,30 +582,32 @@
 
   function getClientDevice() {
     var ua = navigator.userAgent || "";
-    if (
+    var minSide = Math.min(window.screen.width || 0, window.screen.height || 0);
+    var ipad =
       /iPad/i.test(ua) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-    ) {
+      (navigator.platform === "MacIntel" &&
+        navigator.maxTouchPoints > 1 &&
+        !/iPhone|iPod/i.test(ua));
+    if (ipad) return "tablet";
+    if (/iPhone|iPod/i.test(ua)) return "mobile";
+    if (/Android|HarmonyOS/i.test(ua)) {
+      if (minSide >= 768) return "tablet";
+      if (/Mobile/i.test(ua)) return "mobile";
       return "tablet";
     }
-    if (/iPhone|iPod/i.test(ua)) return "mobile";
-    if (/Android|HarmonyOS|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
-      return "mobile";
-    }
+    if (/Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) return "mobile";
     if (
       typeof window.matchMedia === "function" &&
       window.matchMedia("(hover: none) and (pointer: coarse)").matches
     ) {
-      var minSide = Math.min(window.screen.width || 0, window.screen.height || 0);
       return minSide >= 768 ? "tablet" : "mobile";
     }
     if (
       (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ||
       "ontouchstart" in window
     ) {
-      var side = Math.min(window.screen.width || 0, window.screen.height || 0);
-      if (side > 0 && side <= 1024) {
-        return side >= 768 ? "tablet" : "mobile";
+      if (minSide > 0 && minSide <= 1024) {
+        return minSide >= 768 ? "tablet" : "mobile";
       }
     }
     return "desktop";

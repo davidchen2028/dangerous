@@ -1023,3 +1023,51 @@ body.backrooms-home-ending-open .backrooms-hud__prompt {
   opacity: 0;
   pointer-events: none;
 }
+
+body.backrooms-level7 {
+  background: #0c161e;
+}
+
+.backrooms-l7-water {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 18;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(12, 52, 78, 0.16), rgba(3, 12, 22, 0.82));
+  transition: opacity 0.35s linear;
+}
+
+body.backrooms-level81 {
+  background: #1a1612;
+}
+
+.backrooms-l81-rain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 16;
+  opacity: 0.08;
+  background:
+    repeating-linear-gradient(
+      118deg,
+      transparent 0,
+      transparent 11px,
+      rgba(210, 224, 236, 0.045) 12px,
+      transparent 13px
+    ),
+    radial-gradient(ellipse at 50% 18%, rgba(255, 236, 196, 0.06), transparent 48%);
+  transition: opacity 1.2s linear;
+}
+
+.backrooms-l81-ending .backrooms-home-ending__panel {
+  border-color: rgba(236, 214, 176, 0.4);
+  background: rgba(28, 24, 20, 0.94);
+  box-shadow: 0 0 48px rgba(255, 220, 160, 0.1);
+}
+
+.backrooms-l81-ending .backrooms-home-ending__title,
+.backrooms-l81-ending .backrooms-home-ending__link {
+  color: #f3e2c0;
+}

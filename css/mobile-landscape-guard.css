@@ -1,4 +1,5 @@
-/* 微信内置浏览器常谎报 orientation，用宽高比判断竖屏。 */
+/* 手机不支持；iPad 微信提示外开；平板竖屏用宽高比判断。 */
+.mobile-device-gate,
 .mobile-landscape-guard {
   position: fixed;
   inset: 0;
@@ -20,8 +21,17 @@
   text-align: center;
   font: 500 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
   touch-action: none;
+  pointer-events: auto;
 }
 
+.tablet-browser-gate ol {
+  margin: 0;
+  padding: 0 0 0 1.3em;
+  text-align: left;
+  max-width: 22em;
+}
+
+.mobile-device-gate[hidden],
 .mobile-landscape-guard[hidden] {
   display: none !important;
 }
@@ -32,11 +42,13 @@
   transform: rotate(-35deg);
 }
 
+.mobile-device-gate strong,
 .mobile-landscape-guard strong {
   font-size: 21px;
   letter-spacing: 0.04em;
 }
 
+.mobile-device-gate button,
 .mobile-landscape-guard button {
   min-width: 150px;
   min-height: 46px;
@@ -46,10 +58,38 @@
   background: rgba(34, 49, 59, 0.94);
   color: inherit;
   font: 600 15px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  cursor: pointer;
 }
 
-body.mobile-portrait-blocked {
+body.mobile-portrait-blocked,
+body.phone-unsupported-blocked,
+body.tablet-browser-blocked {
   overflow: hidden !important;
+}
+
+body.tablet-browser-blocked > :not(.tablet-browser-gate) {
+  pointer-events: none !important;
+}
+
+html.phone-unsupported .phone-device-gate,
+html.phone-unsupported .phone-device-gate[hidden] {
+  display: flex !important;
+}
+
+html.tablet-open-browser .tablet-browser-gate,
+html.tablet-open-browser .tablet-browser-gate[hidden] {
+  display: flex !important;
+}
+
+html.phone-unsupported .tablet-browser-gate,
+html.phone-unsupported .tablet-browser-gate[hidden],
+html.tablet-open-browser .phone-device-gate,
+html.tablet-open-browser .phone-device-gate[hidden],
+html.phone-unsupported .mobile-landscape-guard,
+html.phone-unsupported .mobile-landscape-guard[hidden],
+html.tablet-open-browser .mobile-landscape-guard,
+html.tablet-open-browser .mobile-landscape-guard[hidden] {
+  display: none !important;
 }
 
 html.force-landscape.portrait-like .mobile-landscape-guard,
@@ -58,7 +98,7 @@ html.force-landscape.portrait-like .mobile-landscape-guard[hidden] {
 }
 
 @media (max-aspect-ratio: 10/11) {
-  html.force-landscape .mobile-landscape-guard {
+  html.force-landscape:not(.phone-unsupported):not(.tablet-open-browser) .mobile-landscape-guard {
     display: flex !important;
   }
 }

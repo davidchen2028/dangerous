@@ -17,6 +17,7 @@ class ClientPackTests(unittest.TestCase):
         self.assertIn("js/backrooms-multiplayer.js", files)
         self.assertIn("js/mobile-landscape-guard.js", files)
         self.assertIn("css/mobile-landscape-guard.css", files)
+        self.assertIn("js/client-device.js", files)
         self.assertIn("js/backrooms-remote-players.js", files)
         self.assertIn("js/backrooms-entity81.js", files)
         self.assertIn("js/backrooms-entity81-catalog.js", files)
@@ -31,18 +32,27 @@ class ClientPackTests(unittest.TestCase):
     def test_landscape_guard_is_loaded_by_both_lobbies(self):
         guard = (ROOT / "js" / "mobile-landscape-guard.js").read_text(encoding="utf-8")
         self.assertNotIn("export ", guard)
-        self.assertIn("MicroMessenger", guard)
+        self.assertIn("iPhone", guard)
+        self.assertIn("iPad", guard)
+        self.assertIn("暂不支持手机", guard)
+        self.assertIn("请用浏览器打开", guard)
+        self.assertIn("在 Safari 中打开", guard)
+        self.assertIn("intent://", guard)
         self.assertIn("innerHeight", guard)
         for page in ("index.html", "backrooms-index.html"):
             html = (ROOT / page).read_text(encoding="utf-8")
-            self.assertIn('href="css/mobile-landscape-guard.css?v=2"', html, page)
-            self.assertIn('src="js/mobile-landscape-guard.js?v=2"', html, page)
+            self.assertIn('href="css/mobile-landscape-guard.css?v=6"', html, page)
+            self.assertIn('src="js/mobile-landscape-guard.js?v=6"', html, page)
             self.assertNotIn(
                 'type="module" src="js/mobile-landscape-guard.js',
                 html,
                 page,
             )
-            self.assertIn("force-landscape", html, page)
+            self.assertIn("phone-unsupported", html, page)
+            self.assertIn("暂不支持手机", html, page)
+            self.assertIn("tabletBrowserGate", html, page)
+            self.assertIn("请用浏览器打开", html, page)
+            self.assertIn("在 Safari 中打开", html, page)
 
     def test_pack_version_is_positive_int(self):
         self.assertIsInstance(client_pack.CLIENT_PACK_VERSION, int)

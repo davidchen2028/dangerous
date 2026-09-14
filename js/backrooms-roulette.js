@@ -40,6 +40,7 @@ const DEST_POOLS = {
   2: [
     { pass: "l2", page: "backrooms-level2.html", banner: "Level 2" },
     { pass: "l13", page: "backrooms-level13.html", banner: "Level 13" },
+    { pass: "l81", page: "backrooms-level81.html", banner: "Level 81" },
     { pass: "l121", page: "backrooms-level121.html", banner: "Level 121" },
     { pass: "l283", page: "backrooms-level283.html", banner: "Level 283" },
   ],

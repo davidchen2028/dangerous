@@ -48,7 +48,7 @@ const LEVEL_PROFILE = {
   6: { min: 6, max: 11, base: 8.5, swing: 1.1 },
   /** Level 6.1 — 零食货架间 */
   "6.1": { min: 18, max: 23, base: 20.5, swing: 1.2 },
-  /** Level 7 — 水上栈道 */
+  /** Level 7 — 无尽海面与破木屋 */
   7: { min: 12, max: 17, base: 14.5, swing: 1.6 },
   /** Level 8 — 阴冷潮湿的巨型洞穴 */
   8: { min: 8, max: 13, base: 10.5, swing: 1.8 },
@@ -85,6 +85,8 @@ const LEVEL_PROFILE = {
   57: { min: 19, max: 23, base: 21, swing: 1.2 },
   /** Level 75 — 金属管道区域 */
   75: { min: 14, max: 19, base: 16.5, swing: 1.7 },
+  /** Level 81 — 赋闲结局，柠檬清香的暖室 */
+  81: { min: 21, max: 24, base: 22.4, swing: 0.4 },
   /** Level 119 — 水滑梯房 */
   119: { min: 20, max: 26, base: 23, swing: 1.4 },
   /** Level 121 — 湖底 */

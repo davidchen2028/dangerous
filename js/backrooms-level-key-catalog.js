@@ -27,7 +27,7 @@ function defineKey(itemId, levelId, label, page, pass, opts) {
   });
 }
 
-/** 61 个已制作、可游玩区域；C-102 与纯过渡场景不列入。 */
+/** 63 个已制作、可游玩区域；C-102 与纯过渡场景不列入。 */
 function trade(buyPrice, sellPrice, extra) {
   extra = extra || {};
   extra.buyPrice = buyPrice;
@@ -59,6 +59,7 @@ export const LEVEL_KEY_CATALOG = Object.freeze([
   defineKey("level_key_l48", "l48", "Level 48", "backrooms-level48.html", "l48", trade(155, 125, { hubTarget: true })),
   defineKey("level_key_l57", "l57", "Level 57", "backrooms-level57.html", "l57", trade(85, 40, { hubTarget: true })),
   defineKey("level_key_l75", "l75", "Level 75", "backrooms-level75.html", "l75", trade(95, 45, { hubTarget: true })),
+  defineKey("level_key_l81", "l81", "Level 81", "backrooms-level81.html", "l81", trade(110, 55, { hubTarget: true })),
   defineKey("level_key_l119", "l119", "Level 119", "backrooms-level119.html", "l119", trade(130, 65, { hubTarget: true })),
   defineKey("level_key_l121", "l121", "Level 121", "backrooms-level121.html", "l121", trade(100, 50, { hubTarget: true })),
   defineKey("level_key_l149", "l149", "Level 149", "backrooms-level149.html", "l149", trade(135, 65, { hubTarget: true })),
