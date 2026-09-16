@@ -255,6 +255,22 @@ function init() {
   bindLevel7AudioOnGesture();
   bindControls();
   window.addEventListener("pagehide", stopLevel7Audio);
+  try {
+    if (new URLSearchParams(window.location.search).get("debug") === "1") {
+      fps.player.x = 0;
+      fps.player.z = -4.2;
+      fps.feetY = WATER_SURFACE_Y;
+      enterWater();
+      window.setTimeout(function () {
+        document.body.dataset.l7 = JSON.stringify({
+          inWater: inWater,
+          sinkTimer: sinkTimer,
+          errorHidden: !errorEl || errorEl.hidden,
+          hint: hintEl ? hintEl.textContent : "",
+        });
+      }, 400);
+    }
+  } catch (_dbg) {}
 
   var clock = new THREE.Clock();
   function frame() {

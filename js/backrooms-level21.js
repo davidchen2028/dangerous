@@ -485,6 +485,19 @@ function buildWorld(root) {
   collectDoorSlots();
   assignSpecialDoors();
   buildDoorMeshes(root);
+  try {
+    if (new URLSearchParams(window.location.search).get("debug") === "1") {
+      var nums = [];
+      var di;
+      for (di = 0; di < doorSlots.length; di++) {
+        if (doorSlots[di].door && doorSlots[di].door.num != null) nums.push(doorSlots[di].door.num);
+      }
+      document.body.dataset.l21 = JSON.stringify({
+        nums: nums,
+        has204: nums.indexOf(204) !== -1,
+      });
+    }
+  } catch (_dbg) {}
 
   // 灯光：花园明亮，走廊偏暗且沿途点灯
   root.add(new THREE.HemisphereLight(0xfdfbf0, 0x40402f, 1.05));

@@ -330,13 +330,13 @@ function buildLevel10(root) {
     new THREE.BoxGeometry(0.12, 2.3, 1.15),
     new THREE.MeshStandardMaterial({ color: 0x5a3a28, roughness: 0.86 })
   );
-  barnDoor.position.set(-9.42, 1.2, 8);
+  barnDoor.position.set(-9.48, 1.2, 8);
   root.add(barnDoor);
   var barnPick = new THREE.Mesh(
-    new THREE.BoxGeometry(0.45, 2.4, 1.4),
+    new THREE.BoxGeometry(0.42, 2.4, 1.5),
     new THREE.MeshBasicMaterial({ visible: false })
   );
-  barnPick.position.set(-9.15, 1.2, 8);
+  barnPick.position.set(-9.32, 1.2, 8);
   barnPick.userData.brInteract = { kind: "l10_office_door" };
   root.add(barnPick);
   interactRoots.push(barnPick);
@@ -1086,6 +1086,20 @@ function init() {
   }
   else if (level === 10) buildLevel10(root);
   else buildLevel9(root);
+  try {
+    if (level === 10 && new URLSearchParams(window.location.search).get("debug") === "1") {
+      var kinds = [];
+      var ri;
+      for (ri = 0; ri < interactRoots.length; ri++) {
+        var data = interactRoots[ri].userData && interactRoots[ri].userData.brInteract;
+        if (data && data.kind) kinds.push(data.kind);
+      }
+      document.body.dataset.l10 = JSON.stringify({
+        kinds: kinds,
+        hasOffice: kinds.indexOf("l10_office_door") !== -1,
+      });
+    }
+  } catch (_dbg) {}
 
   survival = new BackroomsSurvival();
   survival.mountHud(document.querySelector(".backrooms-hud") || document.body);
