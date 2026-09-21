@@ -118,6 +118,8 @@ export const BACKROOMS_SESSION_KEYS = [
   "backrooms_l75_yaw",
   "backrooms_l81_pass",
   "backrooms_l81_yaw",
+  "backrooms_sqrt2_pass",
+  "backrooms_sqrt2_yaw",
   "backrooms_l119_pass",
   "backrooms_l119_yaw",
   "backrooms_l121_pass",

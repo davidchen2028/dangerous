@@ -5,10 +5,14 @@ export const MOBILE_LOOK_SENS_MULT = 1.35;
 
 export function isTouchPrimaryDevice() {
   var ua = navigator.userAgent || "";
-  if (/iPad/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) {
+  var points = Number(navigator.maxTouchPoints) || 0;
+  if (/iPad/i.test(ua) || (navigator.platform === "MacIntel" && points > 1)) {
     return true;
   }
-  if (/iPhone|iPod|Android|HarmonyOS|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
+  if (/iPhone|iPod|Android|HarmonyOS|Mobile|webOS|BlackBerry|IEMobile|Opera Mini|MicroMessenger/i.test(ua)) {
+    return true;
+  }
+  if (points > 1 && typeof window !== "undefined" && "ontouchstart" in window) {
     return true;
   }
   if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {

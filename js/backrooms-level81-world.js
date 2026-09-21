@@ -2,7 +2,12 @@
  * Level 81 — 赋闲结局：旧毛毯、画框、雨窗与疲倦台灯。
  */
 import * as THREE from "three";
-import { L81_WALL_H } from "./backrooms-level81-layout.js";
+import {
+  L81_IMAGINARY,
+  L81_IMAGINARY_PICK,
+  L81_WALL_H,
+  L81_WINDOW_PICK,
+} from "./backrooms-level81-layout.js";
 
 function addBox(root, w, h, d, x, y, z, mat) {
   var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -217,6 +222,33 @@ function hangPainting(root, interactRoots, mats, tex, x, y, z, rotY, kind) {
   addPick(root, interactRoots, 1.4, 1.05, 0.35, x, y, z, "l81_painting", { painting: kind });
 }
 
+function hangImaginary(root, interactRoots) {
+  var mat = new THREE.MeshBasicMaterial({
+    color: 0x5cf2ea,
+    transparent: true,
+    opacity: 0.92,
+    side: THREE.DoubleSide,
+  });
+  var stem = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.17, 0.018), mat);
+  stem.position.set(L81_IMAGINARY.x, L81_IMAGINARY.y - 0.02, L81_IMAGINARY.z);
+  stem.rotation.z = -0.12;
+  root.add(stem);
+  var dot = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.018), mat);
+  dot.position.set(L81_IMAGINARY.x + 0.012, L81_IMAGINARY.y + 0.14, L81_IMAGINARY.z);
+  root.add(dot);
+  addPick(
+    root,
+    interactRoots,
+    L81_IMAGINARY_PICK.w,
+    L81_IMAGINARY_PICK.h,
+    L81_IMAGINARY_PICK.d,
+    L81_IMAGINARY_PICK.x,
+    L81_IMAGINARY_PICK.y,
+    L81_IMAGINARY_PICK.z,
+    "l81_imaginary"
+  );
+}
+
 function buildRoom(root, colliders, interactRoots, mats) {
   addBox(root, 12.4, 0.12, 13.4, 0, 0, 0, mats.floor);
   addBox(root, 12.4, 0.1, 13.4, 0, L81_WALL_H, 0, mats.ceiling);
@@ -253,7 +285,18 @@ function buildRoom(root, colliders, interactRoots, mats) {
   addBox(root, 1.4, 1.1, 0.4, -1.6, 0.7, -7.15, mats.city);
   addBox(root, 1.1, 1.6, 0.4, 0.2, 0.9, -7.2, mats.city);
   addBox(root, 1.3, 0.9, 0.4, 1.7, 0.55, -7.1, mats.city);
-  addPick(root, interactRoots, 2.5, 2.0, 0.45, 0, 1.55, -6.25, "l81_window");
+  addPick(
+    root,
+    interactRoots,
+    L81_WINDOW_PICK.w,
+    L81_WINDOW_PICK.h,
+    L81_WINDOW_PICK.d,
+    L81_WINDOW_PICK.x,
+    L81_WINDOW_PICK.y,
+    L81_WINDOW_PICK.z,
+    "l81_window"
+  );
+  hangImaginary(root, interactRoots);
 
   addBox(root, 0.08, 1.15, 0.08, -2.15, 0.7, -5.55, mats.brass);
   addBox(root, 0.42, 0.18, 0.42, -2.15, 1.32, -5.55, mats.lamp);

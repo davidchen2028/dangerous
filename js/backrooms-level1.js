@@ -86,6 +86,8 @@ import {
   isBackroomsPlayerMoving,
   isBackroomsSprintHeld,
   resolveBackroomsMoveCollisions,
+  mergeBackroomsMoveInput,
+  isTouchPrimaryDevice,
 } from "./backrooms-fps-controller.js";
 import {
   pickCrosshairInteract,
@@ -2200,16 +2202,16 @@ function enterLevelC1() {
 }
 
 function movePlayer(dt, speedMul) {
-  var activeMove = move;
+  var activeMove = mergeBackroomsMoveInput(move);
   if (level1Sublevels && level1Sublevels.isForwardAxisInverted()) {
-    invertedMove.forward = move.back;
-    invertedMove.back = move.forward;
-    invertedMove.left = move.left;
-    invertedMove.right = move.right;
+    invertedMove.forward = activeMove.back;
+    invertedMove.back = activeMove.forward;
+    invertedMove.left = activeMove.left;
+    invertedMove.right = activeMove.right;
     activeMove = invertedMove;
   }
   moveBackroomsPlayer(
-    { move: activeMove, yaw: yaw, player: player },
+    { move: activeMove, yaw: yaw, player: player, skipStickMerge: true },
     dt,
     speedMul,
     resolvePlayerCollisions
@@ -2307,20 +2309,6 @@ function updatePlayerPhysics(dt) {
   feetY = _physStub.feetY;
   velY = _physStub.velY;
   grounded = _physStub.grounded;
-}
-
-function isTouchPrimaryDevice() {
-  var ua = navigator.userAgent || "";
-  if (/iPad/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) {
-    return true;
-  }
-  if (/iPhone|iPod|Android|HarmonyOS|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
-    return true;
-  }
-  if (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) {
-    return true;
-  }
-  return false;
 }
 
 function shouldUseDragLook() {

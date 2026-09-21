@@ -69,6 +69,26 @@ export function readMoveInputWorldDir(move, yaw) {
   };
 }
 
+function readStickMoveKeys() {
+  if (typeof window === "undefined" || !window.BackroomsMobileControls) return null;
+  var getMove = window.BackroomsMobileControls.getMove;
+  if (typeof getMove !== "function") return null;
+  return getMove();
+}
+
+/** 把 iPad 遥感并进 WASD；L1 反转轴时先合并再设 skipStickMerge。 */
+export function mergeBackroomsMoveInput(move) {
+  var m = move || { forward: false, back: false, left: false, right: false };
+  var s = readStickMoveKeys();
+  if (!s) return m;
+  return {
+    forward: !!(m.forward || s.KeyW),
+    back: !!(m.back || s.KeyS),
+    left: !!(m.left || s.KeyA),
+    right: !!(m.right || s.KeyD),
+  };
+}
+
 /**
  * @param {ReturnType<createBackroomsFpsState>} state
  * @param {number} dt
@@ -84,7 +104,8 @@ export function moveBackroomsPlayer(state, dt, speedMul, resolvePosition) {
   ) {
     return;
   }
-  var dir = readMoveInputWorldDir(state.move, state.yaw);
+  var move = state.skipStickMerge ? state.move : mergeBackroomsMoveInput(state.move);
+  var dir = readMoveInputWorldDir(move, state.yaw);
   if (!dir) return;
 
   var speed = state.player.speed * (speedMul || 1) * getLuckMovementMul();
@@ -140,17 +161,17 @@ export function tryBackroomsJump(state, jumpSpeed) {
 
 /** @param {ReturnType<createBackroomsFpsState>} state */
 export function isBackroomsPlayerMoving(state) {
-  return (
-    state.move.forward ||
-    state.move.back ||
-    state.move.left ||
-    state.move.right
-  );
+  var move = state && state.skipStickMerge ? state.move : mergeBackroomsMoveInput(state && state.move);
+  return !!(move && (move.forward || move.back || move.left || move.right));
 }
 
 /** @param {ReturnType<createBackroomsFpsState>} state */
 export function isBackroomsSprintHeld(state) {
-  return !!(state.keys.ShiftLeft || state.keys.ShiftRight);
+  var s = readStickMoveKeys();
+  return !!(
+    (state && state.keys && (state.keys.ShiftLeft || state.keys.ShiftRight)) ||
+    (s && s.ShiftLeft)
+  );
 }
 
 /**
@@ -306,19 +327,36 @@ export function bindBackroomsFpsControls(opts) {
     }
   }
 
+  function codeFromEvent(e) {
+    if (e && e.code) return e.code;
+    var k = String((e && e.key) || "").toLowerCase();
+    if (k === "w") return "KeyW";
+    if (k === "a") return "KeyA";
+    if (k === "s") return "KeyS";
+    if (k === "d") return "KeyD";
+    if (k === "q") return "KeyQ";
+    if (k === "e") return "KeyE";
+    if (k === "b") return "KeyB";
+    if (k === "shift") return "ShiftLeft";
+    if (k === " " || k === "spacebar") return "Space";
+    return "";
+  }
+
   function applyWASDKey(e, down) {
-    state.keys[e.code] = down;
-    if (e.code === "KeyW") state.move.forward = down;
-    if (e.code === "KeyS") state.move.back = down;
-    if (e.code === "KeyA") state.move.left = down;
-    if (e.code === "KeyD") state.move.right = down;
+    var code = codeFromEvent(e);
+    if (!code) return;
+    state.keys[code] = down;
+    if (code === "KeyW") state.move.forward = down;
+    if (code === "KeyS") state.move.back = down;
+    if (code === "KeyA") state.move.left = down;
+    if (code === "KeyD") state.move.right = down;
   }
 
   window.addEventListener("keydown", function (e) {
     if (opts.onKeyDown && opts.onKeyDown(e)) return;
 
     applyWASDKey(e, true);
-    if (e.code === "Space" && !e.repeat) {
+    if (codeFromEvent(e) === "Space" && !e.repeat) {
       e.preventDefault();
       if (opts.onJump) opts.onJump();
     }
@@ -370,6 +408,7 @@ export function applyBackroomsCamera(state, camera, eyeHeight) {
   camera.rotation.order = "YXZ";
   camera.rotation.y = state.yaw;
   camera.rotation.x = state.pitch;
+  camera.updateMatrixWorld(true);
   if (typeof window !== "undefined" && window.BackroomsMultiplayer) {
     window.BackroomsMultiplayer.noteFpsState(state);
     window.BackroomsMultiplayer.noteCamera(camera);

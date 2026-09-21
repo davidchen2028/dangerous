@@ -1043,6 +1043,10 @@ body.backrooms-level81 {
   background: #1a1612;
 }
 
+body.backrooms-level-sqrt2 {
+  background: #041018;
+}
+
 .backrooms-l81-rain {
   position: fixed;
   inset: 0;

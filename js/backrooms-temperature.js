@@ -87,6 +87,8 @@ const LEVEL_PROFILE = {
   75: { min: 14, max: 19, base: 16.5, swing: 1.7 },
   /** Level 81 — 赋闲结局，柠檬清香的暖室 */
   81: { min: 21, max: 24, base: 22.4, swing: 0.4 },
+  /** Level √2 — 无理数纤维网，略凉的数学幻梦 */
+  sqrt2: { min: 14, max: 18, base: 16, swing: 0.9 },
   /** Level 119 — 水滑梯房 */
   119: { min: 20, max: 26, base: 23, swing: 1.4 },
   /** Level 121 — 湖底 */

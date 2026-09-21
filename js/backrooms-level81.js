@@ -17,8 +17,8 @@ import {
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
 import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
-import { showEnterLevelBannerIfQueued } from "./backrooms-level-enter.js";
-import { enforceLevelEntry } from "./backrooms-level-pass.js";
+import { showEnterLevelBannerIfQueued, queueEnterLevelBanner } from "./backrooms-level-enter.js";
+import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
 import { markLevelEntered, handleTaskUiKey, isTaskUiOpen } from "./backrooms-tasks.js";
 import {
   resolveBackroomsGfxProfile,
@@ -40,8 +40,8 @@ import {
   DEFAULT_LOOK_SENS,
   DEFAULT_GRAVITY,
 } from "./backrooms-fps-controller.js";
-import { L81_REST_SEC, L81_SPAWN, L81_WALL_H, isLevel81SitZone } from "./backrooms-level81-layout.js";
-import { buildLevel81World, updateLevel81World } from "./backrooms-level81-world.js?v=4";
+import { L81_IMAGINARY, L81_IMAGINARY_STAND, L81_REST_SEC, L81_SPAWN, L81_WALL_H, isLevel81SitZone } from "./backrooms-level81-layout.js";
+import { buildLevel81World, updateLevel81World } from "./backrooms-level81-world.js?v=9";
 import {
   bindLevel81AudioOnGesture,
   startLevel81Audio,
@@ -84,6 +84,7 @@ let currentAimPick = null;
 let sitting = false;
 let restTimer = 0;
 let ended = false;
+let transitionLock = false;
 
 function showError(msg) {
   if (!errorEl) return;
@@ -106,6 +107,7 @@ function hintForKind(kind, painting) {
   if (kind === "l81_doll") return "褪色的蕾丝人偶 · 按 <kbd>Q</kbd>";
   if (kind === "l81_lamp") return "台灯一下一下，点着疲惫的头 · 按 <kbd>Q</kbd>";
   if (kind === "l81_window") return "雨滴啪嗒啪嗒，落在窗上 · 按 <kbd>Q</kbd>";
+  if (kind === "l81_imaginary") return "玻璃上凝着一个 <em>i</em> · 按 <kbd>Q</kbd>";
   if (kind === "l81_office") return "办公室的喧嚣已经褪尽";
   return "";
 }
@@ -173,19 +175,51 @@ function inspect(data) {
   }
 }
 
+function enterSqrt2() {
+  if (transitionLock || sitting || ended) return;
+  transitionLock = true;
+  stopLevel81Audio();
+  showToast("虚数把房间撕开一条缝…");
+  saveBackroomsSurvival(survival);
+  grantLevelPass("sqrt2", fps.yaw);
+  queueEnterLevelBanner("Level √2");
+  window.setTimeout(function () {
+    window.location.href = "backrooms-level-sqrt2.html";
+  }, 550);
+}
+
 function canSitNow() {
   return !sitting && !ended && isLevel81SitZone(fps.player.x, fps.player.z);
 }
 
 function interact() {
-  if (ended || sitting || !survival || survival.dead || isInventoryOpen() || isTaskUiOpen()) return;
+  if (ended || sitting || transitionLock || !survival || survival.dead || isInventoryOpen() || isTaskUiOpen()) return;
+  var data = currentAimPick && currentAimPick.distance <= AIM_MAX ? currentAimPick.data : null;
+  if (data && data.kind === "l81_imaginary") {
+    enterSqrt2();
+    return;
+  }
   if (canSitNow()) {
     sitDown();
     return;
   }
-  var data = currentAimPick && currentAimPick.distance <= AIM_MAX ? currentAimPick.data : null;
   if (!data) return;
   inspect(data);
+}
+
+function aimImaginaryFallback() {
+  if (!camera) return null;
+  var origin = camera.position;
+  var dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  var dx = L81_IMAGINARY.x - origin.x;
+  var dy = L81_IMAGINARY.y - origin.y;
+  var dz = L81_IMAGINARY.z - origin.z;
+  var dist = Math.hypot(dx, dy, dz);
+  if (dist > AIM_MAX || dist < 0.08) return null;
+  var align = (dx * dir.x + dy * dir.y + dz * dir.z) / dist;
+  if (align < 0.85) return null;
+  return { data: { kind: "l81_imaginary" }, distance: dist };
 }
 
 function refreshAim() {
@@ -194,11 +228,19 @@ function refreshAim() {
     return;
   }
   currentAimPick = pickCrosshairInteract(camera, interactRoots, AIM_MAX);
+  if (
+    !currentAimPick ||
+    currentAimPick.data.kind === "l81_window" ||
+    currentAimPick.data.kind === "l81_sit"
+  ) {
+    var imag = aimImaginaryFallback();
+    if (imag) currentAimPick = imag;
+  }
 }
 
 function updateInteractUi() {
   var data = currentAimPick && currentAimPick.distance <= AIM_MAX ? currentAimPick.data : null;
-  if (canSitNow()) data = { kind: "l81_sit" };
+  if (!(data && data.kind === "l81_imaginary") && canSitNow()) data = { kind: "l81_sit" };
   var hidden = sitting || ended || isInventoryOpen() || !survival || survival.dead || !data;
   if (interactHintEl) {
     interactHintEl.hidden = hidden;
@@ -316,7 +358,7 @@ function init() {
 
   try {
     var debugFlag = new URLSearchParams(window.location.search).get("debug") || "";
-    if (debugFlag === "1" || debugFlag === "end") {
+    if (debugFlag === "1" || debugFlag === "end" || debugFlag === "i") {
       window.__l81Debug = {
         sitAtCenter: function () {
           fps.player.x = 0;
@@ -334,7 +376,61 @@ function init() {
           triggerEnding();
           return { ended: ended };
         },
+        lookAtImaginary: function () {
+          fps.player.x = L81_IMAGINARY_STAND.x;
+          fps.player.z = L81_IMAGINARY_STAND.z;
+          fps.yaw = 0;
+          var camY = fps.feetY + EYE_HEIGHT;
+          var hz = Math.hypot(L81_IMAGINARY.x - fps.player.x, L81_IMAGINARY.z - fps.player.z) || 1;
+          fps.pitch = -Math.atan2(camY - L81_IMAGINARY.y, hz);
+          applyBackroomsCamera(fps, camera, EYE_HEIGHT);
+          refreshAim();
+          updateInteractUi();
+          var hits = [];
+          var dir = null;
+          var imagPick = null;
+          if (camera && interactRoots.length) {
+            var worldDir = new THREE.Vector3();
+            camera.getWorldDirection(worldDir);
+            dir = [worldDir.x, worldDir.y, worldDir.z];
+            var rc = new THREE.Raycaster();
+            rc.setFromCamera(new THREE.Vector2(0, 0), camera);
+            rc.near = 0.02;
+            rc.far = AIM_MAX;
+            var hs = rc.intersectObjects(interactRoots, true);
+            var hi;
+            for (hi = 0; hi < hs.length && hi < 6; hi++) {
+              var kind = hs[hi].object.userData && hs[hi].object.userData.brInteract
+                ? hs[hi].object.userData.brInteract.kind
+                : "?";
+              hits.push(kind + ":" + hs[hi].distance.toFixed(3));
+            }
+            for (hi = 0; hi < interactRoots.length; hi++) {
+              if (interactRoots[hi].userData && interactRoots[hi].userData.brInteract &&
+                  interactRoots[hi].userData.brInteract.kind === "l81_imaginary") {
+                var p = interactRoots[hi].position;
+                imagPick = [p.x, p.y, p.z];
+              }
+            }
+          }
+          var data = currentAimPick && currentAimPick.data ? currentAimPick.data : null;
+          return {
+            x: fps.player.x,
+            z: fps.player.z,
+            sitting: sitting,
+            aim: data ? data.kind : null,
+            dist: currentAimPick ? currentAimPick.distance : null,
+            inSit: isLevel81SitZone(fps.player.x, fps.player.z),
+            pitch: fps.pitch,
+            camY: camera ? camera.position.y : null,
+            hits: hits,
+            picks: interactRoots.length,
+            dir: dir,
+            imagPick: imagPick,
+          };
+        },
         state: function () {
+          var data = currentAimPick && currentAimPick.data ? currentAimPick.data : null;
           return {
             sitting: sitting,
             ended: ended,
@@ -345,13 +441,18 @@ function init() {
             errorHidden: !errorEl || errorEl.hidden,
             error: errorEl ? errorEl.textContent : "",
             endingHidden: !endingEl || endingEl.hidden,
+            aim: data ? data.kind : null,
+            dist: currentAimPick ? currentAimPick.distance : null,
           };
         },
       };
       window.setTimeout(function () {
-        if (debugFlag === "end") window.__l81Debug.finishRest();
-        else window.__l81Debug.sitAtCenter();
-        document.body.dataset.l81 = JSON.stringify(window.__l81Debug.state());
+        var snap;
+        if (debugFlag === "end") snap = window.__l81Debug.finishRest();
+        else if (debugFlag === "i") snap = window.__l81Debug.lookAtImaginary();
+        else snap = window.__l81Debug.sitAtCenter();
+        var base = window.__l81Debug.state();
+        document.body.dataset.l81 = JSON.stringify(Object.assign(base, snap || {}));
       }, 700);
     }
   } catch (_dbg) {}
@@ -378,7 +479,8 @@ function init() {
       !ended &&
       (!survival || !survival.dead) &&
       !isInventoryOpen() &&
-      !isTaskUiOpen()
+      !isTaskUiOpen() &&
+      !transitionLock
     ) {
       var mul =
         survival && sprinting ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving) : 1;
