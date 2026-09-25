@@ -83,6 +83,7 @@ export const BACKROOMS_SESSION_KEYS = [
   "backrooms_l6_state_v1",
   "backrooms_l6_1_pass",
   "backrooms_l6_1_yaw",
+  "backrooms_l61_stock_v1",
   "backrooms_l7_pass",
   "backrooms_l7_yaw",
   "backrooms_l283_pass",
@@ -243,6 +244,8 @@ export const BACKROOMS_SESSION_KEYS = [
   "backrooms_c1299_yaw",
   "backrooms_c1299_1_pass",
   "backrooms_c1299_1_yaw",
+  "backrooms_c1623_pass",
+  "backrooms_c1623_yaw",
   "backrooms_petrify_v1",
 ];
 

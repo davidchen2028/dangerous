@@ -319,7 +319,12 @@ export function bindBackroomsFpsControls(opts) {
         if (e.pointerId !== tapId) return;
         var shouldInteract = !tapMoved;
         tapId = null;
-        if (shouldInteract) opts.onTapInteract();
+        if (
+          shouldInteract &&
+          !(opts.shouldBlockPointerLock && opts.shouldBlockPointerLock())
+        ) {
+          opts.onTapInteract();
+        }
       });
       window.addEventListener("pointercancel", function (e) {
         if (e.pointerId === tapId) tapId = null;

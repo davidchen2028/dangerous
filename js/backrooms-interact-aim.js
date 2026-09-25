@@ -22,6 +22,16 @@ export function findInteractUserData(object) {
   return null;
 }
 
+/** 隐藏物体及其祖先不参与准星拾取（Three 仍会打到 visible=false 的子网格）。 */
+export function isInteractObjectShown(object) {
+  var o = object;
+  while (o) {
+    if (o.visible === false) return false;
+    o = o.parent;
+  }
+  return true;
+}
+
 /**
  * @param {THREE.Camera} camera
  * @param {THREE.Object3D[]} interactRoots
@@ -31,6 +41,7 @@ export function findInteractUserData(object) {
  */
 export function pickCrosshairInteract(camera, interactRoots, maxDist, wallBlockDist) {
   if (!camera || !interactRoots || !interactRoots.length) return null;
+  if (typeof camera.updateMatrixWorld === "function") camera.updateMatrixWorld();
 
   var rc = raycaster();
   rc.setFromCamera(_ndc, camera);
@@ -46,6 +57,7 @@ export function pickCrosshairInteract(camera, interactRoots, maxDist, wallBlockD
   var i;
   for (i = 0; i < hits.length; i++) {
     if (hits[i].distance > blockDist + 0.03) continue;
+    if (!isInteractObjectShown(hits[i].object)) continue;
     var data = findInteractUserData(hits[i].object);
     if (data) {
       return { data: data, distance: hits[i].distance };

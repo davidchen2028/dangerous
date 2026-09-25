@@ -1,5 +1,5 @@
 /**
- * Backrooms Level 8 — 巨型洞穴
+ * Backrooms Level 8 — 岩洞系统（可走完的一段第九大道）
  */
 import * as THREE from "three";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
@@ -39,7 +39,8 @@ import {
   applyBackroomsToneMapping,
 } from "./backrooms-gfx-profile.js";
 import { pickCrosshairInteract, getCameraAimRay } from "./backrooms-interact-aim.js";
-import { buildLevel8World, L8_WALL_H } from "./backrooms-level8-world.js?v=2";
+import { L8_WALL_H, isInsideL9Road } from "./backrooms-level8-layout.js";
+import { buildLevel8World } from "./backrooms-level8-world.js";
 import { createLevel8Chickens } from "./backrooms-level8-chickens.js";
 import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
 import {
@@ -136,7 +137,7 @@ function syncLookUi() {
   if (!hintEl) return;
   var nv = isNightVisionActive() ? " · 夜视 <strong>" + formatNightVisionRemaining() + "</strong>" : "";
   hintEl.innerHTML =
-    "Level 8 巨型洞穴 · <kbd>WASD</kbd> 移动 · <kbd>Q</kbd> 交互 · <kbd>Space</kbd> 跳跃 · <kbd>B</kbd> 背包" +
+    "Level 8 岩洞系统 · 跟着道标 · 尽头→9 · 通风管→2 · <kbd>Q</kbd> <kbd>WASD</kbd> <kbd>B</kbd>" +
     nv;
 }
 
@@ -236,6 +237,9 @@ function interactLabel(data) {
   if (data.kind === "l8_plank") return "腐朽木板 · 按 <kbd>Q</kbd> 跌穿";
   if (data.kind === "l8_silver_pipe") return "银色管道 · 按 <kbd>Q</kbd> 爬入";
   if (data.kind === "l8_level2_vent") return "足以容身的通风管 · 按 <kbd>Q</kbd> 爬入";
+  if (data.kind === "l8_mile_marker") return (data.title || "第九大道") + " · 按 <kbd>Q</kbd> 查看";
+  if (data.kind === "l8_meg_notice") return "M.E.G. 告示 · 按 <kbd>Q</kbd> 阅读";
+  if (data.kind === "l8_l9_road") return "碎石路通向 Level 9 · 走出去";
   return "";
 }
 
@@ -290,10 +294,29 @@ function exitTo(levelId, levelNumber, page, toast) {
   }, 550);
 }
 
+function maybeWalkOutL9() {
+  if (transitionLock || !survival || survival.dead) return;
+  if (isInsideL9Road(fps.player.x, fps.player.z)) {
+    exitTo("l9", 9, "backrooms-level9.html", "碎石铺成了路，黑暗公路通向郊外…");
+  }
+}
+
 function tryQAction() {
-  if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
+  if (transitionLock || isInventoryOpen() || isTaskUiOpen() || !survival || survival.dead) return;
   var data = resolveInteract();
   if (!data) return;
+  if (data.kind === "l8_l9_road") {
+    showLootToast("碎石路通向 Level 9 · 走出去");
+    return;
+  }
+  if (data.kind === "l8_mile_marker") {
+    showLootToast((data.title || "第九大道") + (data.sub ? " · " + data.sub : ""));
+    return;
+  }
+  if (data.kind === "l8_meg_notice") {
+    showLootToast("跟着道标走。第九大道比岔路更安全。");
+    return;
+  }
   if (data.kind === "l8_plank") {
     exitTo("l9", 9, "backrooms-level9.html", "木板断裂——你跌入了黑暗…");
     return;
@@ -314,6 +337,7 @@ function bindControls() {
     state: fps,
     lookSens: DEFAULT_LOOK_SENS,
     shouldBlockPointerLock: function () { return isInventoryOpen() || isTaskUiOpen(); },
+    onTapInteract: tryQAction,
     onJump: function () { tryBackroomsJump(fps, JUMP_SPEED); },
     onKeyDown: function (e) {
       if (!isInventoryOpen() && handleTaskUiKey(e)) {
@@ -427,9 +451,10 @@ function init() {
       caveChickens.update(dt, fps.player, survival, showLootToast);
     }
     if (firesalt) firesalt.update(dt);
+    maybeWalkOutL9();
+    applyBackroomsCamera(fps, camera, EYE_HEIGHT);
     refreshAimPick();
     updateInteractUi();
-    applyBackroomsCamera(fps, camera, EYE_HEIGHT);
     updateBackroomsTemperature(dt, now);
     updateBackroomsHeatDamage(survival, now);
     renderer.render(scene, camera);

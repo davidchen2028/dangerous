@@ -46,11 +46,11 @@ const LEVEL_PROFILE = {
   "5_boiler": { min: 34, max: 49, base: 41, swing: 4.2, volatile: true, swing2: 3.2 },
   /** Level 6 — 伸手不见五指的黑暗空洞 */
   6: { min: 6, max: 11, base: 8.5, swing: 1.1 },
-  /** Level 6.1 — 零食货架间 */
+  /** Level 6.1 — 零食室 */
   "6.1": { min: 18, max: 23, base: 20.5, swing: 1.2 },
   /** Level 7 — 无尽海面与破木屋 */
   7: { min: 12, max: 17, base: 14.5, swing: 1.6 },
-  /** Level 8 — 阴冷潮湿的巨型洞穴 */
+  /** Level 8 — 岩洞系统 */
   8: { min: 8, max: 13, base: 10.5, swing: 1.8 },
   /** Level 9 — 明亮的郊区道路 */
   9: { min: 17, max: 23, base: 20, swing: 2 },
@@ -89,6 +89,8 @@ const LEVEL_PROFILE = {
   81: { min: 21, max: 24, base: 22.4, swing: 0.4 },
   /** Level √2 — 无理数纤维网，略凉的数学幻梦 */
   sqrt2: { min: 14, max: 18, base: 16, swing: 0.9 },
+  /** Level C-1623 — 沥青路与虚空区段，户外凉意 */
+  c1623: { min: 12, max: 20, base: 16.5, swing: 1.6 },
   /** Level 119 — 水滑梯房 */
   119: { min: 20, max: 26, base: 23, swing: 1.4 },
   /** Level 121 — 湖底 */

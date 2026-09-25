@@ -21,3 +21,9 @@ test("Level √2 keeps the spawn inside the fiber ring and a yellow node at orig
   assert.ok(dist2(door.x, door.z, SQRT2_SPAWN.x, SQRT2_SPAWN.z) > 1.05 * 1.05);
   assert.ok(dist2(door.x, door.z, 0, 0) < dist2(outer.x, outer.z, 0, 0));
 });
+
+test("√2 crack stays clear of the moving door at the tightest rewrite", () => {
+  const crack = { x: -3.15, z: 1.85 };
+  const door = sqrt2DoorPosFromNode(sqrt2NodeHome(13, 0.82));
+  assert.ok(dist2(door.x, door.z, crack.x, crack.z) > 2.2 * 2.2);
+});

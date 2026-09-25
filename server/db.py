@@ -1323,15 +1323,29 @@ MEG_EVENT_CONTRIBUTION = {
 }
 MEG_HIGH_RISK_EVENTS = ("high_risk_complete", "entity_neutralized", "rescue_complete")
 MEG_TASK_IDS = {
-    "package_l1", "map_l21", "recon_c1291", "inspect_coolers", "map_l13",
-    "rubbing_c1290", "docs_c1292", "sample_c144_collapse",
-    "recon_c144_mutant", "loop_c192", "sample_c1299_fog",
-    "beacon_c1299", "pages_c1299", "fasting_cruise",
+    "package_l1", "map_l21", "inspect_coolers", "map_l13", "loop_c192",
+    "general_snack_61", "general_manila_signs_l0", "general_farm_sample_l10",
+    "general_painting_brief_l57", "general_street_sign_l11",
+    "sample_c144_collapse", "beacon_c1299", "explore_map_l2",
+    "explore_nodes_l3", "explore_map_l5", "explore_forks_l8",
+    "explore_measure_l9", "explore_landing_l48", "explore_sqrt2_verify_l81",
+    "explore_corridor_c1", "recon_c1291", "rubbing_c1290", "docs_c1292",
+    "recon_c144_mutant", "sample_c1299_fog", "pages_c1299",
+    "research_ntg_07", "research_report_03", "research_c101_logs",
+    "research_c2_depth", "logistics_supplies_l1", "logistics_restock_61",
+    "logistics_outpost_l11", "logistics_relay_l2", "logistics_parts_l3",
+    "logistics_l5_luggage", "logistics_aid_l8", "logistics_c192_cache",
+    "logistics_vault_turnover_l4", "logistics_cold_soy",
+    "security_inspect_deep_l4", "security_door_audit_l4",
+    "security_perimeter_l1", "security_pipe_watch_l2", "security_flare_l6",
+    "security_instability_11", "security_hotel_exit_l5",
+    "security_road_patrol_l9", "security_record_c1297", "security_route_l11",
 }
 MEG_HIGH_RISK_TASK_IDS = {
-    "recon_c1291", "rubbing_c1290", "docs_c1292", "sample_c144_collapse",
-    "recon_c144_mutant", "loop_c192", "sample_c1299_fog",
-    "beacon_c1299", "pages_c1299",
+    "loop_c192", "sample_c144_collapse", "beacon_c1299",
+    "explore_sqrt2_verify_l81", "sample_c1299_fog",
+    "recon_c1291", "rubbing_c1290", "docs_c1292", "recon_c144_mutant",
+    "pages_c1299", "security_road_patrol_l9", "security_record_c1297",
 }
 
 
@@ -1419,7 +1433,13 @@ def record_backrooms_event(
             if not profile:
                 return False, False
             task_id = str(payload.get("taskId") or "")
-            if event_type in ("task_complete", "task_failed") and task_id not in MEG_TASK_IDS:
+            if (
+                event_type in (
+                    "task_complete", "task_failed",
+                    "rescue_complete", "supply_delivered",
+                )
+                and task_id not in MEG_TASK_IDS
+            ):
                 return False, False
             if event_type == "high_risk_complete" and task_id not in MEG_HIGH_RISK_TASK_IDS:
                 return False, False

@@ -154,6 +154,20 @@ export function buildSqrt2World(root, opts) {
   );
   root.add(door);
   var doorPick = addPick(root, interactRoots, 1.3, 2.3, 0.55, 0, 1.2, 0, "sqrt2_exit");
+  var crack = new THREE.Group();
+  var crackMat = new THREE.MeshBasicMaterial({ color: 0x5cf2ea, transparent: true, opacity: 0.88 });
+  var crackGold = new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.9 });
+  var crackStem = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.55, 0.05), crackMat);
+  crackStem.position.set(0, 0.1, 0);
+  crackStem.rotation.z = 0.18;
+  crack.add(crackStem);
+  var crackArm = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.06, 0.05), crackGold);
+  crackArm.position.set(0.12, 0.42, 0);
+  crackArm.rotation.z = -0.4;
+  crack.add(crackArm);
+  crack.position.set(-3.15, 1.35, 1.85);
+  root.add(crack);
+  var crackPick = addPick(root, interactRoots, 0.9, 1.8, 0.45, -3.15, 1.35, 1.85, "sqrt2_crack");
 
   function placeExitDoor(nodePos) {
     var pos = sqrt2DoorPosFromNode(nodePos);
@@ -187,6 +201,8 @@ export function buildSqrt2World(root, opts) {
     phi: phi,
     door: door,
     doorPick: doorPick,
+    crack: crack,
+    crackPick: crackPick,
     placeExitDoor: placeExitDoor,
     core: core,
   };

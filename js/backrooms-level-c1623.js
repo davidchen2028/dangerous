@@ -1,5 +1,5 @@
 /**
- * Backrooms Level √2 — 深入现实的数学幻梦。青色纤维网，黄节点，非欧几里得。
+ * Backrooms Level C-1623 — 二十里面有过量的三十。
  */
 import * as THREE from "three";
 import { BackroomsSurvival, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
@@ -41,25 +41,31 @@ import {
   DEFAULT_GRAVITY,
 } from "./backrooms-fps-controller.js";
 import {
-  SQRT2_CEILING,
-  SQRT2_SHIFT_SEC,
-  SQRT2_SPAWN,
-} from "./backrooms-level-sqrt2-layout.js";
-import { buildSqrt2World, retargetSqrt2Nodes, updateSqrt2World } from "./backrooms-level-sqrt2-world.js?v=4";
+  C1623_CEILING,
+  C1623_ROAD_HALF,
+  C1623_SPAWN,
+  C1623_VOID_Z,
+  getC1623Segment,
+  isC1623LookUp,
+  isC1623Void,
+  stepC1623Segment,
+  voidDirection,
+} from "./backrooms-level-c1623-layout.js";
+import { buildC1623World, updateC1623World } from "./backrooms-level-c1623-world.js?v=2";
 import {
-  bindSqrt2AudioOnGesture,
-  startSqrt2Audio,
-  stopSqrt2Audio,
-  updateSqrt2Audio,
-} from "./backrooms-level-sqrt2-audio.js?v=1";
+  bindC1623AudioOnGesture,
+  stopC1623Audio,
+  updateC1623Audio,
+} from "./backrooms-level-c1623-audio.js?v=1";
 
 const EYE_HEIGHT = 1.62;
-const AIM_MAX = 3.8;
-const FOG = 0x041018;
+const AIM_MAX = 5;
+const FOG = 0x6a7a88;
 
 const canvas = document.getElementById("backroomsCanvas");
 const inputEl = document.getElementById("backroomsInput");
 const hintEl = document.getElementById("backroomsHint");
+const titleEl = document.querySelector(".backrooms-hud__title");
 const interactHintEl = document.getElementById("backroomsInteractHint");
 const errorEl = document.getElementById("backroomsError");
 const megPointsEl = document.getElementById("backroomsMegPoints");
@@ -68,12 +74,12 @@ const tempFillEl = document.getElementById("backroomsTempFill");
 const tempValueEl = document.getElementById("backroomsTempValue");
 const crosshairEl = document.getElementById("backroomsCrosshair");
 
-const _survCtx = { sprinting: false, sanityDrainPerSec: 0.045 };
-const _physOpts = { gravity: DEFAULT_GRAVITY, ceilingY: SQRT2_CEILING, floorY: 0.08 };
+const _survCtx = { sprinting: false, sanityDrainPerSec: 0.03 };
+const _physOpts = { gravity: DEFAULT_GRAVITY, ceilingY: C1623_CEILING, floorY: 0.08 };
 const colliders = [];
 const interactRoots = [];
 const fps = createBackroomsFpsState({
-  player: { x: SQRT2_SPAWN.x, z: SQRT2_SPAWN.z, radius: 0.32, speed: 3.55 },
+  player: { x: C1623_SPAWN.x, z: C1623_SPAWN.z, radius: 0.32, speed: 3.7 },
 });
 
 let renderer = null;
@@ -83,69 +89,106 @@ let world = null;
 let survival = null;
 let currentAimPick = null;
 let transitionLock = false;
-let shiftTimer = 0;
-let shifting = false;
-let shiftScale = 1;
+let segment = 0;
+let shiftLock = 0;
 
 function showError(msg) {
   if (!errorEl) return;
   errorEl.hidden = false;
-  errorEl.innerHTML = "<p><strong>Level √2 无法启动</strong></p><p>" + msg + "</p>";
+  errorEl.innerHTML = "<p><strong>Level C-1623 无法启动</strong></p><p>" + msg + "</p>";
 }
 
 function showToast(msg) {
   showBackroomsLootToast(msg, { durationMs: 2800 });
 }
 
+function currentSegment() {
+  return getC1623Segment(segment);
+}
+
 function syncHint() {
+  var seg = currentSegment();
+  if (titleEl) {
+    titleEl.textContent = "Backrooms · Level C-1623 · " + seg.id + " · 生存难度 Σ";
+  }
   if (!hintEl) return;
-  hintEl.innerHTML = shifting
-    ? "坐标平面正在改写……跟着黄点走"
-    : "青色纤维网 · 门回 Level 0 · 裂缝去 C-1623 · <kbd>WASD</kbd> · <kbd>Q</kbd> · <kbd>B</kbd>";
+  hintEl.innerHTML =
+    seg.id +
+    " · 走进虚空换区段 · 向上突破是蓝色通道 · <kbd>WASD</kbd> · <kbd>Q</kbd> · <kbd>B</kbd>";
 }
 
-function enterC1623() {
+function applySegmentLook() {
+  var seg = world.applySegment(segment);
+  if (!scene) return;
+  if (seg.flavor === "fire") {
+    scene.background = new THREE.Color(0x3a1810);
+    scene.fog.color.setHex(0x3a1810);
+  } else if (seg.flavor === "plants") {
+    scene.background = new THREE.Color(0x4a6a40);
+    scene.fog.color.setHex(0x4a6a40);
+  } else {
+    var dusk = 0.42 + Math.abs(segment) * 0.007;
+    var c = new THREE.Color().setHSL(0.58 - dusk * 0.08, 0.18, 0.48 - dusk * 0.12);
+    scene.background = c;
+    scene.fog.color.copy(c);
+  }
+  syncHint();
+}
+
+function leaveTo(pass, page, banner) {
   if (transitionLock) return;
   transitionLock = true;
-  stopSqrt2Audio();
-  showToast("时空裂缝把二十撕开…");
+  stopC1623Audio();
   saveBackroomsSurvival(survival);
-  grantLevelPass("c1623", fps.yaw);
-  queueEnterLevelBanner("Level C-1623");
+  grantLevelPass(pass, fps.yaw);
+  queueEnterLevelBanner(banner);
   window.setTimeout(function () {
-    window.location.href = "backrooms-level-c1623.html";
-  }, 550);
+    window.location.href = page;
+  }, 520);
 }
 
-function exitToUncomputed() {
-  if (transitionLock) return;
-  transitionLock = true;
-  stopSqrt2Audio();
-  showToast("门后是尚未计算之物…");
-  saveBackroomsSurvival(survival);
-  grantLevelPass("l0", fps.yaw);
-  queueEnterLevelBanner("Level 0");
-  window.setTimeout(function () {
-    window.location.href = "backrooms-level0.html";
-  }, 550);
+function exitUp() {
+  showToast("路面从下面抽走。上面是蓝色。");
+  leaveTo("blue_channel", "backrooms-blue-channel.html", "蓝色通道");
 }
 
-function maybeTouchExit() {
-  if (transitionLock || !world || !world.door || !survival || survival.dead) return;
-  var dx = fps.player.x - world.door.position.x;
-  var dz = fps.player.z - world.door.position.z;
-  if (dx * dx + dz * dz < 1.05 * 1.05) exitToUncomputed();
+function tryDoor(door) {
+  if (!door) return;
+  if (!door.open) {
+    showToast((door.note ? door.note + " · " : "") + door.label + " 出不去。");
+    return;
+  }
+  showToast("二十把你送出这一段。");
+  leaveTo(door.pass, door.page, door.label);
+}
+
+function inspect(data) {
+  if (data.kind === "c1623_exit") {
+    tryDoor(data.door);
+    return;
+  }
+  if (data.kind === "c1623_base") {
+    showToast("M.E.G. Prismriver。数据库里还没有这座基地。请随身带牌。");
+    return;
+  }
+  if (data.kind === "c1623_twin") {
+    showToast("那不是窃皮者。那是另一个二十上的你。");
+  }
 }
 
 function interact() {
   if (transitionLock || !survival || survival.dead || isInventoryOpen() || isTaskUiOpen()) return;
   var data = currentAimPick && currentAimPick.distance <= AIM_MAX ? currentAimPick.data : null;
-  if (!data) return;
-  if (data.kind === "sqrt2_crack") {
-    enterC1623();
+  if (data && data.kind === "c1623_exit") {
+    tryDoor(data.door);
     return;
   }
-  if (data.kind === "sqrt2_exit") exitToUncomputed();
+  if (isC1623LookUp(fps.pitch)) {
+    exitUp();
+    return;
+  }
+  if (!data) return;
+  inspect(data);
 }
 
 function refreshAim() {
@@ -157,22 +200,52 @@ function refreshAim() {
   currentAimPick = pickCrosshairInteract(camera, interactRoots, AIM_MAX);
 }
 
+function hintFor(data) {
+  if (data.kind === "c1623_base") return "Prismriver 基地 · 按 <kbd>Q</kbd>";
+  if (data.kind === "c1623_twin") return "另一个自己 · 按 <kbd>Q</kbd>";
+  if (data.kind === "c1623_exit" && data.door) {
+    return (
+      data.door.label +
+      (data.door.open ? " · 按 <kbd>Q</kbd> 离开" : " · 出不去 · 按 <kbd>Q</kbd>")
+    );
+  }
+  return "";
+}
+
 function updateInteractUi() {
   var data = currentAimPick && currentAimPick.distance <= AIM_MAX ? currentAimPick.data : null;
-  var hidden = isInventoryOpen() || !survival || survival.dead || !data;
+  var lookUp = isC1623LookUp(fps.pitch) && !(data && data.kind === "c1623_exit");
+  var hidden = isInventoryOpen() || !survival || survival.dead || (!data && !lookUp);
   if (interactHintEl) {
     interactHintEl.hidden = hidden;
     if (!hidden) {
-      interactHintEl.innerHTML =
-        data.kind === "sqrt2_crack"
-          ? "时空裂缝 · 按 <kbd>Q</kbd> 进入 Level C-1623"
-          : "一扇未计算的门 · 按 <kbd>Q</kbd>";
+      interactHintEl.innerHTML = lookUp ? "向上突破 · 按 <kbd>Q</kbd>" : hintFor(data);
     }
   }
   if (crosshairEl) {
     crosshairEl.classList.toggle("backrooms-crosshair--hidden", isInventoryOpen());
-    crosshairEl.classList.toggle("backrooms-crosshair--interact", !hidden && !!data);
+    crosshairEl.classList.toggle("backrooms-crosshair--interact", !hidden && !!(data || lookUp));
   }
+}
+
+function maybeShiftSegment() {
+  if (transitionLock || shiftLock > 0 || !survival || survival.dead) return;
+  var dir = voidDirection(fps.player.z);
+  if (!dir) return;
+  var next = stepC1623Segment(segment, dir);
+  if (next.blocked) {
+    fps.player.z = dir > 0 ? C1623_VOID_Z - 1.4 : -C1623_VOID_Z + 1.4;
+    showToast("三十把这一侧切断了。");
+    shiftLock = 0.45;
+    return;
+  }
+  segment = next.index;
+  fps.player.z = dir > 0 ? -C1623_VOID_Z + 2.1 : C1623_VOID_Z - 2.1;
+  fps.player.x = Math.max(-2.4, Math.min(2.4, fps.player.x));
+  applySegmentLook();
+  var seg = currentSegment();
+  showToast("你走进虚空，来到 " + seg.id + (seg.note ? " · " + seg.note : "") + "。");
+  shiftLock = 0.7;
 }
 
 function bindControls() {
@@ -187,7 +260,7 @@ function bindControls() {
     onTapInteract: interact,
     onJump: function () {
       if (transitionLock) return;
-      tryBackroomsJump(fps, 7.4);
+      tryBackroomsJump(fps, 7.2);
     },
     onKeyDown: function (e) {
       if (!isInventoryOpen() && handleTaskUiKey(e)) {
@@ -213,38 +286,38 @@ function bindControls() {
 function init() {
   try {
     if (
-      !enforceLevelEntry("sqrt2", function (yaw) {
+      !enforceLevelEntry("c1623", function (yaw) {
         if (Number.isFinite(yaw)) fps.yaw = yaw;
       })
     ) {
-      window.location.replace("backrooms-level0.html");
+      window.location.replace("backrooms-level-sqrt2.html");
       return;
     }
   } catch (err) {
-    window.location.replace("backrooms-level0.html");
+    window.location.replace("backrooms-level-sqrt2.html");
     return;
   }
 
   showEnterLevelBannerIfQueued();
-  markLevelEntered("sqrt2", showToast);
+  markLevelEntered("c1623", showToast);
   fps.feetY = 0.08;
   fps.grounded = true;
   if (!Number.isFinite(fps.yaw)) fps.yaw = 0;
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(FOG);
-  scene.fog = new THREE.Fog(FOG, 4, 18);
+  scene.fog = new THREE.Fog(FOG, 12, 42);
 
-  camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 48);
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.08, 70);
   var gfx = resolveBackroomsGfxProfile();
   renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
   applyBackroomsRendererSize(renderer, window.innerWidth, window.innerHeight, gfx);
   applyBackroomsToneMapping(renderer);
 
   var root = new THREE.Group();
-  root.name = "BackroomsLevelSqrt2";
+  root.name = "BackroomsLevelC1623";
   scene.add(root);
-  world = buildSqrt2World(root, {
+  world = buildC1623World(root, {
     gfxLow: gfx.tier === "low",
     colliders: colliders,
     interactRoots: interactRoots,
@@ -261,75 +334,86 @@ function init() {
   });
   registerBackroomsInventoryUseHandlers(survival, {
     onAlmondWaterUsed: function () {
-      showToast("数字在杏仁水里溶开。");
+      showToast("杏仁水压不住二十的趋同。");
     },
   });
   installMegCheckpointDeathHooks(survival, function () {
-    return { level: "sqrt2" };
+    return { level: "c1623" };
   });
-  initBackroomsTemperature("sqrt2", {
+  initBackroomsTemperature("c1623", {
     rootEl: tempRootEl,
     fillEl: tempFillEl,
     valueEl: tempValueEl,
   });
   updateMegPointsDisplay(megPointsEl);
-  syncHint();
-  bindSqrt2AudioOnGesture();
+  applySegmentLook();
+  bindC1623AudioOnGesture();
   bindControls();
-  window.addEventListener("pagehide", stopSqrt2Audio);
-  showToast("青色纤维网从中心的黄点伸开。不要离开我。");
+  window.addEventListener("pagehide", stopC1623Audio);
+  showToast("沥青很硬。两端的蓝不是通道，是三十。");
 
   try {
     var debugFlag = new URLSearchParams(window.location.search).get("debug") || "";
-    if (debugFlag === "1" || debugFlag === "exit" || debugFlag === "crack") {
-      window.__sqrt2Debug = {
-        lookAtDoor: function () {
-          if (!world || !world.door) return { aim: null };
-          var door = world.door.position;
-          var len = Math.hypot(door.x, door.z) || 1;
-          fps.player.x = door.x - (door.x / len) * 1.45;
-          fps.player.z = door.z - (door.z / len) * 1.45;
-          fps.yaw = Math.atan2(-(door.x - fps.player.x), -(door.z - fps.player.z));
-          fps.pitch = 0.08;
-          applyBackroomsCamera(fps, camera, EYE_HEIGHT);
-          refreshAim();
-          updateInteractUi();
-          return window.__sqrt2Debug.state();
+    if (
+      debugFlag === "1" ||
+      debugFlag === "void" ||
+      debugFlag === "exit" ||
+      debugFlag === "up" ||
+      debugFlag === "empty"
+    ) {
+      window.__c1623Debug = {
+        setSegment: function (n) {
+          segment = n;
+          fps.player.x = C1623_SPAWN.x;
+          fps.player.z = C1623_SPAWN.z;
+          applySegmentLook();
+          return window.__c1623Debug.state();
         },
-        lookAtCrack: function () {
-          if (!world || !world.crack) return { aim: null };
-          var crack = world.crack.position;
-          fps.player.x = crack.x + 1.15;
-          fps.player.z = crack.z;
-          fps.yaw = Math.PI / 2;
-          fps.pitch = 0.08;
+        lookAtDoor: function () {
+          fps.player.x = 2.2;
+          fps.player.z = 3.15;
+          fps.yaw = -Math.PI / 2;
+          fps.pitch = 0.05;
           applyBackroomsCamera(fps, camera, EYE_HEIGHT);
           refreshAim();
           updateInteractUi();
-          return window.__sqrt2Debug.state();
+          return window.__c1623Debug.state();
+        },
+        lookUp: function () {
+          fps.pitch = 1.05;
+          applyBackroomsCamera(fps, camera, EYE_HEIGHT);
+          refreshAim();
+          updateInteractUi();
+          return window.__c1623Debug.state();
         },
         state: function () {
           var data = currentAimPick && currentAimPick.data ? currentAimPick.data : null;
-          var door = world && world.door ? world.door.position : null;
+          var seg = currentSegment();
           return {
-            errorHidden: !errorEl || errorEl.hidden,
-            error: errorEl ? errorEl.textContent : "",
-            hint: hintEl ? hintEl.textContent : "",
-            nodes: world && world.nodes ? world.nodes.length : 0,
+            segment: segment,
+            id: seg.id,
+            doors: seg.doors.map(function (d) {
+              return { label: d.label, open: d.open, pass: d.pass || "" };
+            }),
             x: fps.player.x,
             z: fps.player.z,
-            doorX: door ? door.x : null,
-            doorZ: door ? door.z : null,
+            pitch: fps.pitch,
+            lookUp: isC1623LookUp(fps.pitch),
             aim: data ? data.kind : null,
-            dist: currentAimPick ? currentAimPick.distance : null,
+            errorHidden: !errorEl || errorEl.hidden,
           };
         },
       };
       window.setTimeout(function () {
-        if (debugFlag === "exit") window.__sqrt2Debug.lookAtDoor();
-        if (debugFlag === "crack") window.__sqrt2Debug.lookAtCrack();
-        document.body.dataset.sqrt2 = JSON.stringify(window.__sqrt2Debug.state());
-      }, 700);
+        if (debugFlag === "exit") window.__c1623Debug.lookAtDoor();
+        if (debugFlag === "void") fps.player.z = C1623_VOID_Z + 0.2;
+        if (debugFlag === "up") window.__c1623Debug.lookUp();
+        if (debugFlag === "empty") {
+          window.__c1623Debug.setSegment(2);
+          window.__c1623Debug.lookAtDoor();
+        }
+        document.body.dataset.c1623 = JSON.stringify(window.__c1623Debug.state());
+      }, 600);
     }
   } catch (_dbg) {}
 
@@ -339,26 +423,14 @@ function init() {
     var now = performance.now();
     var time = now * 0.001;
     var dt = Math.min(clock.getDelta(), 0.05);
+    if (shiftLock > 0) shiftLock -= dt;
     var moving = isBackroomsPlayerMoving(fps);
     var sprinting = isBackroomsSprintHeld(fps) && moving;
-
-    shiftTimer += dt;
-    if (!shifting && shiftTimer >= SQRT2_SHIFT_SEC) {
-      shifting = true;
-      shiftTimer = 0;
-      shiftScale = 0.82 + Math.random() * 0.4;
-      retargetSqrt2Nodes(world, shiftScale);
-      showToast("孪生素数般的改写开始了。");
-      syncHint();
-    } else if (shifting && shiftTimer >= 2.4) {
-      shifting = false;
-      shiftTimer = 0;
-      syncHint();
-    }
+    var inVoid = isC1623Void(fps.player.z);
 
     if (survival && !survival.dead) {
       _survCtx.sprinting = sprinting;
-      _survCtx.sanityDrainPerSec = shifting ? 0.07 : 0.04;
+      _survCtx.sanityDrainPerSec = inVoid ? 0.055 : 0.028;
       survival.update(dt, _survCtx);
     }
 
@@ -367,16 +439,17 @@ function init() {
       var mul =
         survival && sprinting ? survival.getSprintSpeedMul(fps.player.speed, sprinting, moving) : 1;
       moveBackroomsPlayer(fps, dt, mul, function (nx, nz) {
-        return resolveBackroomsMoveCollisions(nx, nz, fps.player.radius, colliders, 50);
+        var z = Math.max(-C1623_ROAD_HALF + 0.2, Math.min(C1623_ROAD_HALF - 0.2, nz));
+        return resolveBackroomsMoveCollisions(nx, z, fps.player.radius, colliders, 40);
       });
     }
 
     applyBackroomsCamera(fps, camera, EYE_HEIGHT);
     refreshAim();
     updateInteractUi();
-    maybeTouchExit();
-    updateSqrt2World(world, dt, time, shifting);
-    updateSqrt2Audio(now, shifting);
+    maybeShiftSegment();
+    updateC1623World(world, time);
+    updateC1623Audio(inVoid);
     updateBackroomsTemperature(dt, now);
     updateBackroomsHeatDamage(survival, now);
     renderer.render(scene, camera);
@@ -387,6 +460,6 @@ function init() {
 try {
   init();
 } catch (err) {
-  console.error("[Backrooms √2]", err);
+  console.error("[Backrooms C-1623]", err);
   showError(err.message || String(err));
 }

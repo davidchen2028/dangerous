@@ -4,6 +4,11 @@
  * 规则与 server/db.py 保持一致，但所有数据都保存在浏览器 localStorage。
  * 将来恢复联机时，可继续由 backrooms-online-profile.js 切回服务端 API。
  */
+import {
+  MEG_TASK_IDS,
+  MEG_HIGH_RISK_TASK_IDS,
+} from "./backrooms-meg-task-catalog.js";
+
 const STORE_KEY = "backrooms_meg_career_local_v2";
 const OLD_PROFILE_KEY = "backrooms_meg_profile_v1";
 const DISPLAY_NAME_KEY = "backrooms_display_name_v1";
@@ -37,34 +42,8 @@ const CONTRIBUTION = {
   supply_delivered: 15,
 };
 
-const TASK_IDS = new Set([
-  "package_l1",
-  "map_l21",
-  "recon_c1291",
-  "inspect_coolers",
-  "map_l13",
-  "rubbing_c1290",
-  "docs_c1292",
-  "sample_c144_collapse",
-  "recon_c144_mutant",
-  "loop_c192",
-  "sample_c1299_fog",
-  "beacon_c1299",
-  "pages_c1299",
-  "fasting_cruise",
-]);
-
-const HIGH_RISK_TASK_IDS = new Set([
-  "recon_c1291",
-  "rubbing_c1290",
-  "docs_c1292",
-  "sample_c144_collapse",
-  "recon_c144_mutant",
-  "loop_c192",
-  "sample_c1299_fog",
-  "beacon_c1299",
-  "pages_c1299",
-]);
+const TASK_IDS = new Set(MEG_TASK_IDS);
+const HIGH_RISK_TASK_IDS = new Set(MEG_HIGH_RISK_TASK_IDS);
 
 const REQUIREMENTS = {
   volunteer: { contribution: 25, tasks: 1, footprints: 1 },
@@ -359,7 +338,13 @@ function profileFromState(state) {
 function eventAllowed(state, type, levelId, payload) {
   if (!Object.prototype.hasOwnProperty.call(CONTRIBUTION, type)) return false;
   var taskId = String(payload.taskId || "");
-  if ((type === "task_complete" || type === "task_failed") && !TASK_IDS.has(taskId)) {
+  if (
+    (type === "task_complete" ||
+      type === "task_failed" ||
+      type === "rescue_complete" ||
+      type === "supply_delivered") &&
+    !TASK_IDS.has(taskId)
+  ) {
     return false;
   }
   if (type === "high_risk_complete" && !HIGH_RISK_TASK_IDS.has(taskId)) return false;

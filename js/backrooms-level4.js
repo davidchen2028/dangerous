@@ -61,11 +61,11 @@ import {
   markLevelEntered,
   getFirstDeliveredUnclaimedTask,
   claimTaskReward,
-  isTaskAccepted,
   recordCoolerInspect,
   isCoolerInspected,
   getCoolerInspectedRemainingMs,
   getInspectProgress,
+  getActiveCoolerInspectTask,
 } from "./backrooms-tasks.js";
 import {
   createBackroomsFpsState,
@@ -361,9 +361,10 @@ function updateWaterHint() {
   var coolerId = aimedCoolerId();
   var inspected = isCoolerInspected(coolerId);
   var drained = isAimedCoolerDrained();
-  var taskOn = isTaskAccepted("inspect_coolers");
+  var inspectTask = getActiveCoolerInspectTask();
+  var taskOn = !!inspectTask;
   var canInspect = taskOn && !inspected;
-  var progress = taskOn ? getInspectProgress("inspect_coolers") : null;
+  var progress = inspectTask ? getInspectProgress(inspectTask.id) : null;
   var progressText = progress ? "（" + progress.count + "/" + progress.target + "）" : "";
   var html;
   if (inspected) {
@@ -386,7 +387,7 @@ function updateWaterHint() {
 function tryCoolerInspectE() {
   if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
   if (!isAimWaterCooler()) return;
-  if (!isTaskAccepted("inspect_coolers")) {
+  if (!getActiveCoolerInspectTask()) {
     showLootToast("尚未接取饮水机巡检任务");
     return;
   }
@@ -773,7 +774,7 @@ function tryVendingQ() {
 function tryLevel4Interact(mode) {
   if (hudBlocked() || !currentAimPick || !currentAimPick.data) return false;
   var action = chooseLevel4Interaction(currentAimPick.data.kind, mode || "smart", {
-    inspectTask: isTaskAccepted("inspect_coolers"),
+    inspectTask: !!getActiveCoolerInspectTask(),
     inspected: isCoolerInspected(aimedCoolerId()),
   });
   if (!action) return false;

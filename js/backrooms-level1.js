@@ -63,7 +63,7 @@ import {
   resolveClipEntrySpawn,
   getSpawnChunkBounds,
   WAREHOUSE_HEIGHT,
-} from "./backrooms-level1-world.js?v=7";
+} from "./backrooms-level1-world.js?v=15";
 import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
@@ -112,6 +112,7 @@ import { createLevel1SublevelManager } from "./backrooms-level1-sublevels.js?v=4
 import {
   handleTaskUiKey,
   isTaskUiOpen,
+  openTaskBoard,
   markLevelEntered,
   isTaskAccepted,
   isTaskDelivered,
@@ -129,6 +130,7 @@ import {
   applyForNextMegRank,
   describeMegCareer,
   getMegCareerProfile,
+  getMegRankIndex,
   getReviewableMegCases,
   getNextMegRank,
   hasMegPermission,
@@ -136,11 +138,22 @@ import {
   reviewMegCase,
   submitMegReport,
 } from "./backrooms-meg-career.js";
+import {
+  ALPHA_AQUILA_NOTE,
+  ALPHA_BRIEFING_TOAST,
+  ALPHA_LOCKED_NOTE,
+  ALPHA_OFFICE_LOCK_NOTE,
+  ALPHA_SIT_SANITY,
+  ALPHA_ZEPHYR_NOTE,
+  officeNoticeText,
+  supervisorPlateText,
+} from "./backrooms-level1-alpha-layout.js";
+import { getSanityMax } from "./backrooms-death-penalty.js";
 import { openMegCareerGuide } from "./backrooms-meg-guide.js";
 import { createWandererManager } from "./backrooms-wanderers.js";
 
 const CHEST_LOOT_DISTANCE = 2.6;
-const AIM_INTERACT_MAX = 4.5;
+const AIM_INTERACT_MAX = 5.2;
 const AIM_NPC_MAX = 3.8;
 const AIM_DOOR_MAX = 3.6;
 const CHEST_AIM_RADIUS = CHEST_LOOT_DISTANCE + 0.35;
@@ -240,6 +253,10 @@ let useDragLook = false;
 let lookDragId = null;
 let lookLastX = 0;
 let lookLastY = 0;
+let tapInteractId = null;
+let tapInteractX = 0;
+let tapInteractY = 0;
+let tapInteractMoved = false;
 const player = { x: 0, z: 0, radius: 0.34, speed: 4.6 };
 let feetY = 0;
 let velY = 0;
@@ -250,6 +267,7 @@ let megDialogueOpen = false;
 /** @type {"guide" | "trade" | "backdoor" | "level11" | "level11_tour" | "recruiter" | "recruiter_department" | null} */
 let megDialogueKind = null;
 let megRecruiterIsAlpha = true;
+let officeSitting = false;
 let level11TourStep = 0;
 let activeSectionId = "";
 const seenSectionIds = new Set();
@@ -364,6 +382,7 @@ function respawnAtMegBase() {
     player.z = sp.z;
     yaw = sp.yaw != null ? sp.yaw : -Math.PI * 0.5;
   }
+  officeSitting = false;
   feetY = 0;
   velY = 0;
   pitch = 0;
@@ -377,6 +396,7 @@ function relocateAfterLevel1_1Cut() {
   var distance = 72 + Math.random() * 72;
   player.x = spawnPoint.x + Math.cos(angle) * distance;
   player.z = spawnPoint.z + Math.sin(angle) * distance;
+  officeSitting = false;
   feetY = 0;
   velY = 0;
   grounded = true;
@@ -511,6 +531,7 @@ function refreshAimPick() {
     isInventoryOpen() ||
     megDialogueOpen ||
     !!(wandererManager && wandererManager.isDialogueOpen()) ||
+    isTaskUiOpen() ||
     isHomeEndingActive()
   ) return;
   if (
@@ -522,15 +543,31 @@ function refreshAimPick() {
 
   var roots = collectAimInteractRoots();
   if (!roots.length) return;
+  if (typeof camera.updateMatrixWorld === "function") camera.updateMatrixWorld();
 
   var aim = getCameraAimRay(camera, AIM_INTERACT_MAX);
+  var aimMinY = 0;
+  var aimMaxY = WAREHOUSE_HEIGHT;
+  if (
+    feetY < -0.05 &&
+    level1World &&
+    level1World.getAlphaFloorY &&
+    !(level1_1Zones && level1_1Zones.isActive()) &&
+    !(level1Sublevels && level1Sublevels.isActive())
+  ) {
+    aimMinY = level1World.getAlphaFloorY(player.x, player.z) - 0.25;
+    aimMaxY =
+      (level1World.getAlphaCeilingY
+        ? level1World.getAlphaCeilingY(player.x, player.z, WAREHOUSE_HEIGHT)
+        : WAREHOUSE_HEIGHT) + 0.25;
+  }
   var wallBlock = raycastWallBlockDistance(
     aim.origin,
     aim.direction,
     AIM_INTERACT_MAX,
     wallColliders,
-    0,
-    WAREHOUSE_HEIGHT
+    aimMinY,
+    aimMaxY
   );
 
   currentAimPick = pickCrosshairInteract(
@@ -558,6 +595,9 @@ function isAimKind(kind, role) {
   if (kind === "l1_c101_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "l1_c1_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "l1_sublevel_entry" && currentAimPick.distance > AIM_DOOR_MAX) return false;
+  if (kind === "meg_wing_door" && currentAimPick.distance > AIM_INTERACT_MAX) return false;
+  if (kind === "meg_office_door" && currentAimPick.distance > AIM_INTERACT_MAX) return false;
+  if (kind === "meg_zephyr_barricade" && currentAimPick.distance > AIM_INTERACT_MAX) return false;
   if (kind === "level1_1_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "level1_1_2_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
   if (kind === "level1_1_12_door" && currentAimPick.distance > AIM_DOOR_MAX) return false;
@@ -642,6 +682,34 @@ function openMegCareerStorage() {
     return;
   }
   openBaseStorage({ toast: true });
+}
+
+function playerCanEnterMegOffice() {
+  var profile = getMegCareerProfile();
+  if (profile.locked || profile.online !== true) return false;
+  if (profile.authorityActive === false) return false;
+  return getMegRankIndex(profile.rank) >= getMegRankIndex("officer");
+}
+
+function standFromOfficeChair() {
+  officeSitting = false;
+}
+
+function sitOfficeChair() {
+  if (officeSitting) {
+    standFromOfficeChair();
+    showLootToast("起身");
+    return;
+  }
+  officeSitting = true;
+  if (survival && !survival.dead) {
+    var before = survival.sanity;
+    survival.sanity = Math.min(getSanityMax(), survival.sanity + ALPHA_SIT_SANITY);
+    if (survival.refreshHud) survival.refreshHud();
+    showLootToast(survival.sanity > before ? "坐下休息 · 理智稍回" : "坐下休息");
+  } else {
+    showLootToast("坐下休息");
+  }
 }
 
 function syncPackageReceiverNpc() {
@@ -840,6 +908,7 @@ function megDialogueChooseLevel11(choice) {
       closeMegDialogue();
     }
     if (entered) {
+      officeSitting = false;
       feetY = 0;
       velY = 0;
       grounded = true;
@@ -878,7 +947,7 @@ function setRecruiterChoices() {
   if (!dialogueChoicesEl) return;
   dialogueChoicesEl.hidden = false;
   dialogueChoicesEl.innerHTML =
-    renderDialogueChoice("a", "申请加入 / 晋升") +
+    renderDialogueChoice("a", "进行资质认证 / 晋升") +
     renderDialogueChoice("b", "查询编制进度") +
     renderDialogueChoice("c", "提交纪律举报") +
     (hasMegPermission("review_low_cases")
@@ -899,7 +968,10 @@ function openMegRecruiterDialogue() {
       ? "M.E.G Alpha 人事员"
       : "M.E.G 前哨人事员";
   }
-  dialogueTextEl.textContent = describeMegCareer();
+  dialogueTextEl.textContent = megRecruiterIsAlpha
+    ? describeMegCareer() +
+      " 本基地按资质认证分派探险、研究、后勤或安保。收集者与失物招领在此登记；天鹰币只在 Alpha 内部记账。"
+    : describeMegCareer();
   setDialogueImage(null);
   setRecruiterChoices();
   if (interiorTalkHintEl) interiorTalkHintEl.hidden = true;
@@ -937,7 +1009,8 @@ function applyRecruiterPromotion(department) {
 
 function startDepartmentCertification() {
   megDialogueKind = "recruiter_department";
-  dialogueTextEl.textContent = "资质认证要求选定职务。职务变更只能回 Alpha 办理。";
+  dialogueTextEl.textContent =
+    "资质认证：选定四职之一。认证后职务变更只能回 Alpha 办理。";
   dialogueChoicesEl.hidden = false;
   dialogueChoicesEl.innerHTML =
     renderDialogueChoice("a", MEG_DEPARTMENT_LABELS.explore) +
@@ -1347,6 +1420,7 @@ function teleportToMegBase() {
   player.z = center.z;
   yaw = -Math.PI * 0.5;
   pitch = 0.1;
+  officeSitting = false;
   feetY = 0;
   velY = 0;
   saveMegBaseCheckpoint(defaultMegBaseSpawn(center));
@@ -1406,6 +1480,7 @@ function tryMegQAction() {
     !!(wandererManager && wandererManager.isDialogueOpen()) ||
     isInventoryOpen() ||
     isBaseStorageOpen() ||
+    isTaskUiOpen() ||
     isHomeEndingActive()
   ) return;
   if (!survival || survival.dead) return;
@@ -1541,6 +1616,48 @@ function tryMegQAction() {
   }
   if (isNearMegLevel11Staff()) {
     openLevel11Dialogue();
+    return;
+  }
+  if (isAimKind("meg_wing_door")) {
+    var wing = getAimInteractData() || {};
+    showLootToast(wing.note || ALPHA_LOCKED_NOTE);
+    return;
+  }
+  if (isAimKind("meg_office_door")) {
+    if (playerCanEnterMegOffice() && level1World && level1World.tryOpenMegOfficeDoorAim) {
+      if (level1World.tryOpenMegOfficeDoorAim()) showLootToast("高级办公室已解锁");
+      return;
+    }
+    showLootToast(ALPHA_OFFICE_LOCK_NOTE);
+    return;
+  }
+  if (isAimKind("meg_explore_briefing")) {
+    showLootToast(ALPHA_BRIEFING_TOAST);
+    return;
+  }
+  if (isAimKind("meg_alpha_notice") || isAimKind("meg_zephyr_barricade") || isAimKind("meg_cellar_notice")) {
+    var posted = getAimInteractData() || {};
+    showLootToast(posted.note || ALPHA_AQUILA_NOTE);
+    return;
+  }
+  if (isAimKind("meg_office_notice")) {
+    showLootToast(officeNoticeText(getMegCareerProfile()));
+    return;
+  }
+  if (isAimKind("meg_office_plate")) {
+    showLootToast(supervisorPlateText(getMegCareerProfile()));
+    return;
+  }
+  if (isAimKind("meg_office_desk")) {
+    openTaskBoard({ onToast: showLootToast });
+    return;
+  }
+  if (isAimKind("meg_office_chair")) {
+    sitOfficeChair();
+    return;
+  }
+  if (isAimKind("meg_cellar_cabinet")) {
+    openMegCareerStorage();
     return;
   }
   if (level1World) {
@@ -1832,6 +1949,57 @@ function updateMegDoorHint() {
     doorHintEl.hidden = false;
     return;
   }
+  if (isAimKind("meg_wing_door")) {
+    var wingHint = getAimInteractData() || {};
+    doorHintEl.innerHTML =
+      (wingHint.label || "署门") + " · 按 <kbd>Q</kbd> " + (wingHint.note || ALPHA_LOCKED_NOTE);
+    doorHintEl.hidden = false;
+    return;
+  }
+  if (isAimKind("meg_office_door")) {
+    doorHintEl.innerHTML = playerCanEnterMegOffice()
+      ? "高级办公室 · 按 <kbd>Q</kbd> 开门"
+      : "高级办公室 · 按 <kbd>Q</kbd> " + ALPHA_OFFICE_LOCK_NOTE;
+    doorHintEl.hidden = false;
+    return;
+  }
+  if (isAimKind("meg_explore_briefing")) {
+    doorHintEl.innerHTML = "墙上简报 · 按 <kbd>Q</kbd> 阅读";
+    doorHintEl.hidden = false;
+    return;
+  }
+  if (isAimKind("meg_alpha_notice")) {
+    doorHintEl.innerHTML = "门厅告示 · 按 <kbd>Q</kbd> 阅读";
+    doorHintEl.hidden = false;
+    return;
+  }
+  if (isAimKind("meg_zephyr_barricade")) {
+    doorHintEl.innerHTML = ALPHA_ZEPHYR_NOTE + " · 按 <kbd>Q</kbd>";
+    doorHintEl.hidden = false;
+    return;
+  }
+  if (isAimKind("meg_office_desk")) {
+    doorHintEl.innerHTML = "办公桌 · 按 <kbd>Q</kbd> 打开任务板";
+    doorHintEl.hidden = false;
+    return;
+  }
+  if (isAimKind("meg_office_chair")) {
+    doorHintEl.innerHTML = officeSitting
+      ? "按 <kbd>Q</kbd> 起身"
+      : "椅子 · 按 <kbd>Q</kbd> 坐下";
+    doorHintEl.hidden = false;
+    return;
+  }
+  if (isAimKind("meg_office_notice") || isAimKind("meg_office_plate") || isAimKind("meg_cellar_notice")) {
+    doorHintEl.innerHTML = "告示 · 按 <kbd>Q</kbd> 阅读";
+    doorHintEl.hidden = false;
+    return;
+  }
+  if (isAimKind("meg_cellar_cabinet")) {
+    doorHintEl.innerHTML = "贮存柜 · 按 <kbd>Q</kbd> 打开寄存";
+    doorHintEl.hidden = false;
+    return;
+  }
   doorHintEl.hidden = true;
 }
 
@@ -2045,10 +2213,14 @@ function getMovementColliders() {
 function movementNearPad() {
   if (
     level1World &&
-    level1World.isInsideMegBaseInterior &&
-    level1World.isInsideMegBaseInterior(player.x, player.z)
+    (
+      (level1World.isInsideMegBaseComplex &&
+        level1World.isInsideMegBaseComplex(player.x, player.z)) ||
+      (level1World.isInsideMegBaseInterior &&
+        level1World.isInsideMegBaseInterior(player.x, player.z))
+    )
   ) {
-    return 14;
+    return 16;
   }
   return 10;
 }
@@ -2084,6 +2256,7 @@ function placePlayerAtSpawn() {
     spawnPoint.z = megSpawn.z;
     player.x = megSpawn.x;
     player.z = megSpawn.z;
+    officeSitting = false;
     feetY = 0;
     velY = 0;
     yaw = megSpawn.yaw;
@@ -2098,6 +2271,7 @@ function placePlayerAtSpawn() {
   spawnPoint.z = spawnPos.z;
   player.x = spawnPos.x;
   player.z = spawnPos.z;
+  officeSitting = false;
   feetY = 0;
   velY = 0;
   yaw = Number.isFinite(spawnPos.yaw) ? spawnPos.yaw : 0;
@@ -2119,6 +2293,7 @@ function placePlayerAtC101Return() {
   player.z = pos.z;
   spawnPoint.x = pos.x;
   spawnPoint.z = pos.z;
+  officeSitting = false;
   feetY = 0;
   velY = 0;
   grounded = true;
@@ -2132,6 +2307,7 @@ function applyHubRouteTeleport(pos) {
   if (!pos) return;
   player.x = pos.x;
   player.z = pos.z;
+  officeSitting = false;
   feetY = 0;
   velY = 0;
   grounded = true;
@@ -2202,6 +2378,14 @@ function enterLevelC1() {
 }
 
 function movePlayer(dt, speedMul) {
+  if (officeSitting) {
+    var sitMove = mergeBackroomsMoveInput(move);
+    if (sitMove.forward || sitMove.back || sitMove.left || sitMove.right) {
+      standFromOfficeChair();
+    } else {
+      return;
+    }
+  }
   var activeMove = mergeBackroomsMoveInput(move);
   if (level1Sublevels && level1Sublevels.isForwardAxisInverted()) {
     invertedMove.forward = activeMove.back;
@@ -2219,6 +2403,10 @@ function movePlayer(dt, speedMul) {
 }
 
 function tryJump() {
+  if (officeSitting) {
+    standFromOfficeChair();
+    return;
+  }
   var stub = { grounded: grounded, velY: velY };
   if (!tryBackroomsJump(stub, JUMP_SPEED)) return;
   velY = stub.velY;
@@ -2301,14 +2489,28 @@ function updatePlayerPhysics(dt) {
   _physStub.grounded = grounded;
   _physOpts.gravity = GRAVITY;
   _physOpts.bodyHeight = BODY_HEIGHT;
+  _physOpts.floorY =
+    level1World && level1World.getAlphaFloorY
+      ? level1World.getAlphaFloorY(player.x, player.z)
+      : 0;
   _physOpts.ceilingY =
     level1_1Zones && level1_1Zones.isActive()
       ? level1_1Zones.getCeilingY()
-      : WAREHOUSE_HEIGHT;
+      : level1World && level1World.getAlphaCeilingY
+        ? level1World.getAlphaCeilingY(player.x, player.z, WAREHOUSE_HEIGHT)
+        : WAREHOUSE_HEIGHT;
   updateBackroomsPlayerPhysics(_physStub, dt, _physOpts);
   feetY = _physStub.feetY;
   velY = _physStub.velY;
   grounded = _physStub.grounded;
+  if (level1World && level1World.stickAlphaRampY) {
+    var stuckY = level1World.stickAlphaRampY(feetY, velY, player.x, player.z);
+    if (stuckY !== feetY) {
+      feetY = stuckY;
+      velY = 0;
+      grounded = true;
+    }
+  }
 }
 
 function shouldUseDragLook() {
@@ -2484,9 +2686,22 @@ function bindControls() {
     syncLookUi();
   });
   var cap = inputEl || canvas;
+  var skipHudTap =
+    typeof window !== "undefined" &&
+    window.BackroomsMobileControls &&
+    window.BackroomsMobileControls.usesActionButtons;
   if (cap) {
     cap.addEventListener("pointerdown", function (e) {
       if (isInventoryOpen() || isBaseStorageOpen()) return;
+      if (
+        !skipHudTap &&
+        (e.pointerType === "touch" || e.pointerType === "pen")
+      ) {
+        tapInteractId = e.pointerId;
+        tapInteractX = e.clientX;
+        tapInteractY = e.clientY;
+        tapInteractMoved = false;
+      }
       if (shouldUseDragLook()) {
         if (e.pointerType === "mouse" && e.button !== 0) return;
         lookDragId = e.pointerId;
@@ -2503,6 +2718,9 @@ function bindControls() {
     cap.addEventListener("contextmenu", function (e) { e.preventDefault(); });
   }
   window.addEventListener("pointermove", function (e) {
+    if (e.pointerId === tapInteractId && Math.hypot(e.clientX - tapInteractX, e.clientY - tapInteractY) > 12) {
+      tapInteractMoved = true;
+    }
     if (lookDragId !== e.pointerId || isCorridorL2SequenceActive()) return;
     yaw -= (e.clientX - lookLastX) * LOOK_SENS * MOBILE_LOOK_SENS_MULT;
     pitch -= (e.clientY - lookLastY) * LOOK_SENS * MOBILE_LOOK_SENS_MULT;
@@ -2511,6 +2729,26 @@ function bindControls() {
     lookLastY = e.clientY;
   });
   window.addEventListener("pointerup", function (e) {
+    if (e.pointerId === tapInteractId) {
+      var tapped = !tapInteractMoved;
+      tapInteractId = null;
+      if (
+        tapped &&
+        !megDialogueOpen &&
+        !isInventoryOpen() &&
+        !isBaseStorageOpen() &&
+        !isTaskUiOpen() &&
+        !isHomeEndingActive()
+      ) {
+        tryMegQAction();
+      }
+    }
+    if (lookDragId !== e.pointerId) return;
+    try { cap.releasePointerCapture(lookDragId); } catch (err) { /* ignore */ }
+    lookDragId = null;
+  });
+  window.addEventListener("pointercancel", function (e) {
+    if (e.pointerId === tapInteractId) tapInteractId = null;
     if (lookDragId !== e.pointerId) return;
     try { cap.releasePointerCapture(lookDragId); } catch (err) { /* ignore */ }
     lookDragId = null;
@@ -2858,8 +3096,12 @@ function startLoop() {
     var inLevel1_1 = !!(level1_1Zones && level1_1Zones.isActive());
     var inMegShelter = !!(
       level1World &&
-      level1World.isInsideMegBaseInterior &&
-      level1World.isInsideMegBaseInterior(player.x, player.z)
+      (
+        (level1World.isInsideMegBaseComplex &&
+          level1World.isInsideMegBaseComplex(player.x, player.z)) ||
+        (level1World.isInsideMegBaseInterior &&
+          level1World.isInsideMegBaseInterior(player.x, player.z))
+      )
     );
     if (horror && !inHubRoute && !inLevel1_1 && !inLevel1Sublevel && !inMegShelter) {
       horrorResult = horror.update(now, player.x, player.z);
@@ -2946,7 +3188,11 @@ function startLoop() {
     ) {
       updateMegBaseAutoSave(survival, level1World, player.x, player.z);
     }
-    camera.position.set(player.x, feetY + EYE_HEIGHT, player.z);
+    camera.position.set(
+      player.x,
+      feetY + (officeSitting ? EYE_HEIGHT - 0.48 : EYE_HEIGHT),
+      player.z
+    );
     camera.rotation.order = "YXZ";
     camera.rotation.y = yaw;
     camera.rotation.x = pitch;

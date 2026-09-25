@@ -12,6 +12,28 @@ import { createPartygoersAt } from "./backrooms-partygoer.js";
 import { createClumpsAt } from "./backrooms-clump-ai.js";
 import { createDeathMothsAt } from "./backrooms-death-moth.js";
 import { buildEntity81CallDoor } from "./backrooms-entity81-spawn.js";
+import {
+  ALPHA_BRIEFING_TOAST,
+  ALPHA_LOCKED_NOTE,
+  ALPHA_OFFICE_LOCK_NOTE,
+  ALPHA_SIGN,
+  ALPHA_ZEPHYR_NOTE,
+  ALPHA_AQUILA_NOTE,
+  ALPHA_CELLAR_H,
+  ALPHA_CELLAR_Y,
+  ALPHA_ROOM_H,
+  ALPHA_WING_DOOR_H,
+  ALPHA_WING_DOOR_W,
+  getAlphaCeilingY,
+  getAlphaFloorY,
+  getAlphaLayout,
+  isInsideAabb,
+  stickAlphaRampY,
+  getZephyrBarricade,
+  isInsideAlphaComplex,
+  listAlphaClearBounds,
+  listAlphaSolidColliders,
+} from "./backrooms-level1-alpha-layout.js";
 
 export const BLOCK_SIZE = 4.0;
 export const WAREHOUSE_HEIGHT = 4.5;
@@ -55,6 +77,14 @@ var _megBackDoorState = null;
 var _megCorridorFootprint = null;
 /** @type {{ group: THREE.Group, colliders: object[], collidersActive: boolean, ctx: object } | null} */
 var _megCorridorState = null;
+/** @type {THREE.Object3D[] | null} */
+var _megAlphaPicks = null;
+/** @type {object | null} */
+var _megOfficeDoorState = null;
+/** @type {{ minX: number, maxX: number, minZ: number, maxZ: number }[] | null} */
+var _megWingBounds = null;
+/** @type {{ x: number, z: number } | null} */
+var _megAlphaCenter = null;
 export const CHEST_GLB_URL = "models/pirate-chest.glb";
 /** 宝箱实体碰撞半宽（米） */
 export const CHEST_COLLIDE_HALF = 0.46;
@@ -270,8 +300,24 @@ function isInMegCorridorFootprint(gCol, gRow) {
   );
 }
 
+function isInMegWingFootprint(gCol, gRow) {
+  if (!_megWingBounds) return false;
+  var c = cellWorldCenter(gCol, gRow);
+  for (var i = 0; i < _megWingBounds.length; i++) {
+    var b = _megWingBounds[i];
+    if (c.x >= b.minX && c.x <= b.maxX && c.z >= b.minZ && c.z <= b.maxZ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function isInMegClearFootprint(gCol, gRow) {
-  return isInMegBaseFootprint(gCol, gRow) || isInMegCorridorFootprint(gCol, gRow);
+  return (
+    isInMegBaseFootprint(gCol, gRow) ||
+    isInMegCorridorFootprint(gCol, gRow) ||
+    isInMegWingFootprint(gCol, gRow)
+  );
 }
 
 function isInsideMegBaseInterior(px, pz) {
@@ -280,6 +326,17 @@ function isInsideMegBaseInterior(px, pz) {
     Math.abs(px - _megBaseCenter.x) <= _megBaseHalfW - 1.2 &&
     Math.abs(pz - _megBaseCenter.z) <= _megBaseHalfD - 1.2
   );
+}
+
+function megAlphaCenterOrNull() {
+  return _megAlphaCenter || _megBaseCenter;
+}
+
+function isInsideMegBaseComplex(px, pz) {
+  if (isInsideMegBaseInterior(px, pz)) return true;
+  var center = megAlphaCenterOrNull();
+  if (!center) return false;
+  return isInsideAlphaComplex(px, pz, center);
 }
 
 function createMegSignTexture(text) {
@@ -293,7 +350,11 @@ function createMegSignTexture(text) {
   ctx2d.lineWidth = 6;
   ctx2d.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
   ctx2d.fillStyle = "#e8f6ff";
-  ctx2d.font = "bold 52px system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif";
+  var fontSize = text.length > 14 ? 34 : text.length > 10 ? 42 : 52;
+  ctx2d.font =
+    "bold " +
+    fontSize +
+    "px system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif";
   ctx2d.textAlign = "center";
   ctx2d.textBaseline = "middle";
   ctx2d.fillText(text, canvas.width * 0.5, canvas.height * 0.5);
@@ -363,6 +424,22 @@ function updateSingleMegDoor(d, dt) {
 function updateMegDoorAnimation(dt) {
   updateSingleMegDoor(_megDoorState, dt);
   updateSingleMegDoor(_megBackDoorState, dt);
+  updateSingleMegDoor(_megOfficeDoorState, dt);
+}
+
+function pushAlphaPick(mesh) {
+  if (!_megAlphaPicks) _megAlphaPicks = [];
+  _megAlphaPicks.push(mesh);
+}
+
+function tryOpenMegOfficeDoorAim() {
+  var d = _megOfficeDoorState;
+  if (!d || d.open || d.opening) return false;
+  d.opening = true;
+  d.t = 0;
+  if (d.collider) ghostRemoveMegCollider(d.ctx, d.collider);
+  if (d.pickMesh) d.pickMesh.visible = false;
+  return true;
 }
 
 function isNearMegFrontDoor(px, pz) {
@@ -445,6 +522,48 @@ function buildMegHiddenCorridor(root, ctx, center, hx, doorW, bh, wallT) {
   endWall.position.set(endX, bh * 0.5, center.z);
   corridorGroup.add(endWall);
 
+  var zephyr = getZephyrBarricade(center);
+  var crateMat = new THREE.MeshLambertMaterial({
+    color: 0x6a5340,
+    emissive: 0x181008,
+  });
+  var plankMat = new THREE.MeshLambertMaterial({
+    color: 0x8a6a48,
+    emissive: 0x1a1008,
+  });
+  var crateA = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 1.15), crateMat);
+  crateA.position.set(zephyr.signX + 0.15, 0.4, center.z - 0.35);
+  corridorGroup.add(crateA);
+  var crateB = crateA.clone();
+  crateB.position.set(zephyr.signX + 0.05, 0.4, center.z + 0.42);
+  corridorGroup.add(crateB);
+  var plank = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.6, innerW - 0.15), plankMat);
+  plank.position.set(zephyr.signX - 0.22, 0.9, center.z);
+  corridorGroup.add(plank);
+  var zephyrSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.55, 0.42),
+    new THREE.MeshBasicMaterial({
+      map: createMegSignTexture(ALPHA_ZEPHYR_NOTE),
+      transparent: false,
+    })
+  );
+  zephyrSign.position.set(zephyr.signX - 0.3, 1.55, center.z);
+  zephyrSign.rotation.y = -Math.PI * 0.5;
+  corridorGroup.add(zephyrSign);
+  addAlphaInteractPick(
+    corridorGroup,
+    0.55,
+    1.8,
+    innerW,
+    zephyr.signX - 0.2,
+    1.0,
+    center.z,
+    {
+      kind: "meg_zephyr_barricade",
+      note: ALPHA_ZEPHYR_NOTE,
+    }
+  );
+
   var panelMat = sharedPanelMat();
   var panelGeo = sharedPanelGeo();
   for (var li = 0; li < 6; li++) {
@@ -477,6 +596,13 @@ function buildMegHiddenCorridor(root, ctx, center, hx, doorW, bh, wallT) {
       maxX: endX + 0.14,
       minZ: center.z - halfW,
       maxZ: center.z + halfW,
+    },
+    {
+      kind: "meg_zephyr_barricade",
+      minX: zephyr.minX,
+      maxX: zephyr.maxX,
+      minZ: zephyr.minZ,
+      maxZ: zephyr.maxZ,
     },
   ];
 
@@ -662,6 +788,10 @@ function resetMegModuleState() {
   _megBackDoorState = null;
   _megCorridorFootprint = null;
   _megCorridorState = null;
+  _megAlphaPicks = null;
+  _megOfficeDoorState = null;
+  _megWingBounds = null;
+  _megAlphaCenter = null;
   _megInteriorNpc = null;
   _megBackDoorStaffNpc = null;
   _megLevel11Npc = null;
@@ -748,6 +878,392 @@ export function buildMegGuideNpc(root) {
   return { group: built.group, x: px, z: pz, talkRadius: 3.2 };
 }
 
+function addAlphaInteractPick(parent, w, h, d, x, y, z, data) {
+  var pick = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    sharedChestPickMat()
+  );
+  pick.position.set(x, y, z);
+  pick.userData.brInteract = data;
+  parent.add(pick);
+  pushAlphaPick(pick);
+  return pick;
+}
+
+function buildAlphaRoomBox(group, mat, w, h, d, x, y, z) {
+  var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  group.add(m);
+  return m;
+}
+
+function registerAlphaLayoutColliders(ctx, megColliders, center, officeOpen) {
+  var solids = listAlphaSolidColliders(center, { officeOpen: officeOpen });
+  for (var i = 0; i < solids.length; i++) {
+    var c = solids[i];
+    if (c.kind === "meg_office_door") continue;
+    registerMegColliderObject(ctx, megColliders, c);
+  }
+}
+
+function buildAlphaHeadquarters(group, ctx, megColliders, center, wallBox) {
+  var L = getAlphaLayout(center);
+  _megAlphaCenter = { x: center.x, z: center.z };
+  _megWingBounds = listAlphaClearBounds(center);
+  _megAlphaPicks = _megAlphaPicks || [];
+
+  var roomMat = new THREE.MeshLambertMaterial({
+    color: 0x4e5d6c,
+    emissive: 0x121820,
+  });
+  var floorMat = new THREE.MeshLambertMaterial({
+    color: 0x3c4a56,
+    emissive: 0x10161c,
+  });
+  var woodMat = new THREE.MeshLambertMaterial({
+    color: 0x6a4a2e,
+    emissive: 0x140c06,
+  });
+  var metalMat = new THREE.MeshLambertMaterial({
+    color: 0x3a4048,
+    emissive: 0x0c1014,
+  });
+  var doorMat = new THREE.MeshLambertMaterial({
+    color: 0x2a3340,
+    emissive: 0x080c10,
+  });
+  var lockDoorMat = new THREE.MeshLambertMaterial({
+    color: 0x1c2430,
+    emissive: 0x06080c,
+  });
+
+  var northZ = L.northZ;
+  var i;
+  for (i = 0; i < L.wings.length; i++) {
+    var wing = L.wings[i];
+    var plaque = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.35, 0.32),
+      new THREE.MeshBasicMaterial({
+        map: createMegSignTexture(wing.label),
+        transparent: false,
+      })
+    );
+    plaque.position.set(wing.x, ALPHA_WING_DOOR_H + 0.28, northZ - 0.24);
+    plaque.rotation.y = Math.PI;
+    group.add(plaque);
+
+    if (wing.locked) {
+      var lockedDoor = new THREE.Mesh(
+        new THREE.BoxGeometry(ALPHA_WING_DOOR_W - 0.12, ALPHA_WING_DOOR_H, 0.1),
+        lockDoorMat
+      );
+      lockedDoor.position.set(wing.x, ALPHA_WING_DOOR_H * 0.5, northZ);
+      group.add(lockedDoor);
+      addAlphaInteractPick(group, ALPHA_WING_DOOR_W + 0.2, ALPHA_WING_DOOR_H + 0.15, 0.7, wing.x, ALPHA_WING_DOOR_H * 0.5, northZ - 0.28, {
+        kind: "meg_wing_door",
+        wing: wing.id,
+        label: wing.label,
+        note: ALPHA_LOCKED_NOTE,
+      });
+    } else {
+      wallBox(0.16, ALPHA_WING_DOOR_H + 0.2, 0.16, wing.minX, (ALPHA_WING_DOOR_H + 0.2) * 0.5, northZ);
+      wallBox(0.16, ALPHA_WING_DOOR_H + 0.2, 0.16, wing.maxX, (ALPHA_WING_DOOR_H + 0.2) * 0.5, northZ);
+    }
+  }
+
+  var officeDoorMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(ALPHA_WING_DOOR_W - 0.12, ALPHA_WING_DOOR_H, 0.1),
+    doorMat
+  );
+  officeDoorMesh.position.set(L.officeDoor.x, ALPHA_WING_DOOR_H * 0.5, northZ);
+  group.add(officeDoorMesh);
+  var officePlaque = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.5, 0.32),
+    new THREE.MeshBasicMaterial({
+      map: createMegSignTexture("高级办公室"),
+      transparent: false,
+    })
+  );
+  officePlaque.position.set(L.officeDoor.x, ALPHA_WING_DOOR_H + 0.28, northZ - 0.24);
+  officePlaque.rotation.y = Math.PI;
+  group.add(officePlaque);
+  var officePick = addAlphaInteractPick(
+    group,
+    ALPHA_WING_DOOR_W + 0.2,
+    ALPHA_WING_DOOR_H + 0.15,
+    0.7,
+    L.officeDoor.x,
+    ALPHA_WING_DOOR_H * 0.5,
+    northZ - 0.28,
+    {
+      kind: "meg_office_door",
+      note: ALPHA_OFFICE_LOCK_NOTE,
+    }
+  );
+  var officeDoorCollider = {
+    kind: "meg_office_door",
+    minX: L.officeDoor.minX + 0.02,
+    maxX: L.officeDoor.maxX - 0.02,
+    minZ: northZ - 0.22,
+    maxZ: northZ + 0.22,
+  };
+  registerMegColliderObject(ctx, megColliders, officeDoorCollider);
+  _megOfficeDoorState = {
+    mesh: officeDoorMesh,
+    pickMesh: officePick,
+    collider: officeDoorCollider,
+    ctx: ctx,
+    open: false,
+    opening: false,
+    t: 0,
+    duration: 1.05,
+    y0: ALPHA_WING_DOOR_H * 0.5,
+    y1: ALPHA_WING_DOOR_H * 1.45,
+  };
+
+  registerAlphaLayoutColliders(ctx, megColliders, center, false);
+
+  var notice = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.7, 0.72),
+    new THREE.MeshBasicMaterial({
+      map: createMegSignTexture("失物招领 / 天鹰币"),
+      transparent: false,
+    })
+  );
+  notice.position.set(center.x + 1.15, 1.7, northZ - 0.23);
+  notice.rotation.y = Math.PI;
+  group.add(notice);
+  addAlphaInteractPick(group, 1.8, 0.9, 0.45, center.x + 1.15, 1.7, northZ - 0.4, {
+    kind: "meg_alpha_notice",
+    note: ALPHA_AQUILA_NOTE,
+  });
+
+  function buildPocket(b, height, name) {
+    var pocket = new THREE.Group();
+    pocket.name = name;
+    var fw = b.maxX - b.minX;
+    var fd = b.maxZ - b.minZ;
+    var mx = (b.minX + b.maxX) * 0.5;
+    var mz = (b.minZ + b.maxZ) * 0.5;
+    var floor = new THREE.Mesh(new THREE.BoxGeometry(fw, 0.12, fd), floorMat);
+    floor.position.set(mx, 0.06, mz);
+    pocket.add(floor);
+    var roof = new THREE.Mesh(new THREE.BoxGeometry(fw + 0.2, 0.16, fd + 0.2), roomMat);
+    roof.position.set(mx, height + 0.08, mz);
+    pocket.add(roof);
+    var lamp = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.06, 0.7),
+      new THREE.MeshBasicMaterial({ color: 0xc8d8e8 })
+    );
+    lamp.position.set(mx, height - 0.12, mz);
+    pocket.add(lamp);
+    group.add(pocket);
+    return { mx: mx, mz: mz, fw: fw, fd: fd, pocket: pocket };
+  }
+
+  var exploreBuilt = buildPocket(L.explore, ALPHA_ROOM_H, "MegExploreWing");
+  buildAlphaRoomBox(exploreBuilt.pocket, roomMat, L.explore.maxX - L.explore.minX + 0.24, ALPHA_ROOM_H, 0.18, exploreBuilt.mx, ALPHA_ROOM_H * 0.5, L.explore.maxZ);
+  buildAlphaRoomBox(exploreBuilt.pocket, roomMat, 0.18, ALPHA_ROOM_H, L.explore.maxZ - L.explore.minZ, L.explore.minX, ALPHA_ROOM_H * 0.5, exploreBuilt.mz);
+  buildAlphaRoomBox(exploreBuilt.pocket, roomMat, 0.18, ALPHA_ROOM_H, L.explore.maxZ - L.explore.minZ, L.explore.maxX, ALPHA_ROOM_H * 0.5, exploreBuilt.mz);
+  buildAlphaRoomBox(exploreBuilt.pocket, woodMat, 1.6, 0.08, 0.9, exploreBuilt.mx, 0.86, exploreBuilt.mz);
+  buildAlphaRoomBox(exploreBuilt.pocket, woodMat, 0.08, 0.78, 0.08, exploreBuilt.mx - 0.62, 0.42, exploreBuilt.mz - 0.3);
+  buildAlphaRoomBox(exploreBuilt.pocket, woodMat, 0.08, 0.78, 0.08, exploreBuilt.mx + 0.62, 0.42, exploreBuilt.mz + 0.3);
+  buildAlphaRoomBox(exploreBuilt.pocket, metalMat, 0.28, 0.16, 0.22, exploreBuilt.mx + 0.28, 0.98, exploreBuilt.mz);
+  var briefing = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.55, 0.7),
+    new THREE.MeshBasicMaterial({
+      map: createMegSignTexture("路线简报"),
+      transparent: false,
+    })
+  );
+  briefing.position.set(exploreBuilt.mx, 1.85, L.explore.maxZ - 0.12);
+  briefing.rotation.y = Math.PI;
+  exploreBuilt.pocket.add(briefing);
+  addAlphaInteractPick(exploreBuilt.pocket, 1.7, 0.9, 0.4, exploreBuilt.mx, 1.85, L.explore.maxZ - 0.28, {
+    kind: "meg_explore_briefing",
+    note: ALPHA_BRIEFING_TOAST,
+  });
+
+  var officeBuilt = buildPocket(L.office, ALPHA_ROOM_H, "MegOfficerOffice");
+  buildAlphaRoomBox(officeBuilt.pocket, roomMat, 0.18, ALPHA_ROOM_H, L.office.maxZ - L.office.minZ, L.office.minX, ALPHA_ROOM_H * 0.5, officeBuilt.mz);
+  buildAlphaRoomBox(officeBuilt.pocket, roomMat, 0.18, ALPHA_ROOM_H, L.office.maxZ - L.office.minZ, L.office.maxX, ALPHA_ROOM_H * 0.5, officeBuilt.mz);
+  var officeNorthW = L.stairs.minX - L.office.minX;
+  if (officeNorthW > 0.3) {
+    buildAlphaRoomBox(
+      officeBuilt.pocket,
+      roomMat,
+      officeNorthW,
+      ALPHA_ROOM_H,
+      0.18,
+      L.office.minX + officeNorthW * 0.5,
+      ALPHA_ROOM_H * 0.5,
+      L.office.maxZ
+    );
+  }
+  var deskX = officeBuilt.mx - 0.85;
+  var deskZ = officeBuilt.mz - 0.35;
+  buildAlphaRoomBox(officeBuilt.pocket, woodMat, 1.7, 0.08, 0.86, deskX, 0.84, deskZ);
+  buildAlphaRoomBox(officeBuilt.pocket, woodMat, 0.08, 0.76, 0.08, deskX - 0.7, 0.4, deskZ - 0.3);
+  buildAlphaRoomBox(officeBuilt.pocket, woodMat, 0.08, 0.76, 0.08, deskX + 0.7, 0.4, deskZ + 0.3);
+  buildAlphaRoomBox(officeBuilt.pocket, new THREE.MeshBasicMaterial({ color: 0xffd27a }), 0.12, 0.22, 0.12, deskX + 0.55, 1.08, deskZ);
+  var fakeWin = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.2, 0.8),
+    new THREE.MeshBasicMaterial({ color: 0x8aa8c4 })
+  );
+  fakeWin.position.set(L.office.minX + 0.12, 1.7, officeBuilt.mz);
+  fakeWin.rotation.y = Math.PI * 0.5;
+  officeBuilt.pocket.add(fakeWin);
+  buildAlphaRoomBox(officeBuilt.pocket, metalMat, 0.55, 1.15, 0.42, L.office.minX + 0.7, 0.62, L.office.maxZ - 0.7);
+  var chairX = deskX;
+  var chairZ = deskZ + 0.72;
+  buildAlphaRoomBox(officeBuilt.pocket, woodMat, 0.42, 0.08, 0.42, chairX, 0.46, chairZ);
+  buildAlphaRoomBox(officeBuilt.pocket, woodMat, 0.08, 0.42, 0.42, chairX, 0.72, chairZ + 0.16);
+  addAlphaInteractPick(officeBuilt.pocket, 1.55, 0.55, 0.68, deskX, 0.88, deskZ, {
+    kind: "meg_office_desk",
+  });
+  addAlphaInteractPick(officeBuilt.pocket, 0.55, 0.75, 0.55, chairX, 0.52, chairZ, {
+    kind: "meg_office_chair",
+  });
+  var noticeX = L.office.minX + officeNorthW * 0.45;
+  var deptNotice = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.35, 0.55),
+    new THREE.MeshBasicMaterial({
+      map: createMegSignTexture("本职告示"),
+      transparent: false,
+    })
+  );
+  deptNotice.position.set(noticeX, 1.7, L.office.maxZ - 0.12);
+  deptNotice.rotation.y = Math.PI;
+  officeBuilt.pocket.add(deptNotice);
+  addAlphaInteractPick(officeBuilt.pocket, 1.4, 0.7, 0.4, noticeX, 1.7, L.office.maxZ - 0.28, {
+    kind: "meg_office_notice",
+  });
+  var plateZ = deskZ - 0.52;
+  var rankPlate = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.62, 0.2),
+    new THREE.MeshBasicMaterial({
+      map: createMegSignTexture("职级铭牌"),
+      transparent: false,
+    })
+  );
+  rankPlate.position.set(deskX + 0.48, 1.12, plateZ);
+  rankPlate.rotation.y = Math.PI;
+  officeBuilt.pocket.add(rankPlate);
+  addAlphaInteractPick(officeBuilt.pocket, 0.7, 0.28, 0.28, deskX + 0.48, 1.12, plateZ, {
+    kind: "meg_office_plate",
+  });
+
+  var stairGroup = new THREE.Group();
+  stairGroup.name = "MegOfficeStairs";
+  var stepCount = 8;
+  var stepLen = (L.stairs.maxZ - L.stairs.minZ) / stepCount;
+  var stepW = L.stairs.maxX - L.stairs.minX - 0.08;
+  var sx = (L.stairs.minX + L.stairs.maxX) * 0.5;
+  var stairMidZ = (L.stairs.minZ + L.stairs.maxZ) * 0.5;
+  for (var si = 0; si < stepCount; si++) {
+    var sy = (ALPHA_CELLAR_Y * (si + 0.5)) / stepCount;
+    var sz = L.stairs.minZ + stepLen * (si + 0.5);
+    buildAlphaRoomBox(stairGroup, metalMat, stepW, 0.1, stepLen * 0.92, sx, sy + 0.05, sz);
+  }
+  var railH = ALPHA_ROOM_H - ALPHA_CELLAR_Y + 0.4;
+  var railY = ALPHA_CELLAR_Y + railH * 0.5;
+  buildAlphaRoomBox(
+    stairGroup,
+    roomMat,
+    0.14,
+    railH,
+    L.stairs.maxZ - L.stairs.minZ,
+    L.stairs.minX - 0.07,
+    railY,
+    stairMidZ
+  );
+  buildAlphaRoomBox(
+    stairGroup,
+    roomMat,
+    0.14,
+    railH,
+    L.stairs.maxZ - L.stairs.minZ,
+    L.stairs.maxX + 0.07,
+    railY,
+    stairMidZ
+  );
+  buildAlphaRoomBox(
+    stairGroup,
+    roomMat,
+    stepW + 0.28,
+    0.14,
+    L.stairs.maxZ - L.stairs.minZ,
+    sx,
+    ALPHA_ROOM_H + 0.08,
+    stairMidZ
+  );
+  group.add(stairGroup);
+
+  var cellarFloor = new THREE.Mesh(
+    new THREE.BoxGeometry(L.cellar.maxX - L.cellar.minX, 0.12, L.cellar.maxZ - L.cellar.minZ),
+    floorMat
+  );
+  cellarFloor.position.set(
+    (L.cellar.minX + L.cellar.maxX) * 0.5,
+    ALPHA_CELLAR_Y + 0.06,
+    (L.cellar.minZ + L.cellar.maxZ) * 0.5
+  );
+  group.add(cellarFloor);
+  var cellarRoof = new THREE.Mesh(
+    new THREE.BoxGeometry(L.cellar.maxX - L.cellar.minX + 0.2, 0.14, L.cellar.maxZ - L.cellar.minZ + 0.2),
+    roomMat
+  );
+  cellarRoof.position.set(
+    (L.cellar.minX + L.cellar.maxX) * 0.5,
+    ALPHA_CELLAR_Y + ALPHA_CELLAR_H,
+    (L.cellar.minZ + L.cellar.maxZ) * 0.5
+  );
+  group.add(cellarRoof);
+  var cellarMidX = (L.cellar.minX + L.cellar.maxX) * 0.5;
+  var cellarMidZ = (L.cellar.minZ + L.cellar.maxZ) * 0.5;
+  buildAlphaRoomBox(group, roomMat, L.cellar.maxX - L.cellar.minX, ALPHA_CELLAR_H, 0.16, cellarMidX, ALPHA_CELLAR_Y + ALPHA_CELLAR_H * 0.5, L.cellar.maxZ);
+  buildAlphaRoomBox(group, roomMat, 0.16, ALPHA_CELLAR_H, L.cellar.maxZ - L.cellar.minZ, L.cellar.minX, ALPHA_CELLAR_Y + ALPHA_CELLAR_H * 0.5, cellarMidZ);
+  buildAlphaRoomBox(group, roomMat, 0.16, ALPHA_CELLAR_H, L.cellar.maxZ - L.cellar.minZ, L.cellar.maxX, ALPHA_CELLAR_Y + ALPHA_CELLAR_H * 0.5, cellarMidZ);
+  var cellarSouthW = L.stairs.minX - L.cellar.minX;
+  if (cellarSouthW > 0.3) {
+    buildAlphaRoomBox(
+      group,
+      roomMat,
+      cellarSouthW,
+      ALPHA_CELLAR_H,
+      0.16,
+      L.cellar.minX + cellarSouthW * 0.5,
+      ALPHA_CELLAR_Y + ALPHA_CELLAR_H * 0.5,
+      L.cellar.minZ
+    );
+  }
+  var cellarLamp = new THREE.Mesh(
+    new THREE.BoxGeometry(0.55, 0.06, 0.55),
+    new THREE.MeshBasicMaterial({ color: 0xc4b070 })
+  );
+  cellarLamp.position.set(cellarMidX, ALPHA_CELLAR_Y + ALPHA_CELLAR_H - 0.16, cellarMidZ);
+  group.add(cellarLamp);
+  buildAlphaRoomBox(group, metalMat, 1.4, 1.5, 0.36, L.cellar.minX + 1.1, ALPHA_CELLAR_Y + 0.82, L.cellar.maxZ - 0.7);
+  buildAlphaRoomBox(group, metalMat, 0.7, 1.35, 0.48, L.cellar.maxX - 0.85, ALPHA_CELLAR_Y + 0.74, cellarMidZ);
+  var restrict = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.5, 0.38),
+    new THREE.MeshBasicMaterial({
+      map: createMegSignTexture("受限贮存"),
+      transparent: false,
+    })
+  );
+  restrict.position.set(cellarMidX, ALPHA_CELLAR_Y + 2.15, L.cellar.maxZ - 0.12);
+  restrict.rotation.y = Math.PI;
+  group.add(restrict);
+  addAlphaInteractPick(group, 0.9, 1.4, 0.7, L.cellar.maxX - 0.85, ALPHA_CELLAR_Y + 0.85, cellarMidZ, {
+    kind: "meg_cellar_cabinet",
+  });
+  addAlphaInteractPick(group, 1.6, 0.5, 0.35, cellarMidX, ALPHA_CELLAR_Y + 2.15, L.cellar.maxZ - 0.28, {
+    kind: "meg_cellar_notice",
+    note: "受限贮存 · 正式队员以上可开柜。容量仍是基地 100 格。",
+  });
+}
+
 function buildMegAlphaBase(root, ctx) {
   var center = megBaseWorldCenter();
   _megBaseCenter = { x: center.x, z: center.z };
@@ -813,9 +1329,39 @@ function buildMegAlphaBase(root, ctx) {
     group.add(m);
   }
 
-  // 北墙 (+Z)
-  wallBox(bw, bh, wallT, center.x, bh * 0.5, center.z + hz);
-  megWall(center.x - hx, center.x + hx, center.z + hz - wallT, center.z + hz + wallT);
+  // 北墙 (+Z) — 四署 + 办公室门洞，实墙由 Alpha 布局切段
+  var northLayout = getAlphaLayout(center);
+  var northOpenings = northLayout.wings
+    .map(function (w) {
+      return { minX: w.minX, maxX: w.maxX };
+    })
+    .concat([{ minX: northLayout.officeDoor.minX, maxX: northLayout.officeDoor.maxX }])
+    .sort(function (a, b) {
+      return a.minX - b.minX;
+    });
+  var northCursor = center.x - hx;
+  for (var ni = 0; ni < northOpenings.length; ni++) {
+    var opening = northOpenings[ni];
+    if (opening.minX > northCursor + 0.08) {
+      var segW = opening.minX - northCursor;
+      wallBox(segW, bh, wallT, northCursor + segW * 0.5, bh * 0.5, center.z + hz);
+    }
+    northCursor = opening.maxX;
+  }
+  if (northCursor < center.x + hx - 0.08) {
+    var tailW = center.x + hx - northCursor;
+    wallBox(tailW, bh, wallT, northCursor + tailW * 0.5, bh * 0.5, center.z + hz);
+  }
+  for (var nj = 0; nj < northOpenings.length; nj++) {
+    wallBox(
+      northOpenings[nj].maxX - northOpenings[nj].minX,
+      bh - ALPHA_WING_DOOR_H,
+      wallT,
+      (northOpenings[nj].minX + northOpenings[nj].maxX) * 0.5,
+      ALPHA_WING_DOOR_H + (bh - ALPHA_WING_DOOR_H) * 0.5,
+      center.z + hz
+    );
+  }
   // 南墙 (-Z)
   wallBox(bw, bh, wallT, center.x, bh * 0.5, center.z - hz);
   megWall(center.x - hx, center.x + hx, center.z - hz - wallT, center.z - hz + wallT);
@@ -949,7 +1495,7 @@ function buildMegAlphaBase(root, ctx) {
   group.add(roof);
 
   // 门上方标牌
-  var signTex = createMegSignTexture("alpha");
+  var signTex = createMegSignTexture(ALPHA_SIGN);
   var sign = new THREE.Mesh(
     new THREE.PlaneGeometry(4.2, 1.05),
     new THREE.MeshBasicMaterial({ map: signTex, transparent: false })
@@ -1131,6 +1677,8 @@ function buildMegAlphaBase(root, ctx) {
     group: recruiter.group,
   };
 
+  buildAlphaHeadquarters(group, ctx, megColliders, center, wallBox);
+
   root.add(group);
   _megBaseOccluderGroup = group;
   _megBaseColliders = megColliders;
@@ -1309,6 +1857,52 @@ function sharedChunkPlaneGeo(size) {
   return _sharedChunkPlaneGeo;
 }
 
+var _sharedCellPlaneGeo = null;
+function sharedCellPlaneGeo() {
+  if (!_sharedCellPlaneGeo) {
+    _sharedCellPlaneGeo = new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE);
+  }
+  return _sharedCellPlaneGeo;
+}
+
+function cellOverlapsAlphaBelowGrade(gCol, gRow) {
+  var center = megAlphaCenterOrNull();
+  if (!center) return false;
+  var L = getAlphaLayout(center);
+  var c = cellWorldCenter(gCol, gRow);
+  return (
+    isInsideAabb(c.x, c.z, L.stairs, 0) || isInsideAabb(c.x, c.z, L.cellar, 0)
+  );
+}
+
+function chunkHasBelowGradeCut(baseCol, baseRow) {
+  var lr;
+  var lc;
+  for (lr = 0; lr < CHUNK_CELLS; lr++) {
+    for (lc = 0; lc < CHUNK_CELLS; lc++) {
+      if (cellOverlapsAlphaBelowGrade(baseCol + lc, baseRow + lr)) return true;
+    }
+  }
+  return false;
+}
+
+function reloadBelowGradeChunks(ctx) {
+  if (!ctx || !ctx.chunks) return;
+  var reload = [];
+  ctx.chunks.forEach(function (rec, key) {
+    var baseCol = rec.cx * CHUNK_CELLS;
+    var baseRow = rec.cz * CHUNK_CELLS;
+    if (chunkHasBelowGradeCut(baseCol, baseRow)) {
+      reload.push({ key: key, cx: rec.cx, cz: rec.cz });
+    }
+  });
+  var i;
+  for (i = 0; i < reload.length; i++) {
+    unloadChunk(reload[i].key, ctx);
+    loadChunk(reload[i].cx, reload[i].cz, ctx);
+  }
+}
+
 function isUnderNamedAncestor(obj, name) {
   var p = obj;
   while (p) {
@@ -1320,6 +1914,7 @@ function isUnderNamedAncestor(obj, name) {
 
 function disposeChunkMeshResources(group) {
   var chunkPlane = _sharedChunkPlaneGeo;
+  var cellPlane = _sharedCellPlaneGeo;
   var wallGeo = sharedWallGeo();
   var chestGeo = sharedChestGeo();
   var pickGeo = sharedChestPickGeo();
@@ -1332,6 +1927,7 @@ function disposeChunkMeshResources(group) {
     if (
       geo &&
       geo !== chunkPlane &&
+      geo !== cellPlane &&
       geo !== wallGeo &&
       geo !== chestGeo &&
       geo !== pickGeo &&
@@ -1835,15 +2431,35 @@ function loadChunk(cx, cz, ctx) {
   var ceilingMat = sharedCeilingMat().clone();
   ceilingMat.color.setHex(section.ceiling);
 
-  var floor = new THREE.Mesh(sharedChunkPlaneGeo(chunkSize), floorMat);
-  floor.rotation.x = -Math.PI * 0.5;
-  floor.position.set(centerX, 0, centerZ);
-  group.add(floor);
+  if (chunkHasBelowGradeCut(baseCol, baseRow)) {
+    var cellGeo = sharedCellPlaneGeo();
+    var wr;
+    var wc;
+    for (wr = 0; wr < CHUNK_CELLS; wr++) {
+      for (wc = 0; wc < CHUNK_CELLS; wc++) {
+        if (cellOverlapsAlphaBelowGrade(baseCol + wc, baseRow + wr)) continue;
+        var cell = cellWorldCenter(baseCol + wc, baseRow + wr);
+        var cellFloor = new THREE.Mesh(cellGeo, floorMat);
+        cellFloor.rotation.x = -Math.PI * 0.5;
+        cellFloor.position.set(cell.x, 0, cell.z);
+        group.add(cellFloor);
+        var cellCeil = new THREE.Mesh(cellGeo, ceilingMat);
+        cellCeil.rotation.x = Math.PI * 0.5;
+        cellCeil.position.set(cell.x, WAREHOUSE_HEIGHT, cell.z);
+        group.add(cellCeil);
+      }
+    }
+  } else {
+    var floor = new THREE.Mesh(sharedChunkPlaneGeo(chunkSize), floorMat);
+    floor.rotation.x = -Math.PI * 0.5;
+    floor.position.set(centerX, 0, centerZ);
+    group.add(floor);
 
-  var ceiling = new THREE.Mesh(sharedChunkPlaneGeo(chunkSize), ceilingMat);
-  ceiling.rotation.x = Math.PI * 0.5;
-  ceiling.position.set(centerX, WAREHOUSE_HEIGHT, centerZ);
-  group.add(ceiling);
+    var ceiling = new THREE.Mesh(sharedChunkPlaneGeo(chunkSize), ceilingMat);
+    ceiling.rotation.x = Math.PI * 0.5;
+    ceiling.position.set(centerX, WAREHOUSE_HEIGHT, centerZ);
+    group.add(ceiling);
+  }
 
   var record = {
     cx: cx,
@@ -2099,6 +2715,7 @@ export function buildBackroomsLevel1World(root, opts) {
     if (!megBaseBuilt && visitedChunks.size >= MEG_BASE_CHUNK_TRAVEL) {
       megBaseBuilt = true;
       buildMegAlphaBase(root, ctx);
+      reloadBelowGradeChunks(ctx);
     }
 
     if (here.cx === lastCx && here.cz === lastCz && chunks.size > 0) return;
@@ -2147,10 +2764,29 @@ export function buildBackroomsLevel1World(root, opts) {
     isInsideMegBaseInterior: function (px, pz) {
       return isInsideMegBaseInterior(px, pz);
     },
+    isInsideMegBaseComplex: function (px, pz) {
+      return isInsideMegBaseComplex(px, pz);
+    },
+    getAlphaFloorY: function (px, pz) {
+      var center = megAlphaCenterOrNull();
+      return center ? getAlphaFloorY(px, pz, center) : 0;
+    },
+    stickAlphaRampY: function (feetY, velY, px, pz) {
+      var center = megAlphaCenterOrNull();
+      return center ? stickAlphaRampY(feetY, velY, px, pz, center) : feetY;
+    },
+    getAlphaCeilingY: function (px, pz, fallback) {
+      var center = megAlphaCenterOrNull();
+      return center ? getAlphaCeilingY(px, pz, center, fallback) : fallback;
+    },
+    tryOpenMegOfficeDoorAim: function () {
+      return tryOpenMegOfficeDoorAim();
+    },
     ensureMegBase: function () {
       if (!megBaseBuilt) {
         megBaseBuilt = true;
         buildMegAlphaBase(root, ctx);
+        reloadBelowGradeChunks(ctx);
       } else {
         syncMegBaseColliders(ctx);
       }
@@ -2236,6 +2872,12 @@ export function buildBackroomsLevel1World(root, opts) {
       if (_level13Entrance) roots.push(_level13Entrance);
       if (_levelC1Entrance) roots.push(_levelC1Entrance);
       if (_e81CallPick) roots.push(_e81CallPick);
+      if (_megAlphaPicks) {
+        for (var ai = 0; ai < _megAlphaPicks.length; ai++) {
+          var pick = _megAlphaPicks[ai];
+          if (pick && pick.visible) roots.push(pick);
+        }
+      }
       for (var si = 0; si < ctx.sublevelInteracts.length; si++) {
         roots.push(ctx.sublevelInteracts[si]);
       }

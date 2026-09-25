@@ -60,6 +60,7 @@ const EXPECTED_PRICES = {
   level_key_c1298: [170, 85],
   level_key_c1299: [300, 150],
   level_key_c1299_1: [300, 150],
+  level_key_c1623: [155, 75],
   level_key_hub: [200, 100],
 };
 
@@ -97,11 +98,11 @@ const NATIVE_HUB_IDS = [
   "level_key_l363",
 ];
 
-test("catalog contains exactly 64 unique, valid level keys", () => {
-  assert.equal(LEVEL_KEY_CATALOG.length, 64);
+test("catalog contains exactly 65 unique, valid level keys", () => {
+  assert.equal(LEVEL_KEY_CATALOG.length, 65);
   assert.deepEqual(validateLevelKeyCatalog(), []);
-  assert.equal(new Set(LEVEL_KEY_CATALOG.map((entry) => entry.itemId)).size, 64);
-  assert.equal(new Set(LEVEL_KEY_CATALOG.map((entry) => entry.levelId)).size, 64);
+  assert.equal(new Set(LEVEL_KEY_CATALOG.map((entry) => entry.itemId)).size, 65);
+  assert.equal(new Set(LEVEL_KEY_CATALOG.map((entry) => entry.levelId)).size, 65);
   for (const entry of LEVEL_KEY_CATALOG) {
     assert.match(entry.itemId, /^level_key_[a-z0-9_]+$/);
     assert.ok(entry.page);

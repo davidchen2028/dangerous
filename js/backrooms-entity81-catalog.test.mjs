@@ -15,6 +15,7 @@ test("Entity 81 destinations are numeric implemented levels only", () => {
   assert.equal(dests.some((d) => d.levelId === "l110"), false);
   assert.equal(dests.some((d) => d.levelId === "l6_1"), false);
   assert.equal(dests.some((d) => d.levelId === "sqrt2"), false);
+  assert.equal(dests.some((d) => d.levelId === "c1623"), false);
   assert.equal(dests.some((d) => String(d.levelId).startsWith("c")), false);
   assert.equal(dests.some((d) => /c1290|129/.test(d.page)), false);
 });

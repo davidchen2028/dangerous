@@ -8,6 +8,7 @@ import {
   registerBackroomsEntityTarget,
   unregisterBackroomsEntityTarget,
 } from "./backrooms-entity-health.js";
+import { isOnNinthAvenue, L8_CHICKEN_HOMES } from "./backrooms-level8-layout.js";
 
 export const L8_CHICKEN_COUNT = 3;
 export const L8_CHICKEN_DAMAGE = 20;
@@ -237,7 +238,13 @@ function updateChicken(chicken, dt, player, survival, toastFn) {
 
   chicken.group.position.y = Math.sin(chicken.phase * 2.4) * 0.025;
   var dist = Math.hypot(px - chicken.group.position.x, pz - chicken.group.position.z);
-  if (dist <= ATTACK_RANGE && chicken.cooldown <= 0 && survival && !survival.dead) {
+  if (
+    dist <= ATTACK_RANGE &&
+    chicken.cooldown <= 0 &&
+    survival &&
+    !survival.dead &&
+    !isOnNinthAvenue(px, pz)
+  ) {
     startLeap(chicken, px, pz);
   } else if (dist <= ATTACK_RANGE * 1.4) {
     faceToward(chicken, px, pz);
@@ -245,11 +252,7 @@ function updateChicken(chicken, dt, player, survival, toastFn) {
 }
 
 export function createLevel8Chickens(parent) {
-  var spawns = [
-    { x: -8, z: -10, rotY: 0.4 },
-    { x: 12, z: 2, rotY: -1.2 },
-    { x: -11, z: 17, rotY: 2.4 },
-  ];
+  var spawns = L8_CHICKEN_HOMES;
   var chickens = [];
   var i;
   for (i = 0; i < L8_CHICKEN_COUNT; i++) {
