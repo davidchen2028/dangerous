@@ -3,6 +3,7 @@
  * 独立页面 backrooms-level0.html，不修改 action-scene.js
  */
 import * as THREE from "three";
+import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import { BackroomsSurvival, resetBackroomsRun, registerBackroomsInventoryUseHandlers } from "./backrooms-survival.js";
 import { installMegCheckpointDeathHooks } from "./backrooms-meg-checkpoint.js";
 import {
@@ -14,7 +15,9 @@ import {
   toggleBackpack,
   isInventoryOpen,
   setInventoryOpenHandler,
+  setItemDropHandler,
 } from "./backrooms-inventory.js";
+import { createWorldDrops, DROPPED_ITEM_KIND } from "./backrooms-world-drops.js";
 import { updateMegPointsDisplay, resetMegPoints } from "./backrooms-meg-points.js";
 import {
   initBackroomsTemperature,
@@ -70,7 +73,7 @@ import {
   updateLevel02Entrances,
 } from "./backrooms-level0-02.js?v=16";
 import { BLUE_HOLE_CELL, buildBlueHole } from "./backrooms-level0-03.js?v=3";
-import { createLevel0ZoneManager } from "./backrooms-level0-zones.js?v=3";
+import { createLevel0ZoneManager } from "./backrooms-level0-zones.js?v=4";
 import { grantLevelPass, consumeLevel0CarryEntry } from "./backrooms-level-pass.js";
 import {
   handleTaskUiKey,
@@ -84,12 +87,19 @@ import {
   disposeClipWallVortex,
   L0_POSTER_WALL_CELL,
 } from "./backrooms-level0-wall-decor.js";
-import { createLevel0WorldManager } from "./backrooms-level0-world.js?v=2";
+import { createLevel0WorldManager } from "./backrooms-level0-world.js?v=15";
+import {
+  createLevel0ExitClock,
+  markLeftLevel0,
+  firstVisitPoiProfile,
+  revisitPoiProfile,
+  boostedPoiProfile,
+} from "./backrooms-level0-exit-clock.js?v=3";
 import { createLevel0HallucinationPool } from "./backrooms-level0-hallucinations.js";
 import {
   buildManilaRoom,
   MANILA_SESSION_KEY,
-} from "./backrooms-level0-manila.js";
+} from "./backrooms-level0-manila.js?v=3";
 import { resetLevel01LootSession } from "./backrooms-level0-01.js";
 
 // =============================================================================
@@ -284,6 +294,60 @@ const FLUORO_WIDTH = 0.16;
 const FLUORO_DEPTH = 0.11;
 const FLUORO_MOUNT_Y = WALL_HEIGHT - 0.02;
 
+const FLUORESCENT_GLB_URL = "models/level0-fluorescent-light.glb";
+const MANILA_DOOR_GLB_URL = "models/level0-manila-door.glb";
+/** @type {THREE.BufferGeometry | null} */
+let fluorescentModelGeometry = null;
+let fluorescentModelRequested = false;
+
+function applyFluorescentModel() {
+  if (level0World && fluorescentModelGeometry) {
+    level0World.setLightFixtureModel(fluorescentModelGeometry);
+  }
+}
+
+/** 加载失败时保留半透明占位块 */
+function loadManilaDoorModel() {
+  new GLTFLoader().load(
+    MANILA_DOOR_GLB_URL,
+    function (gltf) {
+      var geometry = null;
+      gltf.scene.traverse(function (child) {
+        if (!geometry && child.isMesh) geometry = child.geometry;
+      });
+      if (level0World && geometry) level0World.setManilaDoorModel(geometry);
+    },
+    undefined,
+    function (err) {
+      console.warn("[Level0] 马尼拉门模型加载失败，保留占位", err);
+    }
+  );
+}
+
+/** 加载失败时保留程序化方块灯 */
+function loadFluorescentModel() {
+  if (fluorescentModelRequested) {
+    applyFluorescentModel();
+    return;
+  }
+  fluorescentModelRequested = true;
+  new GLTFLoader().load(
+    FLUORESCENT_GLB_URL,
+    function (gltf) {
+      gltf.scene.traverse(function (child) {
+        if (!fluorescentModelGeometry && child.isMesh) {
+          fluorescentModelGeometry = child.geometry;
+        }
+      });
+      applyFluorescentModel();
+    },
+    undefined,
+    function (err) {
+      console.warn("[Level0] 荧光灯模型加载失败，使用方块灯", err);
+    }
+  );
+}
+
 const fps = createBackroomsFpsState({
   player: { x: 0, z: 0, radius: 0.32, speed: 4.2 },
 });
@@ -323,6 +387,8 @@ let hallucinations = null;
 let manilaRoom = null;
 let manilaReturnSnapshot = null;
 let manilaTriggerCooldownUntil = 0;
+/** @type {ReturnType<createWorldDrops> | null} */
+let worldDrops = null;
 let lightHallucinationMul = 1;
 let redProximityLightMul = 1;
 const seenRedEntrances = new WeakSet();
@@ -334,10 +400,11 @@ const MAIN_AREA_RADIUS = 96;
 let leftMainAreaHintShown = false;
 const CLIP_DASH_SPEED = 13;
 const CLIP_DASH_TIME = 0.55;
-/** 测试用自动切出的等待时长 */
-const AUTO_CLIP_DELAY_MS = 20000;
-/** 到时后自动切出的时间戳；0 表示已结算或未启用 */
-let autoClipDeadline = 0;
+/** @type {ReturnType<createLevel0ExitClock> | null} */
+let exitClock = null;
+let exitHumAudio = null;
+let exitBoostAnnounced = false;
+let exitClockWasInSub = false;
 
 function syncLevel0HudTitle(title) {
   var el = document.querySelector(".backrooms-hud__title");
@@ -491,26 +558,27 @@ function createSpecialClipWallMaterial() {
   });
 }
 
-/** 切出 Level 1 的特殊墙 — 更明显闪烁 */
+/** 切出 Level 1 的特殊墙 — 出口提示越强，闪烁越明显 */
 function updateSpecialClipWallFlicker(elapsed) {
   updateClipWallVortex(elapsed);
   if (!specialClipWallMesh || clipState !== "idle") return;
   var mat = specialClipWallMesh.material;
   if (!mat || mat.emissiveIntensity == null) return;
+  var hint = exitClock ? exitClock.hintLevel() : 0;
 
   var buzz =
     0.72 +
     Math.sin(elapsed * 5.4) * 0.22 +
     Math.sin(elapsed * 13.7 + 0.8) * 0.1;
 
-  if (Math.random() < 0.045) {
+  if (Math.random() < 0.045 + hint * 0.12) {
     buzz *= 0.06 + Math.random() * 0.12;
   }
-  if (Math.random() < 0.012) {
+  if (Math.random() < 0.012 + hint * 0.04) {
     buzz *= 0.02;
   }
 
-  mat.emissiveIntensity = 0.12 + buzz * 0.35;
+  mat.emissiveIntensity = 0.12 + buzz * (0.35 + hint * 0.45);
 }
 
 function createFloorMaterial() {
@@ -558,29 +626,13 @@ function buildBackroomsLevel(root) {
           var wx = tiledCellCenterX(tileCol, col);
           var wz = tiledCellCenterZ(tileRow, row);
 
-          // 红室、0.2 灰门等特殊内容只放在中央模板，避免生成九份子层级入口。
+          // 红室 / 0.2 灰门入口已关闭，按普通墙砌上。实现仍留在子层级文件。
           if (isCenterTile && isRedChannelCell(row, col)) {
-            buildRedChannelWall(
-              wallsGroup,
-              wx,
-              wz,
-              GRID_SIZE,
-              WALL_HEIGHT,
-              wallColliders
-            );
-            continue;
+            /* 入口关闭 */
           }
 
           if (isCenterTile && isGrayDoorCell(row, col)) {
-            buildGrayDoorWall(
-              wallsGroup,
-              wx,
-              wz,
-              GRID_SIZE,
-              WALL_HEIGHT,
-              wallColliders
-            );
-            continue;
+            /* 入口关闭 */
           }
 
           var special = isSpecialWallCell(tileRow, tileCol, row, col);
@@ -630,12 +682,7 @@ function buildBackroomsLevel(root) {
   floor.receiveShadow = false;
   root.add(floor);
 
-  buildBlueHole(
-    root,
-    cellCenterX(BLUE_HOLE_CELL.col),
-    cellCenterZ(BLUE_HOLE_CELL.row),
-    GRID_SIZE
-  );
+  // 0.3 蓝洞入口已关闭；buildBlueHole 仍保留供以后加回。
 
   // 天花板 — 覆盖墙体顶部 Y = WALL_HEIGHT
   var ceilingGeo = new THREE.PlaneGeometry(WORLD_WIDTH, WORLD_DEPTH);
@@ -818,6 +865,27 @@ function addStreamingAmbientLights(root) {
   });
 }
 
+function getClipHintCenter() {
+  if (level0World && level0World.getClipHintCenter) {
+    return level0World.getClipHintCenter();
+  }
+  return getSpecialWallCenter();
+}
+
+function fluorescentHintAlign(fixture) {
+  var hint = exitClock ? exitClock.hintLevel() : 0;
+  var clip = getClipHintCenter();
+  if (hint < 0.05 || !clip || !fixture) return 0;
+  var fdx = (fixture.x || 0) - fps.player.x;
+  var fdz = (fixture.z || 0) - fps.player.z;
+  var flen = Math.hypot(fdx, fdz) || 1;
+  var cdx = clip.x - fps.player.x;
+  var cdz = clip.z - fps.player.z;
+  var clen = Math.hypot(cdx, cdz) || 1;
+  var align = (fdx * cdx + fdz * cdz) / (flen * clen);
+  return align > 0.2 ? hint * align : 0;
+}
+
 /** 荧光灯经典闪烁：工频微颤 + 偶发瞬断 + 稀有长暗 */
 function updateFluorescentFlicker(elapsed) {
   if (level0World) {
@@ -843,16 +911,17 @@ function updateFluorescentFlicker(elapsed) {
       Math.sin(elapsed * 118 + f.buzzPhase) * 0.022 +
       Math.sin(elapsed * 367 + f.buzzPhase * 1.7) * 0.012;
 
-    if (Math.random() < 0.006) {
+    var extraFlicker = fluorescentHintAlign(f);
+    if (Math.random() < 0.006 + extraFlicker * 0.045) {
       f.dimUntil = elapsed + 0.025 + Math.random() * 0.055;
     }
-    if (Math.random() < 0.00035) {
+    if (Math.random() < 0.00035 + extraFlicker * 0.008) {
       f.dimUntil = elapsed + 0.12 + Math.random() * 0.28;
     }
 
     var dimMul = 1;
     if (elapsed < f.dimUntil) {
-      dimMul = 0.28 + Math.random() * 0.35;
+      dimMul = (0.28 + Math.random() * 0.35) * (1 - extraFlicker * 0.35);
     }
 
     var mul = Math.max(0.45, Math.min(1.08, buzz * dimMul));
@@ -932,6 +1001,151 @@ function updateRedEntranceAnomaly(nowMs) {
   setLevel0MusicDuck(1 - maxAmount * 0.88, "red_proximity");
 }
 
+function isExitClockPaused() {
+  return !!(
+    manilaRoom ||
+    (level0Zones && level0Zones.isInSubZone()) ||
+    (survival && survival.dead) ||
+    clipState !== "idle" ||
+    isInventoryOpen() ||
+    isTaskUiOpen() ||
+    isDevJumpOpen()
+  );
+}
+
+function applyExitPressure(profile) {
+  if (level0World && level0World.setExitPressure) {
+    level0World.setExitPressure(profile);
+  }
+}
+
+function stopExitHum() {
+  if (!exitHumAudio) return;
+  try {
+    if (exitHumAudio.osc) exitHumAudio.osc.stop();
+    if (exitHumAudio.context) exitHumAudio.context.close();
+  } catch (err) {
+    /* ignore */
+  }
+  exitHumAudio = null;
+}
+
+function updateExitHum() {
+  var hint = exitClock ? exitClock.hintLevel() : 0;
+  var clip = getClipHintCenter();
+  var want =
+    hint > 0.08 &&
+    clip &&
+    clipState === "idle" &&
+    !isExitClockPaused();
+  if (!want) {
+    if (exitHumAudio) {
+      try {
+        exitHumAudio.gain.gain.setTargetAtTime(
+          0.0001,
+          exitHumAudio.context.currentTime,
+          0.25
+        );
+      } catch (err) {
+        stopExitHum();
+      }
+    }
+    return;
+  }
+  if (!exitHumAudio) {
+    try {
+      var AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      var context = new AudioCtx();
+      var osc = context.createOscillator();
+      var gain = context.createGain();
+      var panner =
+        context.createStereoPanner ? context.createStereoPanner() : null;
+      osc.type = "sawtooth";
+      osc.frequency.value = 118;
+      gain.gain.value = 0.0001;
+      osc.connect(gain);
+      if (panner) {
+        gain.connect(panner);
+        panner.connect(context.destination);
+      } else {
+        gain.connect(context.destination);
+      }
+      osc.start();
+      exitHumAudio = { context: context, osc: osc, gain: gain, panner: panner };
+    } catch (err2) {
+      exitHumAudio = null;
+      return;
+    }
+  }
+  var dx = clip.x - fps.player.x;
+  var dz = clip.z - fps.player.z;
+  var dist = Math.hypot(dx, dz) || 1;
+  var pan = Math.max(-1, Math.min(1, (dx * Math.cos(fps.yaw) + dz * Math.sin(fps.yaw)) / dist));
+  var near = Math.max(0, 1 - dist / 52);
+  var vol = 0.0035 + hint * 0.016 + near * 0.01;
+  try {
+    if (exitHumAudio.panner && exitHumAudio.panner.pan) {
+      exitHumAudio.panner.pan.setTargetAtTime(
+        pan,
+        exitHumAudio.context.currentTime,
+        0.12
+      );
+    }
+    exitHumAudio.gain.gain.setTargetAtTime(
+      vol,
+      exitHumAudio.context.currentTime,
+      0.14
+    );
+  } catch (err3) {
+    stopExitHum();
+  }
+}
+
+function standingExitKind() {
+  if (!level0World || manilaRoom) return "";
+  var triggers = level0World.getPoiTriggers ? level0World.getPoiTriggers() : [];
+  var i;
+  for (i = 0; i < triggers.length; i++) {
+    var trigger = triggers[i];
+    var kind = trigger && (trigger.kind || trigger.poiKind);
+    if (kind !== "clip" && kind !== "manila") continue;
+    if (pointInTrigger(fps.player.x, fps.player.z, trigger)) return kind;
+  }
+  return "";
+}
+
+function isStandingAtExitTrigger() {
+  return !!standingExitKind();
+}
+
+function playerHasFoundExit() {
+  return isAimingClipWall() || isAimingManilaEntry() || isStandingAtExitTrigger();
+}
+
+function updateExitClock(dt) {
+  if (!exitClock || clipState !== "idle") return;
+  var inSub = !!(manilaRoom || (level0Zones && level0Zones.isInSubZone()));
+  var leavingSub = exitClockWasInSub && !inSub;
+  exitClockWasInSub = inSub;
+  exitClock.setPaused(isExitClockPaused(), { grace: leavingSub });
+  var step = exitClock.tick(dt * 1000);
+  if (step.justBoosted && !exitBoostAnnounced) {
+    exitBoostAnnounced = true;
+    applyExitPressure(boostedPoiProfile());
+    showBackroomsToast("荧光灯的嗡鸣不再均匀。顺着异常闪烁走。");
+  }
+  updateExitHum();
+  if (!step.shouldAutoClip) return;
+  if (playerHasFoundExit()) {
+    exitClock.nudgeAuto(8000);
+    return;
+  }
+  exitClock.markFired();
+  showBackroomsToast("墙壁失去了阻力，你被推出了这一层。");
+  goToLevel1FromL0();
+}
+
 function stopRedTinnitus() {
   if (!redTinnitusAudio) return;
   try {
@@ -993,6 +1207,7 @@ function isNearCreepyLandmark() {
     var streamedLandmarks = level0World.getLandmarks();
     for (var li = 0; li < streamedLandmarks.length; li++) {
       var streamedLm = streamedLandmarks[li];
+      if (streamedLm.kind === "clip" || streamedLm.kind === "manila") continue;
       if (Math.hypot(streamedLm.x - fps.player.x, streamedLm.z - fps.player.z) <= 2.8) {
         return true;
       }
@@ -1032,7 +1247,7 @@ function maybeHintLeftMainArea() {
   showBackroomsToast("你已离开了主区域");
 }
 
-function showBackroomsToast(msg) {
+function showBackroomsToast(msg, durationMs) {
   var el = document.getElementById("backroomsToast");
   if (!el) {
     el = document.createElement("p");
@@ -1047,13 +1262,15 @@ function showBackroomsToast(msg) {
   el.hidden = false;
   el.classList.remove("backrooms-toast--hide");
   if (el._toastTimer) clearTimeout(el._toastTimer);
+  var hold = Number(durationMs);
+  if (!Number.isFinite(hold) || hold < 800) hold = 2400;
   el._toastTimer = setTimeout(function () {
     el.classList.add("backrooms-toast--hide");
     setTimeout(function () {
       el.hidden = true;
       el.classList.remove("backrooms-toast--hide");
     }, 400);
-  }, 2400);
+  }, hold);
 }
 
 function initSurvivalHud() {
@@ -1111,7 +1328,7 @@ function tryJump() {
 function updatePlayerPhysics(dt) {
   _physOpts.gravity = GRAVITY;
   _physOpts.bodyHeight = BODY_HEIGHT;
-  _physOpts.ceilingY = WALL_HEIGHT;
+  _physOpts.ceilingY = manilaRoom ? 3.2 : WALL_HEIGHT;
   updateBackroomsPlayerPhysics(fps, dt, _physOpts);
 }
 
@@ -1128,8 +1345,19 @@ function getSpecialWallCenter() {
   };
 }
 
+/** 当前可以放下物品的空间；Level 0.x 子层返回 null。 */
+function currentDropSpace() {
+  if (manilaRoom) return "manila";
+  if (level0Zones && level0Zones.isInSubZone()) return null;
+  return "world";
+}
+
 function getInteractPickMeshes() {
-  if (manilaRoom) return manilaRoom.interactMeshes;
+  if (manilaRoom) {
+    return worldDrops
+      ? manilaRoom.interactMeshes.concat(worldDrops.getPickMeshes("manila"))
+      : manilaRoom.interactMeshes;
+  }
   if (level0Zones && level0Zones.isInSubZone()) {
     return level0Zones.getInteractMeshes();
   }
@@ -1137,6 +1365,7 @@ function getInteractPickMeshes() {
   var list = [];
   if (level0World) {
     list = level0World.getInteractMeshes().slice();
+    if (worldDrops) list = list.concat(worldDrops.getPickMeshes("world"));
   } else {
     if (specialClipWallMesh) list.push(specialClipWallMesh);
     var grayM = getGrayDoorPickMesh();
@@ -1210,6 +1439,73 @@ function isAimingManilaEntry() {
   return isAimingInteractKind("manila_room");
 }
 
+function isAimingDroppedItem() {
+  return isAimingInteractKind(DROPPED_ITEM_KIND);
+}
+
+function dropItemFromHotbar(item) {
+  var space = currentDropSpace();
+  if (!worldDrops || !camera || !space || clipState !== "idle" || (survival && survival.dead)) {
+    showBackroomsToast("这里没法放下东西。");
+    return false;
+  }
+  var aim = getCameraAimRay(camera, 2.4);
+  var floorY = manilaRoom ? manilaRoom.floorY : 0;
+  var flatX = aim.direction.x;
+  var flatZ = aim.direction.z;
+  var flatLen = Math.hypot(flatX, flatZ);
+  if (flatLen < 1e-4) {
+    flatX = Math.sin(fps.yaw);
+    flatZ = -Math.cos(fps.yaw);
+  } else {
+    flatX /= flatLen;
+    flatZ /= flatLen;
+  }
+  var reach = 1.5;
+  if (aim.direction.y < -0.05 && flatLen > 1e-4) {
+    var groundT = (aim.origin.y - floorY) / -aim.direction.y;
+    reach = Math.min(reach, groundT * flatLen);
+  }
+  var wallDistance = raycastWallBlockDistance(
+    new THREE.Vector3(aim.origin.x, floorY + 0.3, aim.origin.z),
+    new THREE.Vector3(flatX, 0, flatZ),
+    reach + 0.3,
+    getActiveColliders(),
+    0,
+    WALL_HEIGHT
+  );
+  if (Number.isFinite(wallDistance)) reach = Math.min(reach, wallDistance - 0.28);
+  reach = Math.max(0.35, reach);
+  var placed = worldDrops.drop(space, item, {
+    x: aim.origin.x + flatX * reach,
+    y: floorY,
+    z: aim.origin.z + flatZ * reach,
+    yaw: fps.yaw,
+    fromY: Math.max(floorY, aim.origin.y - 0.5),
+  });
+  if (!placed) {
+    showBackroomsToast("地上已经堆满了，先捡走一些。");
+    return false;
+  }
+  showBackroomsToast("丢下了 " + item.name);
+  return true;
+}
+
+function pickupDroppedItem() {
+  var space = currentDropSpace();
+  if (!worldDrops || !space || !currentAimPickL0) return;
+  var data = currentAimPickL0.data;
+  var at = worldDrops.getRecordPosition(space, data);
+  var item = worldDrops.take(space, data);
+  if (!item) return;
+  if (!survival || !survival.addItem({ id: item.id, name: item.name })) {
+    worldDrops.restore(space, item, at);
+    showBackroomsToast("背包没有空位，" + item.name + "还留在地上。");
+    return;
+  }
+  showBackroomsToast("捡起了 " + item.name);
+}
+
 function isAimingManilaInteraction() {
   if (!manilaRoom || !currentAimPickL0 || !currentAimPickL0.data) return false;
   return /^manila_/.test(currentAimPickL0.data.kind || "");
@@ -1242,6 +1538,14 @@ function updateClipPrompt() {
     clipHintEl.hidden = true;
     return;
   }
+  if (isAimingDroppedItem()) {
+    var dropped = worldDrops && worldDrops.peek(currentDropSpace(), currentAimPickL0.data);
+    if (dropped) {
+      clipHintEl.innerHTML = dropped.name + ' · 按 <kbd>Q</kbd> 拾取';
+      clipHintEl.hidden = false;
+      return;
+    }
+  }
   if (manilaRoom) {
     if (isAimingManilaInteraction()) {
       var manilaText = manilaRoom.getInteractionHint(currentAimPickL0.data);
@@ -1265,37 +1569,24 @@ function updateClipPrompt() {
     }
     return;
   }
-  if (isAimingGrayDoor()) {
-    clipHintEl.innerHTML = '按 <kbd>Q</kbd> 打开';
-    clipHintEl.hidden = false;
-    return;
-  }
-  if (isAimingLevel01Entry()) {
-    clipHintEl.innerHTML = '按 <kbd>Q</kbd> 进入天顶站';
-    clipHintEl.hidden = false;
+  if (isAimingGrayDoor() || isAimingLevel01Entry()) {
+    clipHintEl.hidden = true;
     return;
   }
   if (isAimingInteractKind("level02_construction")) {
-    clipHintEl.textContent = "施工痕迹正在改变，继续靠近观察";
-    clipHintEl.hidden = false;
+    clipHintEl.hidden = true;
     return;
   }
-  if (isAimingManilaEntry()) {
+  if (isAimingManilaEntry() || standingExitKind() === "manila") {
     clipHintEl.innerHTML = '按 <kbd>Q</kbd> 进入';
     clipHintEl.hidden = false;
     return;
   }
-  if (isAimingInteractKind("level05_entrance")) {
-    clipHintEl.innerHTML = '按 <kbd>Q</kbd> 沿熄灯楼梯进入 Level 0.5';
-    clipHintEl.hidden = false;
+  if (isAimingInteractKind("level05_entrance") || isAimingInteractKind("level07_entrance")) {
+    clipHintEl.hidden = true;
     return;
   }
-  if (isAimingInteractKind("level07_entrance")) {
-    clipHintEl.innerHTML = '按 <kbd>Q</kbd> 触碰时间错位';
-    clipHintEl.hidden = false;
-    return;
-  }
-  if (isNearSpecialWall()) {
+  if (isNearSpecialWall() || standingExitKind() === "clip") {
     clipHintEl.innerHTML = '按 <kbd>Q</kbd> 切出';
     clipHintEl.hidden = false;
     return;
@@ -1322,31 +1613,18 @@ function updateCrosshairL0() {
       isAimingManilaEntry() ||
       isAimingInteractKind("level05_entrance") ||
       isAimingInteractKind("level07_entrance") ||
-      isAimingManilaInteraction());
+      isAimingManilaInteraction() ||
+      isAimingDroppedItem() ||
+      !!standingExitKind());
   crosshairEl.classList.toggle("backrooms-crosshair--interact", interact);
 }
 
 function tryOpenGrayDoor() {
-  if (
-    (level0Zones && level0Zones.isInSubZone()) ||
-    clipState !== "idle" ||
-    !isAimingGrayDoor()
-  ) {
-    return;
-  }
-  if (level0Zones) level0Zones.enterLevel02();
+  return;
 }
 
 function tryEnterLevel01() {
-  if (
-    !level0Zones ||
-    level0Zones.isInSubZone() ||
-    clipState !== "idle" ||
-    !isAimingLevel01Entry()
-  ) {
-    return;
-  }
-  level0Zones.enterLevel01();
+  return;
 }
 
 function tryLevel02ExitDoor() {
@@ -1388,9 +1666,10 @@ function enterManilaRoom() {
         : false;
     },
   });
+  if (worldDrops) worldDrops.attachSpace("manila", manilaRoom.group);
   level0WorldRoot.visible = false;
   fps.player.x = 0;
-  fps.player.z = 2.9;
+  fps.player.z = 1.15;
   fps.yaw = 0;
   fps.feetY = 0;
   fps.velY = 0;
@@ -1402,6 +1681,7 @@ function enterManilaRoom() {
 
 function exitManilaRoom() {
   if (!manilaRoom) return;
+  if (worldDrops) worldDrops.detachSpace("manila");
   manilaRoom.dispose();
   manilaRoom = null;
   level0WorldRoot.visible = true;
@@ -1419,26 +1699,17 @@ function exitManilaRoom() {
 }
 
 function checkManilaTriggers() {
-  if (manilaRoom) {
-    if (pointInTrigger(fps.player.x, fps.player.z, manilaRoom.exitTrigger)) {
-      exitManilaRoom();
-    }
-    return;
-  }
-  if (!level0World || performance.now() < manilaTriggerCooldownUntil) return;
-  var triggers = level0World.getPoiTriggers();
-  for (var i = 0; i < triggers.length; i++) {
-    if (
-      (triggers[i].kind === "manila" || triggers[i].poiKind === "manila") &&
-      pointInTrigger(fps.player.x, fps.player.z, triggers[i])
-    ) {
-      enterManilaRoom();
-      return;
-    }
+  if (!manilaRoom) return;
+  if (pointInTrigger(fps.player.x, fps.player.z, manilaRoom.exitTrigger)) {
+    exitManilaRoom();
   }
 }
 
 function tryPrimaryQAction() {
+  if (isAimingDroppedItem()) {
+    pickupDroppedItem();
+    return;
+  }
   if (manilaRoom) {
     if (isAimingManilaInteraction()) manilaRoom.interact(currentAimPickL0.data);
     return;
@@ -1482,29 +1753,26 @@ function tryPrimaryQAction() {
     return;
   }
   if (isAimingInteractKind("level02_construction")) {
-    showBackroomsToast("白灰覆盖着尚未完成的门洞。");
     return;
   }
-  if (isAimingManilaEntry()) {
+  if (isAimingManilaEntry() || standingExitKind() === "manila") {
     enterManilaRoom();
     return;
   }
   if (isAimingInteractKind("level05_entrance")) {
-    if (level0Zones) level0Zones.enterLevel05();
     return;
   }
   if (isAimingInteractKind("level07_entrance")) {
-    if (level0Zones) level0Zones.enterLevel07();
     return;
   }
   if (isAimingLevel01Entry()) {
-    tryEnterLevel01();
     return;
   }
-  if (isNearSpecialWall()) {
+  if (isNearSpecialWall() || standingExitKind() === "clip") {
     tryClipOut();
     return;
   }
+  if (standingExitKind()) return;
   if (!camera) return;
   var aim = getCameraAimRay(camera, 3.6);
   var wallDistance = raycastWallBlockDistance(
@@ -1526,7 +1794,8 @@ function tryPrimaryQAction() {
 }
 
 function tryClipOut() {
-  if (clipState !== "idle" || !isNearSpecialWall()) return;
+  if (clipState !== "idle") return;
+  if (!isNearSpecialWall() && standingExitKind() !== "clip") return;
   fps.player.x += Math.sin(fps.yaw);
   fps.player.z -= Math.cos(fps.yaw);
   setSpecialWallGhost(true);
@@ -1538,6 +1807,7 @@ function tryClipOut() {
 
 function goToLevel1FromL0() {
   if (clipState === "done") return;
+  markLeftLevel0();
   clipState = "done";
   if (hallucinations) hallucinations.dispose();
   hallucinations = null;
@@ -1585,6 +1855,7 @@ function goToLevel1FromL0() {
 
 function goToLevel37FromL0() {
   if (clipState === "done") return;
+  markLeftLevel0();
   clipState = "done";
   if (hallucinations) hallucinations.dispose();
   hallucinations = null;
@@ -1605,21 +1876,6 @@ function updateClipDash(dt) {
   if (clipDashLeft <= 0) {
     goToLevel1FromL0();
   }
-}
-
-/**
- * 测试用：进入 L0 满 AUTO_CLIP_DELAY_MS 后自动切出到 Level 1。
- * 子区域与马尼拉房间内推迟结算，避免带着子场景状态跳转。
- */
-function updateAutoClip(nowMs) {
-  if (!autoClipDeadline || clipState !== "idle") return;
-  if (survival && survival.dead) return;
-  if (manilaRoom) return;
-  if (level0Zones && level0Zones.isInSubZone()) return;
-  if (nowMs < autoClipDeadline) return;
-  autoClipDeadline = 0;
-  showBackroomsToast("墙壁失去了阻力，你被推出了这一层。");
-  goToLevel1FromL0();
 }
 
 function isDevJumpOpen() {
@@ -1703,6 +1959,7 @@ function bindControls() {
     onJump: function () {
       tryJump();
     },
+    onTapInteract: tryPrimaryQAction,
     onKeyDown: function (e) {
       if (!isInventoryOpen() && handleTaskUiKey(e)) {
         e.preventDefault();
@@ -1755,9 +2012,13 @@ function onResize() {
 }
 
 function disposeLevel0Runtime() {
+  stopExitHum();
   stopRedTinnitus();
   if (hallucinations) hallucinations.dispose();
   hallucinations = null;
+  setItemDropHandler(null);
+  if (worldDrops) worldDrops.dispose();
+  worldDrops = null;
   if (manilaRoom) manilaRoom.dispose();
   manilaRoom = null;
   if (level0Zones) level0Zones.dispose();
@@ -1865,6 +2126,11 @@ function init() {
   } catch (seedErr) {
     worldSeed = Date.now().toString(36);
   }
+  exitClock = createLevel0ExitClock();
+  exitBoostAnnounced = !!exitClock.firstVisit;
+  var poiProfile = exitClock.firstVisit
+    ? firstVisitPoiProfile()
+    : revisitPoiProfile();
   level0World = createLevel0WorldManager(levelRoot, {
     gridSize: GRID_SIZE,
     wallHeight: WALL_HEIGHT,
@@ -1874,7 +2140,18 @@ function init() {
     floorMaterialFactory: createFloorMaterial,
     ceilingMaterialFactory: createCeilingMaterial,
     specialMaterialFactory: createSpecialClipWallMaterial,
+    rareEnabled: poiProfile.rareEnabled,
+    clipChance: poiProfile.clipChance,
+    clipMinDistance: poiProfile.clipMinDistance,
+    clipGuarantee: poiProfile.clipGuarantee,
+    manilaChance: poiProfile.manilaChance,
+    manilaMinDistance: poiProfile.manilaMinDistance,
   });
+  loadFluorescentModel();
+  loadManilaDoorModel();
+  worldDrops = createWorldDrops();
+  worldDrops.attachSpace("world", levelRoot);
+  setItemDropHandler(dropItemFromHotbar);
   addStreamingAmbientLights(levelRoot);
   var streamedSpawn = level0World.getSpawnPoint();
   spawnPoint.x = streamedSpawn.x;
@@ -1997,7 +2274,6 @@ function init() {
   bindControls();
   syncLookUi();
   onResize();
-  autoClipDeadline = performance.now() + AUTO_CLIP_DELAY_MS;
   startLoop();
 }
 
@@ -2009,6 +2285,7 @@ function startLoop() {
     tick: function () {
     var dt = Math.min(clock.getDelta(), 0.05);
     if (typeof document !== "undefined" && document.hidden) return;
+    if (worldDrops) worldDrops.update(dt);
 
     var elapsed = clock.getElapsedTime();
     var nowMs = performance.now();
@@ -2045,7 +2322,7 @@ function startLoop() {
 
     updatePlayerPhysics(dt);
     if (level0Zones) level0Zones.update(dt);
-    updateAutoClip(nowMs);
+    updateExitClock(dt);
     updateRedRoomAudio();
     if (
       (!survival || !survival.dead) &&
@@ -2074,6 +2351,7 @@ function startLoop() {
       if (
         level0World &&
         !manilaRoom &&
+        !playerHasFoundExit() &&
         (!level0Zones || !level0Zones.isInSubZone())
       ) {
         var loop = level0World.consumeLoopSuggestion(

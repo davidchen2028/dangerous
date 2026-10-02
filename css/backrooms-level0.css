@@ -280,6 +280,10 @@ body.backrooms-pointer-locked .backrooms-input {
   color: #e8e8e4;
   pointer-events: none;
   transition: opacity 0.35s ease;
+  max-width: min(36rem, 86vw);
+  text-align: center;
+  line-height: 1.45;
+  white-space: normal;
 }
 
 .backrooms-toast[hidden],

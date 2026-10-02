@@ -6,8 +6,131 @@
  * 原先的 Level 0 位置。
  */
 import * as THREE from "three";
+import { GLTFLoader } from "./vendor/GLTFLoader.js";
+import {
+  requestAlmondBottleModel,
+  ALMOND_BOTTLE_HEIGHT,
+  ALMOND_BOTTLE_SOURCE_HEIGHT,
+} from "./backrooms-almond-bottle.js";
 
 export const MANILA_SESSION_KEY = "backrooms_level0_manila_room_v1";
+
+const MANILA_DESK_GLB_URL = "models/level0-manila-desk.glb";
+/** 模型包围盒：长轴 Z=1，宽 X=0.6，高 Y=0.49，底在 y=0。 */
+const MANILA_DESK_HEIGHT = 0.78;
+const MANILA_DESK_SOURCE_HEIGHT = 0.49;
+const MANILA_DESK_SOURCE_LENGTH = 1;
+const MANILA_DESK_SOURCE_DEPTH = 0.6;
+
+const MANILA_CABINET_GLB_URL = "models/level0-manila-cabinet.glb";
+/** 模型包围盒：宽 X=0.651，高 Y=1，深 Z=0.68，底在 y=0，抽屉朝 -Z。 */
+const MANILA_CABINET_HEIGHT = 0.92;
+const MANILA_CABINET_SOURCE_HEIGHT = 1;
+const MANILA_CABINET_SOURCE_WIDTH = 0.651;
+const MANILA_CABINET_SOURCE_DEPTH = 0.68;
+
+const MANILA_CHAIR_GLB_URL = "models/level0-manila-chair.glb";
+/** 模型高 1，底在 y=0。靠背在 -X，坐下朝 +X。左右 Z=0.585，前后 X=0.66。 */
+const MANILA_CHAIR_HEIGHT = 0.84;
+const MANILA_CHAIR_SOURCE_HEIGHT = 1;
+const MANILA_CHAIR_SOURCE_WIDTH = 0.585;
+const MANILA_CHAIR_SOURCE_DEPTH = 0.66;
+
+var manilaChairTemplate = null;
+var manilaChairLoadStarted = false;
+var manilaChairWaiters = [];
+
+function requestManilaChair(onReady) {
+  if (manilaChairTemplate) {
+    onReady(manilaChairTemplate);
+    return;
+  }
+  manilaChairWaiters.push(onReady);
+  if (manilaChairLoadStarted) return;
+  manilaChairLoadStarted = true;
+  new GLTFLoader().load(
+    MANILA_CHAIR_GLB_URL,
+    function (gltf) {
+      var mesh = null;
+      gltf.scene.traverse(function (child) {
+        if (!mesh && child.isMesh) mesh = child;
+      });
+      manilaChairTemplate = mesh || null;
+      var waiters = manilaChairWaiters.splice(0);
+      for (var i = 0; i < waiters.length; i++) waiters[i](manilaChairTemplate);
+    },
+    undefined,
+    function (err) {
+      console.warn("[Level0] 马尼拉椅子模型加载失败，保留方块椅", err);
+      var waiters = manilaChairWaiters.splice(0);
+      for (var i = 0; i < waiters.length; i++) waiters[i](null);
+    }
+  );
+}
+
+var manilaCabinetTemplate = null;
+var manilaCabinetLoadStarted = false;
+var manilaCabinetWaiters = [];
+
+function requestManilaCabinet(onReady) {
+  if (manilaCabinetTemplate) {
+    onReady(manilaCabinetTemplate);
+    return;
+  }
+  manilaCabinetWaiters.push(onReady);
+  if (manilaCabinetLoadStarted) return;
+  manilaCabinetLoadStarted = true;
+  new GLTFLoader().load(
+    MANILA_CABINET_GLB_URL,
+    function (gltf) {
+      var mesh = null;
+      gltf.scene.traverse(function (child) {
+        if (!mesh && child.isMesh) mesh = child;
+      });
+      manilaCabinetTemplate = mesh || null;
+      var waiters = manilaCabinetWaiters.splice(0);
+      for (var i = 0; i < waiters.length; i++) waiters[i](manilaCabinetTemplate);
+    },
+    undefined,
+    function (err) {
+      console.warn("[Level0] 马尼拉档案柜模型加载失败，保留方块柜", err);
+      var waiters = manilaCabinetWaiters.splice(0);
+      for (var i = 0; i < waiters.length; i++) waiters[i](null);
+    }
+  );
+}
+
+var manilaDeskTemplate = null;
+var manilaDeskLoadStarted = false;
+var manilaDeskWaiters = [];
+
+function requestManilaDesk(onReady) {
+  if (manilaDeskTemplate) {
+    onReady(manilaDeskTemplate);
+    return;
+  }
+  manilaDeskWaiters.push(onReady);
+  if (manilaDeskLoadStarted) return;
+  manilaDeskLoadStarted = true;
+  new GLTFLoader().load(
+    MANILA_DESK_GLB_URL,
+    function (gltf) {
+      var mesh = null;
+      gltf.scene.traverse(function (child) {
+        if (!mesh && child.isMesh) mesh = child;
+      });
+      manilaDeskTemplate = mesh || null;
+      var waiters = manilaDeskWaiters.splice(0);
+      for (var i = 0; i < waiters.length; i++) waiters[i](manilaDeskTemplate);
+    },
+    undefined,
+    function (err) {
+      console.warn("[Level0] 马尼拉桌子模型加载失败，保留方块桌", err);
+      var waiters = manilaDeskWaiters.splice(0);
+      for (var i = 0; i < waiters.length; i++) waiters[i](null);
+    }
+  );
+}
 
 var DOCUMENT_TEXT =
   "M.E.G. 前哨观察记录：这间办公室没有登记在 Level 0 的测绘图上。" +
@@ -237,7 +360,11 @@ export function buildManilaRoom(scene, opts) {
     transmission: 0.15,
   });
   var capMat = new THREE.MeshStandardMaterial({ color: 0x2e5842, roughness: 0.65 });
-  var invisibleMat = new THREE.MeshBasicMaterial({ visible: false });
+  var invisibleMat = new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
 
   function addBox(w, h, d, x, y, z, material) {
     var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
@@ -281,29 +408,129 @@ export function buildManilaRoom(scene, opts) {
     wallCollider(centerX + entranceW * 0.5, centerX + halfW, centerZ + halfD, centerZ + halfD + wallT)
   );
 
-  // 简陋办公桌、抽屉柜和废弃椅子，让北端明确成为死路。
+  // 办公桌靠北墙。模型未到时先用方块，加载后换成桌子。
   var deskZ = -halfD + 1.25;
-  addBox(3.15, 0.14, 1.12, -0.15, 0.82, deskZ, woodMat);
-  addBox(0.13, 0.78, 0.95, -1.52, 0.39, deskZ, metalMat);
-  addBox(0.13, 0.78, 0.95, 1.22, 0.39, deskZ, metalMat);
-  addBox(0.72, 0.72, 0.92, halfW - 0.58, 0.36, -0.55, metalMat);
-  addBox(0.62, 0.08, 0.62, -0.25, 0.48, 0.25, woodMat);
-  addBox(0.09, 0.9, 0.09, -0.25, 0.45, 0.52, metalMat);
+  var deskScale = MANILA_DESK_HEIGHT / MANILA_DESK_SOURCE_HEIGHT;
+  var deskLength = MANILA_DESK_SOURCE_LENGTH * deskScale;
+  var deskDepth = MANILA_DESK_SOURCE_DEPTH * deskScale;
+  var deskAnchor = new THREE.Group();
+  deskAnchor.name = "ManilaDesk";
+  deskAnchor.position.set(0, 0, deskZ);
+  group.add(deskAnchor);
+  var deskFallback = [];
+  function addDeskFallback(w, h, d, x, y, z, material) {
+    var mesh = addBox(w, h, d, x, y, z, material);
+    deskAnchor.add(mesh);
+    mesh.position.set(x, y, z);
+    deskFallback.push(mesh);
+    return mesh;
+  }
+  addDeskFallback(deskLength, 0.08, deskDepth, 0, MANILA_DESK_HEIGHT - 0.04, 0, woodMat);
+  addDeskFallback(0.08, MANILA_DESK_HEIGHT - 0.08, 0.08, -deskLength * 0.42, (MANILA_DESK_HEIGHT - 0.08) * 0.5, -deskDepth * 0.38, metalMat);
+  addDeskFallback(0.08, MANILA_DESK_HEIGHT - 0.08, 0.08, deskLength * 0.42, (MANILA_DESK_HEIGHT - 0.08) * 0.5, -deskDepth * 0.38, metalMat);
+  addDeskFallback(0.08, MANILA_DESK_HEIGHT - 0.08, 0.08, -deskLength * 0.42, (MANILA_DESK_HEIGHT - 0.08) * 0.5, deskDepth * 0.38, metalMat);
+  addDeskFallback(0.08, MANILA_DESK_HEIGHT - 0.08, 0.08, deskLength * 0.42, (MANILA_DESK_HEIGHT - 0.08) * 0.5, deskDepth * 0.38, metalMat);
+  requestManilaDesk(function (template) {
+    if (disposed || !template || !deskAnchor.parent) return;
+    var i;
+    for (i = 0; i < deskFallback.length; i++) deskAnchor.remove(deskFallback[i]);
+    deskFallback.length = 0;
+    var desk = new THREE.Mesh(template.geometry, template.material);
+    desk.name = "ManilaDeskMesh";
+    desk.userData.sharedAsset = true;
+    desk.rotation.y = Math.PI * 0.5;
+    desk.scale.setScalar(deskScale);
+    desk.castShadow = true;
+    desk.receiveShadow = true;
+    deskAnchor.add(desk);
+  });
+  var cabinetScale = MANILA_CABINET_HEIGHT / MANILA_CABINET_SOURCE_HEIGHT;
+  var cabinetWidth = MANILA_CABINET_SOURCE_WIDTH * cabinetScale;
+  var cabinetDepth = MANILA_CABINET_SOURCE_DEPTH * cabinetScale;
+  var cabinetX = halfW - wallT * 0.5 - cabinetDepth * 0.5 - 0.04;
+  var cabinetZ = -0.55;
+  var cabinetAnchor = new THREE.Group();
+  cabinetAnchor.name = "ManilaCabinet";
+  cabinetAnchor.position.set(cabinetX, 0, cabinetZ);
+  cabinetAnchor.rotation.y = Math.PI * 0.5;
+  group.add(cabinetAnchor);
+  var cabinetFallback = addBox(
+    cabinetDepth,
+    MANILA_CABINET_HEIGHT,
+    cabinetWidth,
+    cabinetX,
+    MANILA_CABINET_HEIGHT * 0.5,
+    cabinetZ,
+    metalMat
+  );
+  requestManilaCabinet(function (template) {
+    if (disposed || !template || !cabinetAnchor.parent) return;
+    if (cabinetFallback.parent) cabinetFallback.parent.remove(cabinetFallback);
+    var cabinet = new THREE.Mesh(template.geometry, template.material);
+    cabinet.name = "ManilaCabinetMesh";
+    cabinet.userData.sharedAsset = true;
+    cabinet.scale.setScalar(cabinetScale);
+    cabinet.castShadow = true;
+    cabinet.receiveShadow = true;
+    cabinetAnchor.add(cabinet);
+  });
+  var chairScale = MANILA_CHAIR_HEIGHT / MANILA_CHAIR_SOURCE_HEIGHT;
+  var chairWidth = MANILA_CHAIR_SOURCE_WIDTH * chairScale;
+  var chairDepth = MANILA_CHAIR_SOURCE_DEPTH * chairScale;
+  var chairX = -0.25;
+  var chairZ = 0.25;
+  var chairAnchor = new THREE.Group();
+  chairAnchor.name = "ManilaChair";
+  chairAnchor.position.set(chairX, 0, chairZ);
+  chairAnchor.rotation.y = Math.PI * 0.5;
+  group.add(chairAnchor);
+  var chairSeat = addBox(0.62, 0.08, 0.62, chairX, 0.48, chairZ, woodMat);
+  var chairBack = addBox(0.09, 0.9, 0.09, chairX, 0.45, chairZ + 0.27, metalMat);
+  requestManilaChair(function (template) {
+    if (disposed || !template || !chairAnchor.parent) return;
+    if (chairSeat.parent) chairSeat.parent.remove(chairSeat);
+    if (chairBack.parent) chairBack.parent.remove(chairBack);
+    var chair = new THREE.Mesh(template.geometry, template.material);
+    chair.name = "ManilaChairMesh";
+    chair.userData.sharedAsset = true;
+    chair.scale.setScalar(chairScale);
+    chair.castShadow = true;
+    chair.receiveShadow = true;
+    chairAnchor.add(chair);
+  });
   colliders.push(
-    wallCollider(centerX - 1.75, centerX + 1.45, centerZ + deskZ - 0.62, centerZ + deskZ + 0.62)
+    wallCollider(
+      centerX - deskLength * 0.5,
+      centerX + deskLength * 0.5,
+      centerZ + deskZ - deskDepth * 0.5,
+      centerZ + deskZ + deskDepth * 0.5
+    )
   );
   colliders.push(
-    wallCollider(centerX + halfW - 0.98, centerX + halfW - 0.18, centerZ - 1.05, centerZ - 0.05)
+    wallCollider(
+      centerX + cabinetX - cabinetDepth * 0.5,
+      centerX + cabinetX + cabinetDepth * 0.5,
+      centerZ + cabinetZ - cabinetWidth * 0.5,
+      centerZ + cabinetZ + cabinetWidth * 0.5
+    )
+  );
+  colliders.push(
+    wallCollider(
+      centerX + chairX - chairWidth * 0.5,
+      centerX + chairX + chairWidth * 0.5,
+      centerZ + chairZ - chairDepth * 0.5,
+      centerZ + chairZ + chairDepth * 0.5
+    )
   );
 
   var document = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.025, 0.72), paperMat);
   document.name = "ManilaMEGDocument";
-  document.position.set(-0.62, 0.91, deskZ);
+  document.position.set(-0.34, MANILA_DESK_HEIGHT + 0.02, deskZ);
   document.rotation.y = -0.08;
   document.userData.brInteract = { kind: "manila_document" };
   group.add(document);
   interactMeshes.push(document);
-  addInteractProxy("manila_document", 1.15, 0.3, 0.85, -0.62, 1.0, deskZ);
+  addInteractProxy("manila_document", 1.15, 0.3, 0.85, -0.34, MANILA_DESK_HEIGHT + 0.12, deskZ);
 
   // 北墙中央的示范异常墙只是教学目标，永远不触发场景切换。
   var anomalyWall = addBox(2.25, 2.48, 0.045, 0.35, 1.4, -halfD + 0.135, anomalyMat);
@@ -314,7 +541,7 @@ export function buildManilaRoom(scene, opts) {
 
   var bottle = new THREE.Group();
   bottle.name = "ManilaAlmondWater";
-  bottle.position.set(0.76, 0.92, deskZ + 0.06);
+  bottle.position.set(0.32, MANILA_DESK_HEIGHT, deskZ + 0.06);
   var bottleBody = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.125, 0.36, 12), bottleMat);
   bottleBody.position.y = 0.18;
   bottle.add(bottleBody);
@@ -325,7 +552,31 @@ export function buildManilaRoom(scene, opts) {
   bottleCap.position.y = 0.49;
   bottle.add(bottleCap);
   group.add(bottle);
-  var almondPick = addInteractProxy("manila_almond", 0.42, 0.68, 0.42, 0.76, 1.18, deskZ + 0.06);
+  bottle.userData.brInteract = { kind: "manila_almond" };
+  interactMeshes.push(bottle);
+  requestAlmondBottleModel(function (template) {
+    if (disposed || !template || !bottle.parent) return;
+    bottle.remove(bottleBody, bottleNeck, bottleCap);
+    bottleBody.geometry.dispose();
+    bottleNeck.geometry.dispose();
+    bottleCap.geometry.dispose();
+    bottleMat.dispose();
+    capMat.dispose();
+    var bottleModel = new THREE.Mesh(template.geometry, template.material);
+    bottleModel.name = "ManilaAlmondWaterMesh";
+    bottleModel.userData.sharedAsset = true;
+    bottleModel.scale.setScalar(ALMOND_BOTTLE_HEIGHT / ALMOND_BOTTLE_SOURCE_HEIGHT);
+    bottle.add(bottleModel);
+  });
+  var almondPick = addInteractProxy(
+    "manila_almond",
+    0.42,
+    0.68,
+    0.42,
+    0.32,
+    MANILA_DESK_HEIGHT + 0.26,
+    deskZ + 0.06
+  );
 
   function syncAlmondVisibility() {
     bottle.visible = !state.almondTaken;
@@ -458,6 +709,7 @@ export function buildManilaRoom(scene, opts) {
     var materials = new Set();
     var textures = new Set();
     group.traverse(function (object) {
+      if (object.userData && object.userData.sharedAsset) return;
       if (object.geometry) geometries.add(object.geometry);
       var objectMaterials = Array.isArray(object.material) ? object.material : [object.material];
       var i;
@@ -490,6 +742,7 @@ export function buildManilaRoom(scene, opts) {
     readDocument: readDocument,
     pickupAlmondWater: pickupAlmondWater,
     inspectTutorialWall: inspectTutorialWall,
+    floorY: 0.08,
     getState: function () {
       return {
         documentRead: state.documentRead,

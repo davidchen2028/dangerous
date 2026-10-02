@@ -8,6 +8,8 @@ import { BASE_STORAGE_CAPACITY, BASE_STORAGE_KEY } from "./backrooms-base-storag
 import {
   ALPHA_CELLAR_Y,
   ALPHA_CORRIDOR_LEN,
+  ALPHA_LOBBY,
+  ALPHA_PLAN_SCALE,
   ALPHA_LOCKED_NOTE,
   ALPHA_OFFICE_LOCK_NOTE,
   ALPHA_OFFICE_RANKS,
@@ -16,8 +18,10 @@ import {
   canEnterMegOffice,
   getAlphaFloorY,
   getAlphaLayout,
+  getHubCorridor,
   getZephyrBarricade,
   hitsAlphaSolid,
+  isInsideAlphaCorridor,
   hitsZephyrBarricade,
   isInsideAlphaCellar,
   isInsideAlphaComplex,
@@ -26,10 +30,13 @@ import {
   isInsideAlphaOffice,
   isOnAlphaStairs,
   listAlphaClearBounds,
+  listAlphaNorthOpenings,
+  listAlphaSolidColliders,
   listAlphaWalkPath,
   stickAlphaRampY,
 } from "./backrooms-level1-alpha-layout.js";
 import { getMegRankIndex } from "./backrooms-meg-career.js";
+import { resolveCircleAgainstColliders } from "./backrooms-collide.js";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const CENTER = { x: 0, z: 0 };
@@ -59,6 +66,9 @@ test("Alpha exploration room is walkable and locked wings plus office door stay 
   const path = listAlphaWalkPath(CENTER);
   assert.equal(hitsAlphaSolid(path.exploreDoor.x, path.exploreDoor.z, CENTER), false);
   assert.equal(hitsAlphaSolid(path.exploreIn.x, path.exploreIn.z, CENTER), false);
+  const exploreLayout = getAlphaLayout(CENTER);
+  assert.ok(Math.abs(exploreLayout.wings[0].x - exploreLayout.cells.nw.mx) > 2);
+  assert.equal(hitsAlphaSolid(exploreLayout.cells.nw.mx, exploreLayout.cells.n.minZ, CENTER), false);
   assert.equal(isInsideAlphaExplore(path.exploreIn.x, path.exploreIn.z, CENTER), true);
   assert.equal(hitsAlphaSolid(path.lockedDoor.x, path.lockedDoor.z, CENTER), true);
   assert.equal(hitsAlphaSolid(path.officeDoor.x, path.officeDoor.z, CENTER), true);
@@ -110,7 +120,7 @@ test("Alpha office stairs stay walkable and do not drop into the void", () => {
 
 test("Zephyr barricade blocks the east-corridor void and lobby respawn stays in the hall", () => {
   const z = getZephyrBarricade(CENTER);
-  assert.equal(z.endX - z.startX, ALPHA_CORRIDOR_LEN);
+  assert.ok(Math.abs(z.endX - z.startX - ALPHA_CORRIDOR_LEN) < 1e-9);
   assert.equal(hitsZephyrBarricade(z.walkX, z.walkZ, CENTER), false);
   assert.equal(hitsZephyrBarricade(z.endX - 0.4, z.walkZ, CENTER), true);
   assert.ok(z.voidX > z.endX);
@@ -119,18 +129,135 @@ test("Zephyr barricade blocks the east-corridor void and lobby respawn stays in 
     x: (L.office.minX + L.office.maxX) * 0.5,
     z: (L.office.minZ + L.office.maxZ) * 0.5,
   };
-  assert.equal(isInsideAlphaLobby(officeMid.x, officeMid.z, CENTER), false);
+  assert.equal(isInsideAlphaLobby(officeMid.x, officeMid.z, CENTER), true);
+  assert.equal(isInsideAlphaOffice(officeMid.x, officeMid.z, CENTER), true);
   assert.equal(isInsideAlphaComplex(officeMid.x, officeMid.z, CENTER), true);
+  assert.equal(ALPHA_PLAN_SCALE, 3);
+  assert.equal(ALPHA_LOBBY.w * ALPHA_LOBBY.d, 14 * 10 * 9);
   assert.equal(isInsideAlphaLobby(0, 0, CENTER), true);
-  assert.equal(isInsideAlphaLobby(0, 4.2, CENTER), false);
-  assert.equal(isInsideAlphaComplex(0, 4.2, CENTER), true);
-  assert.equal(isInsideAlphaComplex(L.wings[0].x, L.northZ, CENTER), true);
+  const nearNorth = L.lobby.maxZ - 0.5;
+  assert.equal(isInsideAlphaLobby(0, nearNorth, CENTER), false);
+  assert.equal(isInsideAlphaComplex(0, nearNorth, CENTER), true);
+  assert.equal(isInsideAlphaComplex(L.wings[0].x, L.wings[0].z, CENTER), true);
   assert.equal(isInsideAlphaComplex(L.wings[1].x, L.northZ + 0.35, CENTER), false);
   const grown = listAlphaClearBounds(CENTER);
   assert.ok(
     grown.some(function (b) {
       return b.minX <= L.cellar.minX - 2 && b.maxZ >= L.cellar.maxZ + 2;
     })
+  );
+});
+
+test("Alpha 3x3 opens four side doors and four corner corridors", () => {
+  const L = getAlphaLayout(CENTER);
+  assert.equal(hitsAlphaSolid(L.doors.front.x, L.doors.front.z, CENTER), false);
+  assert.equal(hitsAlphaSolid(L.doors.back.x, L.doors.back.z, CENTER), false);
+  assert.equal(hitsAlphaSolid(L.doors.left.x, L.doors.left.z, CENTER), false);
+  assert.equal(hitsAlphaSolid(L.doors.right.x, L.doors.right.z, CENTER), false);
+  assert.ok(L.doors.front.x < L.center.x);
+  assert.ok(L.doors.back.x > L.center.x);
+  assert.ok(L.doors.left.z > L.center.z);
+  assert.ok(L.doors.right.z < L.center.z);
+  assert.equal(isInsideAlphaCorridor(L.corridors.sw.walkX, L.corridors.sw.walkZ, CENTER), "sw");
+  assert.equal(isInsideAlphaCorridor(L.corridors.se.walkX, L.corridors.se.walkZ, CENTER), "se");
+  assert.equal(isInsideAlphaCorridor(L.corridors.nw.walkX, L.corridors.nw.walkZ, CENTER), "nw");
+  assert.equal(isInsideAlphaCorridor(L.corridors.ne.walkX, L.corridors.ne.walkZ, CENTER), "ne");
+  const hub = getHubCorridor(CENTER);
+  assert.equal(hub.axis, "x");
+  assert.equal(hub.sign, 1);
+  assert.equal(hitsAlphaSolid(L.cells.c.mx, L.cells.c.mz, CENTER), false);
+  assert.equal(hitsAlphaSolid(L.cells.s.mx, L.cells.s.mz, CENTER), false);
+  assert.equal(hitsAlphaSolid(L.cells.n.mx, L.cells.c.maxZ, CENTER), false);
+  assert.equal(hitsAlphaSolid(L.cells.w.maxX, L.cells.w.mz, CENTER), false);
+  assert.equal(hitsAlphaSolid(L.cells.e.mx, L.cells.c.maxZ, CENTER), true);
+  assert.equal(
+    hitsAlphaSolid(L.cells.e.mx, L.cells.c.maxZ, CENTER, { officeOpen: true }),
+    true
+  );
+  const northOpen = listAlphaNorthOpenings(CENTER);
+  assert.equal(northOpen.length, 3);
+  assert.ok(
+    Math.abs(northOpen[1].maxX - northOpen[1].minX - (L.officeNorthDoor.maxX - L.officeNorthDoor.minX)) < 1e-9
+  );
+  assert.equal(hitsAlphaSolid(L.officeNorthDoor.x, L.officeNorthDoor.z, CENTER), true);
+  assert.equal(
+    hitsAlphaSolid(L.officeNorthDoor.x, L.officeNorthDoor.z, CENTER, { officeOpen: true }),
+    false
+  );
+  const stairMidX = (L.stairs.minX + L.stairs.maxX) * 0.5;
+  assert.equal(hitsAlphaSolid(stairMidX, L.northZ, CENTER), false);
+  assert.equal(isInsideAlphaComplex(stairMidX, L.northZ, CENTER), true);
+
+  function circleWalk(x0, z0, x1, z1, opts) {
+    const walls = listAlphaSolidColliders(CENTER, opts);
+    let x = x0;
+    let z = z0;
+    const step = 0.12;
+    for (let i = 0; i < 200; i++) {
+      const dist = Math.hypot(x1 - x, z1 - z);
+      if (dist < 0.6) return true;
+      const tx = x + ((x1 - x) / dist) * step;
+      const tz = z + ((z1 - z) / dist) * step;
+      const out = resolveCircleAgainstColliders(tx, tz, 0.34, walls, 8, 8);
+      if (Math.hypot(out.x - x, out.z - z) < 0.008) return false;
+      x = out.x;
+      z = out.z;
+    }
+    return Math.hypot(x - x1, z - z1) < 0.6;
+  }
+  assert.equal(circleWalk(L.cells.n.mx, L.cells.n.mz, L.cells.ne.mx, L.cells.ne.mz), false);
+  assert.equal(
+    circleWalk(L.cells.n.mx, L.cells.n.mz, L.cells.ne.mx, L.cells.ne.mz, { officeOpen: true }),
+    true
+  );
+  assert.equal(circleWalk(L.cells.sw.mx, L.cells.sw.mz, L.cells.s.mx, L.cells.s.mz), true);
+  assert.equal(circleWalk(L.cells.s.mx, L.cells.s.mz, L.cells.se.mx, L.cells.se.mz), true);
+  assert.equal(circleWalk(L.cells.w.mx, L.cells.w.mz, L.cells.c.mx, L.cells.c.mz), true);
+  assert.equal(circleWalk(L.cells.c.mx, L.cells.c.mz, L.cells.e.mx, L.cells.e.mz), true);
+  assert.equal(circleWalk(L.cells.nw.mx, L.cells.nw.mz, L.cells.n.mx, L.cells.n.mz), true);
+  assert.equal(circleWalk(L.cells.sw.mx, L.cells.sw.mz, L.cells.w.mx, L.cells.w.mz), true);
+  assert.equal(circleWalk(L.cells.s.mx, L.cells.s.mz, L.cells.c.mx, L.cells.c.mz), true);
+  assert.equal(circleWalk(L.cells.se.mx, L.cells.se.mz, L.cells.e.mx, L.cells.e.mz), true);
+  assert.equal(circleWalk(L.cells.w.mx, L.cells.w.mz, L.cells.nw.mx, L.cells.nw.mz), true);
+  assert.equal(circleWalk(L.cells.c.mx, L.cells.c.mz, L.cells.n.mx, L.cells.n.mz), true);
+  assert.equal(circleWalk(L.cells.w.mx, L.cells.w.mz, L.doors.front.x + 1.2, L.doors.front.z), true);
+  assert.equal(circleWalk(L.cells.e.mx, L.cells.e.mz, L.doors.back.x - 1.2, L.doors.back.z), true);
+  assert.equal(circleWalk(L.cells.n.mx, L.cells.n.mz, L.doors.left.x, L.doors.left.z - 1.2), true);
+  assert.equal(circleWalk(L.cells.s.mx, L.cells.s.mz, L.doors.right.x, L.doors.right.z + 1.2), true);
+  assert.equal(
+    circleWalk(L.cells.sw.mx, L.cells.sw.mz, L.corridors.sw.walkX, L.corridors.sw.walkZ),
+    true
+  );
+  assert.equal(
+    circleWalk(L.cells.se.mx, L.cells.se.mz, L.corridors.se.walkX, L.corridors.se.walkZ),
+    true
+  );
+  assert.equal(
+    circleWalk(L.cells.nw.mx, L.cells.nw.mz, L.corridors.nw.walkX, L.corridors.nw.walkZ),
+    true
+  );
+  assert.equal(hitsAlphaSolid(-9, 0, CENTER), false);
+  assert.equal(hitsAlphaSolid(0, 0, CENTER), false);
+  assert.equal(
+    L.office.maxX - 0.1 <= L.lobby.maxX && L.office.maxZ - 0.1 <= L.lobby.maxZ,
+    true
+  );
+  assert.equal(circleWalk(L.cells.e.mx, L.cells.e.mz, L.cells.ne.mx, L.cells.ne.mz), false);
+  assert.equal(
+    circleWalk(L.cells.ne.mx, L.cells.ne.mz, L.corridors.ne.walkX, L.corridors.ne.walkZ),
+    false
+  );
+  assert.equal(
+    circleWalk(L.cells.ne.mx, L.cells.ne.mz, L.corridors.ne.walkX, L.corridors.ne.walkZ, {
+      officeOpen: true,
+    }),
+    true
+  );
+  assert.equal(
+    circleWalk(stairMidX, L.cells.ne.mz, stairMidX, (L.stairs.minZ + L.stairs.maxZ) * 0.5, {
+      officeOpen: true,
+    }),
+    true
   );
 });
 
@@ -145,7 +272,7 @@ test("Alpha wiring keeps career table, L4 volunteer desk, and 100-slot storage",
   assert.match(world, /meg_office_door/);
   assert.match(world, /meg_explore_briefing/);
   assert.match(world, /meg_zephyr_barricade/);
-  assert.match(world, /kind: "meg_zephyr_barricade",\s*minX: zephyr\.minX/);
+  assert.match(world, /meg_zephyr_barricade/);
   assert.match(world, /西风区扩建中|ALPHA_ZEPHYR_NOTE/);
   assert.match(src, /getMegRankIndex/);
   assert.match(src, /openTaskBoard/);
@@ -155,6 +282,28 @@ test("Alpha wiring keeps career table, L4 volunteer desk, and 100-slot storage",
   assert.match(src, /isTaskUiOpen\(\)/);
   assert.match(src, /tapInteractId/);
   assert.match(src, /tryMegQAction/);
+  assert.match(src, /tryOpenMegSideDoorAim/);
+  assert.match(world, /buildMegCornerCorridors/);
+  assert.match(world, /reloadMegClearChunks/);
+  assert.match(world, /c\.minX <= startX \+ 0\.5/);
+  assert.match(world, /if \(!north\) return false/);
+  assert.match(world, /if \(id === "se"\) \{\s*addZephyrAt/);
+  assert.match(world, /isInsideAabb\(px, pz, L\.lobby, 0\)/);
+  assert.doesNotMatch(world, /isInsideAabb\(px, pz, L\.lobby, 0\.25\)/);
+  assert.match(world, /cellAabbOverlaps\(c\.x, c\.z, L\.lobby, 0\)/);
+  assert.match(world, /updateMegCorridorVisibility[\s\S]*group\.visible = true/);
+  assert.match(world, /bw \+ 0\.35/);
+  assert.doesNotMatch(world, /bw \+ 2\.5/);
+  assert.match(world, /n\.mx \+ 5\.5/);
+  assert.doesNotMatch(world, /n\.mx \+ 1\.15/);
+  assert.match(world, /office\.maxX - 0\.12/);
+  assert.doesNotMatch(world, /office\.minX \+ 0\.12/);
+  assert.match(world, /which: "left"/);
+  assert.match(world, /which: "right"/);
+  assert.match(world, /which: "se"/);
+  assert.match(world, /which: "sw"/);
+  assert.match(world, /which: "nw"/);
+  assert.match(src, /东南走廊门/);
   assert.match(src, /AIM_INTERACT_MAX = 5\.2/);
   assert.match(src, /function respawnAtMegBase\([\s\S]*officeSitting = false/);
   assert.match(src, /stickAlphaRampY/);
@@ -168,7 +317,7 @@ test("Alpha wiring keeps career table, L4 volunteer desk, and 100-slot storage",
   assert.match(world, /reloadBelowGradeChunks/);
   assert.match(world, /sharedCellPlaneGeo/);
   assert.match(src, /aimMinY/);
-  assert.match(html, /backrooms-level1\.js\?v=129/);
+  assert.match(html, /backrooms-level1\.js\?v=144/);
   assert.deepEqual([...MEG_RANKS], [
     "none",
     "volunteer",

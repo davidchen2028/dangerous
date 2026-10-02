@@ -3,7 +3,7 @@
  */
 import { isTouchPrimaryDevice } from "./backrooms-fps-look.js";
 
-const PROMPT_SELECTOR = ".backrooms-hud__prompt:not([hidden]), .br-mp-prompt:not([hidden])";
+const PROMPT_SELECTOR = ".backrooms-hud__prompt:not([hidden]), .backrooms-hud__clip:not([hidden]), .br-mp-prompt:not([hidden])";
 const ACTION_RE = /按(住)?\s*([EQ])\s*/gi;
 const STICK_DEADZONE = 0.16;
 const STICK_SPRINT = 0.55;
@@ -43,6 +43,12 @@ export function isPortraitViewport(width, height) {
   const w = Number(width);
   const h = Number(height);
   return Number.isFinite(w) && Number.isFinite(h) && h > w;
+}
+
+/** 大厅也会间接 import 本文件；没有后室画布就不要挂遥感。 */
+export function isBackroomsPlayPage(doc) {
+  var root = doc || (typeof document !== "undefined" ? document : null);
+  return !!(root && root.getElementById && root.getElementById("backroomsCanvas"));
 }
 
 function ensureClassicLandscapeGuard() {
@@ -280,6 +286,7 @@ function mountMoveStick() {
 }
 
 function boot() {
+  if (!isBackroomsPlayPage()) return;
   ensureClassicLandscapeGuard();
   if (!isTouchPrimaryDevice()) return;
   document.body.classList.add("backrooms-mobile-touch");
@@ -383,9 +390,10 @@ function boot() {
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
+  var touchPlay = isBackroomsPlayPage() && isTouchPrimaryDevice();
   window.BackroomsMobileControls = {
-    usesActionButtons: isTouchPrimaryDevice(),
-    hasMoveStick: isTouchPrimaryDevice(),
+    usesActionButtons: touchPlay,
+    hasMoveStick: touchPlay,
     getMove: getMobileStickMove,
   };
   if (document.readyState === "loading") {

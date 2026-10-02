@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isBackroomsPlayPage,
   isPortraitViewport,
   parseMobileActions,
   stickToMoveKeys,
@@ -13,6 +14,25 @@ import {
 } from "./backrooms-fps-controller.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+test("iPad lobby does not count as a Backrooms play page", () => {
+  assert.equal(
+    isBackroomsPlayPage({
+      getElementById: function (id) {
+        return id === "actionCanvas" ? {} : null;
+      },
+    }),
+    false
+  );
+  assert.equal(
+    isBackroomsPlayPage({
+      getElementById: function (id) {
+        return id === "backroomsCanvas" ? {} : null;
+      },
+    }),
+    true
+  );
+});
 
 test("mobile orientation guard blocks only portrait viewports", () => {
   assert.equal(isPortraitViewport(390, 844), true);
@@ -101,6 +121,7 @@ test("Backrooms stick tracks the finger on window, above rain overlays", () => {
   const css = readFileSync(resolve(import.meta.dirname, "../css/backrooms-survival.css"), "utf8");
   assert.match(src, /window\.addEventListener\(\s*"pointermove"/);
   assert.match(src, /getMove: getMobileStickMove/);
+  assert.match(src, /backrooms-hud__clip/);
   assert.match(css, /\.br-mobile-stick \{[\s\S]*z-index: 40;/);
   assert.match(css, /\.br-mobile-jump \{[\s\S]*z-index: 40;/);
 });

@@ -87,6 +87,9 @@ let onOpenChange = null;
 let hotbarKeysBound = false;
 /** 商店收购模式：设置后点击格子交给商店报价，而不是普通选中 */
 let sellPickHandler = null;
+/** @type {null | ((item: { id: string, name: string }) => boolean)} */
+let itemDropHandler = null;
+let hotbarHintEl = null;
 /** @type {null | { source: "backpack" | "hotbar", index: number }} */
 let sellPick = null;
 
@@ -538,9 +541,14 @@ function markSellPickCell(cell, source, index) {
   cell.style.outlineOffset = "-2px";
 }
 
+/** @returns {string} 物品图标路径，没有图标时为空串 */
+export function getBackroomsItemIcon(itemId) {
+  var keyDef = getLevelKeyByItemId(itemId);
+  return ITEM_ICONS[itemId] || (keyDef && keyDef.icon) || "";
+}
+
 function appendItemIcon(cell, item) {
-  var keyDef = getLevelKeyByItemId(item.id);
-  var iconSrc = ITEM_ICONS[item.id] || (keyDef && keyDef.icon);
+  var iconSrc = getBackroomsItemIcon(item.id);
   if (iconSrc) {
     var img = document.createElement("img");
     img.className = "br-pack__icon";
@@ -691,6 +699,30 @@ function useArchiveC11() {
   if (archiveOverlayEl) return;
   if (!removeFirstItem("archive_c11")) return;
   showArchiveOverlay(C11_ARCHIVE_TEXT);
+}
+
+/**
+ * 关卡注册丢下物品的落地逻辑；返回 false 表示当前位置不能丢，物品留在快捷栏。
+ * 传 null 表示本关不支持丢下。
+ * @param {null | ((item: { id: string, name: string }) => boolean)} handler
+ */
+export function setItemDropHandler(handler) {
+  itemDropHandler = typeof handler === "function" ? handler : null;
+  renderHotbarHint();
+}
+
+/** 按 G：把当前选中的快捷栏物品丢到地上 */
+export function dropSelectedHotbarItem() {
+  if (!itemDropHandler) return false;
+  var index = selectedHotbarIndex;
+  var item = hotbarSlots[index];
+  if (!item) return false;
+  if (itemDropHandler(cloneItem(item)) === false) return false;
+  if (hotbarSlots[index] !== item) return true;
+  hotbarSlots[index] = null;
+  persistHotbar();
+  renderHotbar();
+  return true;
 }
 
 /** 按 R：使用当前加粗选中的快捷栏物品 */
@@ -915,8 +947,32 @@ function bindHotbarKeys() {
     if (e.code === "KeyR") {
       e.preventDefault();
       useSelectedHotbarItem();
+      return;
+    }
+    if (e.code === "KeyG" && itemDropHandler) {
+      e.preventDefault();
+      dropSelectedHotbarItem();
     }
   });
+}
+
+function usesMobileActionButtons() {
+  return (
+    typeof window !== "undefined" &&
+    window.BackroomsMobileControls &&
+    window.BackroomsMobileControls.usesActionButtons
+  );
+}
+
+function renderHotbarHint() {
+  if (!hotbarHintEl) return;
+  if (usesMobileActionButtons()) {
+    hotbarHintEl.textContent = "点击格子直接使用";
+    return;
+  }
+  hotbarHintEl.innerHTML =
+    "<kbd>1</kbd>–<kbd>6</kbd> / <kbd>←</kbd><kbd>→</kbd> 切换 · <kbd>R</kbd> 使用" +
+    (itemDropHandler ? " · <kbd>G</kbd> 丢下" : "");
 }
 
 export function mountHotbar(parent) {
@@ -927,18 +983,11 @@ export function mountHotbar(parent) {
   hotbarEl.className = "br-hotbar";
   hotbarEl.innerHTML =
     '<div class="br-hotbar__slots" role="listbox" aria-label="快捷栏"></div>' +
-    '<p class="br-hotbar__hint"><kbd>1</kbd>–<kbd>6</kbd> / <kbd>←</kbd><kbd>→</kbd> 切换 · <kbd>R</kbd> 使用</p>';
+    '<p class="br-hotbar__hint"></p>';
   host.appendChild(hotbarEl);
   hotbarSlotsEl = hotbarEl.querySelector(".br-hotbar__slots");
-  var hotbarHintEl = hotbarEl.querySelector(".br-hotbar__hint");
-  if (
-    hotbarHintEl &&
-    typeof window !== "undefined" &&
-    window.BackroomsMobileControls &&
-    window.BackroomsMobileControls.usesActionButtons
-  ) {
-    hotbarHintEl.textContent = "点击格子直接使用";
-  }
+  hotbarHintEl = hotbarEl.querySelector(".br-hotbar__hint");
+  renderHotbarHint();
   bindDragAndDrop(hotbarEl);
   var hotbarTouch = null;
   hotbarEl.addEventListener("pointerdown", function (e) {

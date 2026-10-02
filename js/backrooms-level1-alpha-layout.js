@@ -1,6 +1,7 @@
 /**
- * Level 1 M.E.G. Base Alpha — 门厅四署 + 高级办公室 / 地下室 AABB。
- * 不改职业表；办公室门禁用现成 officer / clearance / supervisor。
+ * Level 1 M.E.G. Base Alpha — 3×3 原尺寸房间。
+ * 四边：前门 / 左门 / 右门 / 后门。四角各伸一条白走廊（东南条接 L2 / 枢纽）。
+ * 不改职业表；办公室门仍用 officer / clearance / supervisor。
  */
 
 export const ALPHA_SIGN = "M.E.G. Base Alpha";
@@ -25,7 +26,14 @@ export const ALPHA_DEPT_NOTICES = Object.freeze({
   security: "安保署：门厅秩序与后门警戒由当值小队负责。",
 });
 
-export const ALPHA_LOBBY = Object.freeze({ w: 14, d: 10, h: 6 });
+/** 单间原尺寸；3×3 拼成九倍占地。 */
+export const ALPHA_PLAN_SCALE = 3;
+export const ALPHA_CELL = Object.freeze({ w: 14, d: 10, h: 6 });
+export const ALPHA_LOBBY = Object.freeze({
+  w: ALPHA_CELL.w * ALPHA_PLAN_SCALE,
+  d: ALPHA_CELL.d * ALPHA_PLAN_SCALE,
+  h: ALPHA_CELL.h,
+});
 export const ALPHA_WING_DOOR_W = 1.42;
 export const ALPHA_WING_DOOR_H = 2.55;
 export const ALPHA_CELLAR_Y = -3.6;
@@ -33,20 +41,21 @@ export const ALPHA_CELLAR_H = 3.2;
 export const ALPHA_ROOM_H = 3.4;
 export const ALPHA_CORRIDOR_LEN = 52;
 export const ALPHA_SIT_SANITY = 8;
+export const ALPHA_SIDE_DOOR_W = 2.8;
+export const ALPHA_WALK_GAP = 2.8;
 
 export const ALPHA_WINGS = Object.freeze([
-  { id: "explore", label: "探险署", dx: -5.4, locked: false },
-  { id: "research", label: "研究署", dx: -2.7, locked: true },
-  { id: "archive", label: "档案署", dx: 0, locked: true },
-  { id: "admin", label: "行政署", dx: 2.65, locked: true },
+  { id: "explore", label: "探险署", locked: false },
+  { id: "research", label: "研究署", locked: true },
+  { id: "archive", label: "档案署", locked: true },
+  { id: "admin", label: "行政署", locked: true },
 ]);
-
-export const ALPHA_OFFICE_DOOR_DX = 5.32;
 
 const HX = ALPHA_LOBBY.w * 0.5;
 const HZ = ALPHA_LOBBY.d * 0.5;
 const WALL_T = 0.4;
-const FRONT_DOOR_W = 2.8;
+const CELL_W = ALPHA_CELL.w;
+const CELL_D = ALPHA_CELL.d;
 
 export function canEnterMegOffice(profile) {
   if (!profile) return false;
@@ -62,19 +71,10 @@ export function officeNoticeText(profile) {
 }
 
 export function supervisorPlateText(profile) {
-  if (
-    profile &&
-    profile.rank === "supervisor" &&
-    profile.supervisorCode
-  ) {
+  if (profile && profile.rank === "supervisor" && profile.supervisorCode) {
     return "监督者办公室 · " + profile.supervisorCode;
   }
   return "高级办公室 · 前哨主管及以上";
-}
-
-function doorSlot(x) {
-  var half = ALPHA_WING_DOOR_W * 0.5;
-  return { minX: x - half, maxX: x + half };
 }
 
 export function isInsideAabb(px, pz, b, pad) {
@@ -88,70 +88,183 @@ export function isInsideAabb(px, pz, b, pad) {
   );
 }
 
+function cellBox(cx, cz, col, row) {
+  var mx = cx + (col - 1) * CELL_W;
+  var mz = cz + (row - 1) * CELL_D;
+  return {
+    id: col + "," + row,
+    col: col,
+    row: row,
+    mx: mx,
+    mz: mz,
+    minX: mx - CELL_W * 0.5,
+    maxX: mx + CELL_W * 0.5,
+    minZ: mz - CELL_D * 0.5,
+    maxZ: mz + CELL_D * 0.5,
+  };
+}
+
+function slotAlong(mid, width) {
+  var half = width * 0.5;
+  return { min: mid - half, max: mid + half };
+}
+
+function corridorFrom(face, axis, sign, midA, midB) {
+  var start = face;
+  var end = face + sign * ALPHA_CORRIDOR_LEN;
+  var halfW = (ALPHA_SIDE_DOOR_W - 0.2) * 0.5;
+  if (axis === "x") {
+    return {
+      axis: "x",
+      sign: sign,
+      startX: start,
+      endX: end,
+      minX: Math.min(start, end),
+      maxX: Math.max(start, end),
+      minZ: midB - halfW,
+      maxZ: midB + halfW,
+      midZ: midB,
+      midX: (start + end) * 0.5,
+      walkX: start + sign * 8,
+      walkZ: midB,
+      halfW: halfW,
+    };
+  }
+  return {
+    axis: "z",
+    sign: sign,
+    startZ: start,
+    endZ: end,
+    minZ: Math.min(start, end),
+    maxZ: Math.max(start, end),
+    minX: midA - halfW,
+    maxX: midA + halfW,
+    midX: midA,
+    midZ: (start + end) * 0.5,
+    walkX: midA,
+    walkZ: start + sign * 8,
+    halfW: halfW,
+  };
+}
+
 export function getAlphaLayout(center) {
   var cx = center.x;
   var cz = center.z;
+  var sw = cellBox(cx, cz, 0, 0);
+  var s = cellBox(cx, cz, 1, 0);
+  var se = cellBox(cx, cz, 2, 0);
+  var w = cellBox(cx, cz, 0, 1);
+  var c = cellBox(cx, cz, 1, 1);
+  var e = cellBox(cx, cz, 2, 1);
+  var nw = cellBox(cx, cz, 0, 2);
+  var n = cellBox(cx, cz, 1, 2);
+  var ne = cellBox(cx, cz, 2, 2);
+  var westX = cx - HX;
+  var eastX = cx + HX;
+  var southZ = cz - HZ;
   var northZ = cz + HZ;
-  var wings = ALPHA_WINGS.map(function (wing) {
-    var x = cx + wing.dx;
-    var slot = doorSlot(x);
-    return {
-      id: wing.id,
-      label: wing.label,
-      locked: wing.locked,
-      x: x,
-      minX: slot.minX,
-      maxX: slot.maxX,
-    };
-  });
-  var officeDoorX = cx + ALPHA_OFFICE_DOOR_DX;
-  var officeSlot = doorSlot(officeDoorX);
-  var explore = {
-    minX: cx - 7.45,
-    maxX: cx - 3.25,
-    minZ: northZ + 0.22,
-    maxZ: northZ + 4.02,
-  };
-  var office = {
-    minX: cx + 2.15,
-    maxX: cx + 8.15,
-    minZ: northZ + 0.22,
-    maxZ: northZ + 5.22,
-  };
+  var front = slotAlong(w.mz, ALPHA_SIDE_DOOR_W);
+  var back = slotAlong(e.mz, ALPHA_SIDE_DOOR_W);
+  var left = slotAlong(n.mx, ALPHA_SIDE_DOOR_W);
+  var right = slotAlong(s.mx, ALPHA_SIDE_DOOR_W);
+  var officeDoorZ = slotAlong(n.mz, ALPHA_WING_DOOR_W);
+  var officeWallX = (n.maxX + ne.minX) * 0.5;
   var stairs = {
-    minX: office.maxX - 1.4,
-    maxX: office.maxX,
-    minZ: office.maxZ,
-    maxZ: office.maxZ + 4,
+    minX: ne.maxX - 1.4,
+    maxX: ne.maxX,
+    minZ: ne.maxZ,
+    maxZ: ne.maxZ + 4,
   };
   var cellar = {
-    minX: office.maxX - 5,
-    maxX: office.maxX,
+    minX: ne.maxX - 5,
+    maxX: ne.maxX,
     minZ: stairs.maxZ,
     maxZ: stairs.maxZ + 4,
     floorY: ALPHA_CELLAR_Y,
   };
+  var corridors = {
+    sw: corridorFrom(sw.minZ, "z", -1, sw.mx, sw.mz),
+    se: corridorFrom(se.maxX, "x", 1, se.mx, se.mz),
+    nw: corridorFrom(nw.minX, "x", -1, nw.mx, nw.mz),
+    ne: corridorFrom(ne.maxZ, "z", 1, ne.mx, ne.mz),
+  };
+  var lockedWings = [
+    { id: "research", label: "研究署", x: n.mx - 3.2, z: n.maxZ - 0.22 },
+    { id: "archive", label: "档案署", x: n.mx + 3.2, z: n.maxZ - 0.22 },
+    { id: "admin", label: "行政署", x: n.mx + 4.2, z: n.minZ + 0.22 },
+  ];
   return {
     center: { x: cx, z: cz },
     hx: HX,
     hz: HZ,
+    wallT: WALL_T,
+    cellW: CELL_W,
+    cellD: CELL_D,
     northZ: northZ,
+    westX: westX,
+    eastX: eastX,
+    southZ: southZ,
+    cells: { sw: sw, s: s, se: se, w: w, c: c, e: e, nw: nw, n: n, ne: ne },
     lobby: {
-      minX: cx - HX,
-      maxX: cx + HX,
-      minZ: cz - HZ,
-      maxZ: cz + HZ,
+      minX: westX,
+      maxX: eastX,
+      minZ: southZ,
+      maxZ: northZ,
     },
-    wings: wings,
+    doors: {
+      front: { which: "front", x: westX, z: w.mz, minZ: front.min, maxZ: front.max },
+      back: { which: "back", x: eastX, z: e.mz, minZ: back.min, maxZ: back.max },
+      left: { which: "left", x: n.mx, z: northZ, minX: left.min, maxX: left.max },
+      right: { which: "right", x: s.mx, z: southZ, minX: right.min, maxX: right.max },
+    },
+    corridors: corridors,
+    explore: nw,
+    office: ne,
     officeDoor: {
-      x: officeDoorX,
-      minX: officeSlot.minX,
-      maxX: officeSlot.maxX,
+      x: officeWallX,
+      z: n.mz,
+      minZ: officeDoorZ.min,
+      maxZ: officeDoorZ.max,
     },
-    explore: explore,
-    office: office,
+    officeNorthDoor: {
+      x: ne.mx,
+      z: northZ,
+      minX: ne.mx - ALPHA_WING_DOOR_W * 0.5,
+      maxX: ne.mx + ALPHA_WING_DOOR_W * 0.5,
+    },
     stairs: stairs,
     cellar: cellar,
+    lockedWings: lockedWings,
+    wings: [
+      { id: "explore", label: "探险署", locked: false, x: nw.mx - 3.2, z: n.minZ + 0.22 },
+      {
+        id: "research",
+        label: "研究署",
+        locked: true,
+        x: lockedWings[0].x,
+        z: lockedWings[0].z,
+        minX: lockedWings[0].x - ALPHA_WING_DOOR_W * 0.5,
+        maxX: lockedWings[0].x + ALPHA_WING_DOOR_W * 0.5,
+      },
+      {
+        id: "archive",
+        label: "档案署",
+        locked: true,
+        x: lockedWings[1].x,
+        z: lockedWings[1].z,
+        minX: lockedWings[1].x - ALPHA_WING_DOOR_W * 0.5,
+        maxX: lockedWings[1].x + ALPHA_WING_DOOR_W * 0.5,
+      },
+      {
+        id: "admin",
+        label: "行政署",
+        locked: true,
+        x: lockedWings[2].x,
+        z: lockedWings[2].z,
+        minX: lockedWings[2].x - ALPHA_WING_DOOR_W * 0.5,
+        maxX: lockedWings[2].x + ALPHA_WING_DOOR_W * 0.5,
+      },
+    ],
   };
 }
 
@@ -178,25 +291,28 @@ export function isInsideAlphaCellar(px, pz, center) {
   return isInsideAabb(px, pz, getAlphaLayout(center).cellar, 0.08);
 }
 
+export function isInsideAlphaCorridor(px, pz, center) {
+  var L = getAlphaLayout(center);
+  var keys = ["sw", "se", "nw", "ne"];
+  for (var i = 0; i < keys.length; i++) {
+    if (isInsideAabb(px, pz, L.corridors[keys[i]], 0)) return keys[i];
+  }
+  return null;
+}
+
 export function isInsideAlphaComplex(px, pz, center) {
   var L = getAlphaLayout(center);
   if (
-    px >= L.lobby.minX + 0.1 &&
-    px <= L.lobby.maxX - 0.1 &&
-    pz >= L.lobby.minZ + 0.1 &&
-    pz <= L.lobby.maxZ - 0.05
+    px >= L.lobby.minX + 0.08 &&
+    px <= L.lobby.maxX - 0.08 &&
+    pz >= L.lobby.minZ + 0.08 &&
+    pz <= L.lobby.maxZ - 0.08
   ) {
     return true;
   }
-  if (pz >= L.northZ - 0.12 && pz <= L.explore.minZ + 0.06) {
-    if (px >= L.wings[0].minX && px <= L.wings[0].maxX) return true;
-    if (px >= L.officeDoor.minX && px <= L.officeDoor.maxX) return true;
-  }
+  if (isInsideAlphaCorridor(px, pz, center)) return true;
   return (
-    isInsideAabb(px, pz, L.explore, 0) ||
-    isInsideAabb(px, pz, L.office, 0) ||
-    isInsideAabb(px, pz, L.stairs, 0) ||
-    isInsideAabb(px, pz, L.cellar, 0)
+    isInsideAabb(px, pz, L.stairs, 0) || isInsideAabb(px, pz, L.cellar, 0)
   );
 }
 
@@ -227,9 +343,6 @@ export function getAlphaCeilingY(px, pz, center, fallback) {
   if (isInsideAabb(px, pz, L.stairs, 0)) {
     return getAlphaFloorY(px, pz, center) + ALPHA_CELLAR_H;
   }
-  if (isInsideAabb(px, pz, L.office, 0) || isInsideAabb(px, pz, L.explore, 0)) {
-    return ALPHA_ROOM_H;
-  }
   if (isInsideAlphaComplex(px, pz, center)) return ALPHA_LOBBY.h;
   return fallback != null ? fallback : 4.5;
 }
@@ -245,7 +358,15 @@ export function listAlphaClearBounds(center) {
       maxZ: b.maxZ + pad,
     };
   }
-  return [grow(L.explore), grow(L.office), grow(L.stairs), grow(L.cellar)];
+  return [
+    grow(L.lobby),
+    grow(L.stairs),
+    grow(L.cellar),
+    grow(L.corridors.sw),
+    grow(L.corridors.se),
+    grow(L.corridors.nw),
+    grow(L.corridors.ne),
+  ];
 }
 
 function wall(minX, maxX, minZ, maxZ, kind) {
@@ -278,18 +399,44 @@ function subtractOpenings(minX, maxX, openings) {
   return segs;
 }
 
+function wallRunX(walls, minX, maxX, z0, z1, gaps) {
+  var segs = subtractOpenings(minX, maxX, gaps || []);
+  for (var i = 0; i < segs.length; i++) {
+    walls.push(wall(segs[i].minX, segs[i].maxX, z0, z1));
+  }
+}
+
+function wallRunZ(walls, minZ, maxZ, x0, x1, gaps) {
+  var mapped = (gaps || []).map(function (g) {
+    return { minX: g.minZ, maxX: g.maxZ };
+  });
+  var segs = subtractOpenings(minZ, maxZ, mapped);
+  for (var i = 0; i < segs.length; i++) {
+    walls.push(wall(x0, x1, segs[i].minX, segs[i].maxX));
+  }
+}
+
+function gapX(mid, width) {
+  var h = width * 0.5;
+  return { minX: mid - h, maxX: mid + h };
+}
+
+function gapZ(mid, width) {
+  var h = width * 0.5;
+  return { minZ: mid - h, maxZ: mid + h };
+}
+
 export function listAlphaNorthOpenings(center) {
   var L = getAlphaLayout(center);
-  var openings = L.wings.map(function (w) {
-    return { minX: w.minX, maxX: w.maxX, id: w.id, locked: w.locked };
-  });
-  openings.push({
-    minX: L.officeDoor.minX,
-    maxX: L.officeDoor.maxX,
-    id: "office",
-    locked: "rank",
-  });
-  return openings;
+  return [
+    { minX: L.doors.left.minX, maxX: L.doors.left.maxX, id: "left" },
+    {
+      minX: L.officeNorthDoor.minX,
+      maxX: L.officeNorthDoor.maxX,
+      id: "ne_corridor",
+    },
+    { minX: L.stairs.minX, maxX: L.stairs.maxX, id: "stairs" },
+  ];
 }
 
 export function listAlphaSolidColliders(center, opts) {
@@ -297,65 +444,92 @@ export function listAlphaSolidColliders(center, opts) {
   var officeOpen = !!opts.officeOpen;
   var L = getAlphaLayout(center);
   var walls = [];
-  var northZ = L.northZ;
-  var halfT = WALL_T * 0.5;
-  var openings = listAlphaNorthOpenings(center);
-  var segs = subtractOpenings(L.lobby.minX, L.lobby.maxX, openings);
+  var t = WALL_T * 0.5;
+  var walk = ALPHA_WALK_GAP;
+
+  wallRunX(walls, L.lobby.minX, L.lobby.maxX, L.northZ - t, L.northZ + t, [
+    gapX(L.doors.left.x, ALPHA_SIDE_DOOR_W),
+    gapX(L.corridors.ne.midX, ALPHA_WING_DOOR_W),
+    gapX((L.stairs.minX + L.stairs.maxX) * 0.5, L.stairs.maxX - L.stairs.minX + 0.16),
+  ]);
+  wallRunX(walls, L.lobby.minX, L.lobby.maxX, L.southZ - t, L.southZ + t, [
+    gapX(L.doors.right.x, ALPHA_SIDE_DOOR_W),
+    gapX(L.corridors.sw.midX, ALPHA_SIDE_DOOR_W),
+  ]);
+  wallRunZ(walls, L.lobby.minZ, L.lobby.maxZ, L.westX - t, L.westX + t, [
+    gapZ(L.doors.front.z, ALPHA_SIDE_DOOR_W),
+    gapZ(L.corridors.nw.midZ, ALPHA_SIDE_DOOR_W),
+  ]);
+  wallRunZ(walls, L.lobby.minZ, L.lobby.maxZ, L.eastX - t, L.eastX + t, [
+    gapZ(L.doors.back.z, ALPHA_SIDE_DOOR_W),
+    gapZ(L.corridors.se.midZ, ALPHA_SIDE_DOOR_W),
+  ]);
+
+  var xSplitW = L.cells.w.maxX;
+  var xSplitE = L.cells.c.maxX;
+  var zSplitS = L.cells.s.maxZ;
+  var zSplitN = L.cells.c.maxZ;
+
+  wallRunZ(walls, L.lobby.minZ, L.lobby.maxZ, xSplitW - t, xSplitW + t, [
+    gapZ(L.cells.sw.mz, walk),
+    gapZ(L.cells.w.mz, walk),
+    gapZ(L.cells.nw.mz, walk),
+  ]);
+  wallRunZ(walls, L.lobby.minZ, L.lobby.maxZ, xSplitE - t, xSplitE + t, [
+    gapZ(L.cells.se.mz, walk),
+    gapZ(L.cells.e.mz, walk),
+    gapZ(L.officeDoor.z, ALPHA_WING_DOOR_W),
+  ]);
+  wallRunX(walls, L.lobby.minX, L.lobby.maxX, zSplitS - t, zSplitS + t, [
+    gapX(L.cells.sw.mx, walk),
+    gapX(L.cells.s.mx, walk),
+    gapX(L.cells.se.mx, walk),
+  ]);
+  wallRunX(walls, L.lobby.minX, L.lobby.maxX, zSplitN - t, zSplitN + t, [
+    gapX(L.cells.nw.mx, walk),
+    gapX(L.cells.n.mx, walk),
+  ]);
+
   var i;
-  for (i = 0; i < segs.length; i++) {
+  for (i = 0; i < L.lockedWings.length; i++) {
+    var lw = L.lockedWings[i];
     walls.push(
-      wall(segs[i].minX, segs[i].maxX, northZ - halfT, northZ + halfT)
-    );
-  }
-  for (i = 0; i < L.wings.length; i++) {
-    var wing = L.wings[i];
-    if (!wing.locked) continue;
-    walls.push(
-      wall(wing.minX + 0.02, wing.maxX - 0.02, northZ - 0.22, northZ + 0.22, "meg_wing_door")
+      wall(
+        lw.x - ALPHA_WING_DOOR_W * 0.5 + 0.02,
+        lw.x + ALPHA_WING_DOOR_W * 0.5 - 0.02,
+        lw.z - 0.12,
+        lw.z + 0.12,
+        "meg_wing_door"
+      )
     );
   }
   if (!officeOpen) {
     walls.push(
       wall(
-        L.officeDoor.minX + 0.02,
-        L.officeDoor.maxX - 0.02,
-        northZ - 0.22,
-        northZ + 0.22,
+        L.officeDoor.x - 0.16,
+        L.officeDoor.x + 0.16,
+        L.officeDoor.minZ + 0.02,
+        L.officeDoor.maxZ - 0.02,
+        "meg_office_door"
+      )
+    );
+    walls.push(
+      wall(
+        L.officeNorthDoor.minX + 0.02,
+        L.officeNorthDoor.maxX - 0.02,
+        L.officeNorthDoor.z - 0.16,
+        L.officeNorthDoor.z + 0.16,
         "meg_office_door"
       )
     );
   }
 
-  function roomShell(b, southGaps, northGaps) {
-    var t = 0.2;
-    var northSegs = subtractOpenings(b.minX, b.maxX, northGaps || []);
-    var ns;
-    for (ns = 0; ns < northSegs.length; ns++) {
-      walls.push(
-        wall(northSegs[ns].minX, northSegs[ns].maxX, b.maxZ, b.maxZ + t)
-      );
-    }
-    walls.push(wall(b.minX - t, b.minX, b.minZ, b.maxZ));
-    walls.push(wall(b.maxX, b.maxX + t, b.minZ, b.maxZ));
-    var southSegs = subtractOpenings(b.minX, b.maxX, southGaps || []);
-    for (var s = 0; s < southSegs.length; s++) {
-      walls.push(
-        wall(southSegs[s].minX, southSegs[s].maxX, b.minZ - t, b.minZ)
-      );
-    }
-  }
-
-  roomShell(L.explore, [{ minX: L.wings[0].minX, maxX: L.wings[0].maxX }], []);
-  roomShell(
-    L.office,
-    [{ minX: L.officeDoor.minX, maxX: L.officeDoor.maxX }],
-    [{ minX: L.stairs.minX, maxX: L.stairs.maxX }]
-  );
-
   walls.push(wall(L.stairs.minX - 0.22, L.stairs.minX, L.stairs.minZ, L.stairs.maxZ));
   walls.push(wall(L.stairs.maxX, L.stairs.maxX + 0.22, L.stairs.minZ, L.stairs.maxZ));
-
-  roomShell(L.cellar, [{ minX: L.stairs.minX, maxX: L.stairs.maxX }], []);
+  walls.push(wall(L.cellar.minX - 0.2, L.cellar.minX, L.cellar.minZ, L.cellar.maxZ));
+  walls.push(wall(L.cellar.maxX, L.cellar.maxX + 0.2, L.cellar.minZ, L.cellar.maxZ));
+  walls.push(wall(L.cellar.minX, L.stairs.minX - 0.02, L.cellar.minZ - 0.2, L.cellar.minZ));
+  walls.push(wall(L.cellar.minX, L.cellar.maxX, L.cellar.maxZ, L.cellar.maxZ + 0.2));
   return walls;
 }
 
@@ -370,18 +544,8 @@ export function hitsAlphaSolid(px, pz, center, opts) {
 
 export function listAlphaWalkPath(center) {
   var L = getAlphaLayout(center);
-  var exploreDoor = {
-    x: L.wings[0].x,
-    z: L.northZ - 0.35,
-  };
-  var exploreIn = {
-    x: (L.explore.minX + L.explore.maxX) * 0.5,
-    z: (L.explore.minZ + L.explore.maxZ) * 0.5,
-  };
-  var officeIn = {
-    x: (L.office.minX + L.stairs.minX) * 0.5,
-    z: (L.office.minZ + L.office.maxZ) * 0.5,
-  };
+  var exploreIn = { x: L.explore.mx, z: L.explore.mz };
+  var officeIn = { x: L.office.mx, z: L.office.mz };
   var stairPts = [];
   var sx = (L.stairs.minX + L.stairs.maxX) * 0.5;
   for (var i = 0; i <= 4; i++) {
@@ -390,42 +554,80 @@ export function listAlphaWalkPath(center) {
       z: L.stairs.minZ + 0.08 + ((L.stairs.maxZ - L.stairs.minZ - 0.16) * i) / 4,
     });
   }
-  var cellarIn = {
-    x: (L.cellar.minX + L.cellar.maxX) * 0.5,
-    z: (L.cellar.minZ + L.cellar.maxZ) * 0.5,
-  };
   return {
-    exploreDoor: exploreDoor,
+    exploreDoor: { x: L.cells.w.maxX, z: L.cells.nw.mz },
     exploreIn: exploreIn,
     officeIn: officeIn,
     stairs: stairPts,
-    cellarIn: cellarIn,
-    lockedDoor: { x: L.wings[1].x, z: L.northZ },
-    officeDoor: { x: L.officeDoor.x, z: L.northZ },
-    stairOff: { x: L.stairs.maxX + 0.1, z: (L.stairs.minZ + L.stairs.maxZ) * 0.5 },
+    cellarIn: {
+      x: (L.cellar.minX + L.cellar.maxX) * 0.5,
+      z: (L.cellar.minZ + L.cellar.maxZ) * 0.5,
+    },
+    lockedDoor: { x: L.wings[1].x, z: L.wings[1].z },
+    officeDoor: { x: L.officeDoor.x, z: L.officeDoor.z },
+    stairOff: {
+      x: L.stairs.maxX + 0.1,
+      z: (L.stairs.minZ + L.stairs.maxZ) * 0.5,
+    },
   };
 }
 
-export function getZephyrBarricade(center) {
-  var startX = center.x + HX + WALL_T + 0.14;
-  var endX = startX + ALPHA_CORRIDOR_LEN;
-  var halfW = (FRONT_DOOR_W - 0.2) * 0.5;
+function zephyrOnCorridor(co) {
+  if (co.axis === "x") {
+    var endX = co.endX;
+    return {
+      minX: endX - co.sign * 1.25,
+      maxX: endX + co.sign * 0.22,
+      minZ: co.midZ - co.halfW - 0.08,
+      maxZ: co.midZ + co.halfW + 0.08,
+      signX: endX - co.sign * 0.72,
+      signZ: co.midZ,
+      startX: co.startX,
+      endX: endX,
+      walkX: co.walkX,
+      walkZ: co.walkZ,
+      voidX: endX + co.sign * 0.6,
+      axis: "x",
+    };
+  }
+  var endZ = co.endZ;
   return {
-    minX: endX - 1.25,
-    maxX: endX + 0.22,
-    minZ: center.z - halfW - 0.08,
-    maxZ: center.z + halfW + 0.08,
-    signX: endX - 0.72,
-    signZ: center.z,
-    startX: startX,
-    endX: endX,
-    walkX: startX + 8,
-    walkZ: center.z,
-    voidX: endX + 0.6,
+    minX: co.midX - co.halfW - 0.08,
+    maxX: co.midX + co.halfW + 0.08,
+    minZ: endZ - co.sign * 1.25,
+    maxZ: endZ + co.sign * 0.22,
+    signX: co.midX,
+    signZ: endZ - co.sign * 0.72,
+    startZ: co.startZ,
+    endZ: endZ,
+    walkX: co.walkX,
+    walkZ: co.walkZ,
+    voidX: endZ + co.sign * 0.6,
+    axis: "z",
   };
+}
+
+/** 枢纽 / L2 仍走东南角 +X 走廊。 */
+export function getZephyrBarricade(center) {
+  return zephyrOnCorridor(getAlphaLayout(center).corridors.se);
+}
+
+export function getHubCorridor(center) {
+  return getAlphaLayout(center).corridors.se;
 }
 
 export function hitsZephyrBarricade(px, pz, center) {
   var b = getZephyrBarricade(center);
   return px >= b.minX && px <= b.maxX && pz >= b.minZ && pz <= b.maxZ;
+}
+
+export function corridorProgress(px, pz, co) {
+  if (co.axis === "x") {
+    var spanX = co.endX - co.startX;
+    if (Math.abs(spanX) < 0.01) return 0;
+    return Math.max(0, Math.min(1, (px - co.startX) / spanX));
+  }
+  var spanZ = co.endZ - co.startZ;
+  if (Math.abs(spanZ) < 0.01) return 0;
+  return Math.max(0, Math.min(1, (pz - co.startZ) / spanZ));
 }

@@ -63,7 +63,7 @@ import {
   resolveClipEntrySpawn,
   getSpawnChunkBounds,
   WAREHOUSE_HEIGHT,
-} from "./backrooms-level1-world.js?v=15";
+} from "./backrooms-level1-world.js?v=30";
 import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
@@ -1660,19 +1660,15 @@ function tryMegQAction() {
     openMegCareerStorage();
     return;
   }
-  if (level1World) {
-    if (
-      isAimKind("meg_door", undefined) &&
-      getAimInteractData().which === "front" &&
-      level1World.tryOpenMegFrontDoorAim
-    ) {
+  if (level1World && isAimKind("meg_door", undefined)) {
+    var doorWhich = (getAimInteractData() || {}).which;
+    if (doorWhich && level1World.tryOpenMegSideDoorAim) {
+      if (level1World.tryOpenMegSideDoorAim(doorWhich)) return;
+    }
+    if (doorWhich === "front" && level1World.tryOpenMegFrontDoorAim) {
       if (level1World.tryOpenMegFrontDoorAim()) return;
     }
-    if (
-      isAimKind("meg_door", undefined) &&
-      getAimInteractData().which === "back" &&
-      level1World.openMegBackDoorByAim
-    ) {
+    if (doorWhich === "back" && level1World.openMegBackDoorByAim) {
       if (level1World.openMegBackDoorByAim()) return;
     }
   }
@@ -1933,19 +1929,23 @@ function updateMegDoorHint() {
     doorHintEl.hidden = false;
     return;
   }
-  if (
-    isAimKind("meg_door", undefined) &&
-    getAimInteractData().which === "back"
-  ) {
-    doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开后门';
-    doorHintEl.hidden = false;
-    return;
-  }
-  if (
-    isAimKind("meg_door", undefined) &&
-    getAimInteractData().which === "front"
-  ) {
-    doorHintEl.innerHTML = '按 <kbd>Q</kbd> 打开基地门';
+  if (isAimKind("meg_door", undefined)) {
+    var doorHintWhich = (getAimInteractData() || {}).which;
+    var doorHintLabel =
+      doorHintWhich === "back"
+        ? "后门"
+        : doorHintWhich === "left"
+          ? "左门"
+          : doorHintWhich === "right"
+            ? "右门"
+            : doorHintWhich === "se"
+              ? "东南走廊门"
+              : doorHintWhich === "sw"
+                ? "西南走廊门"
+                : doorHintWhich === "nw"
+                  ? "西北走廊门"
+                  : "前门";
+    doorHintEl.innerHTML = "按 <kbd>Q</kbd> 打开" + doorHintLabel;
     doorHintEl.hidden = false;
     return;
   }
@@ -2429,7 +2429,7 @@ function updateCorridorFallToL2(dt) {
     if (corridorL2FallState === "idle") return;
   }
 
-  var progress = level1World.getMegCorridorProgress(player.x);
+  var progress = level1World.getMegCorridorProgress(player.x, player.z);
 
   if (corridorL2FallState === "idle") {
     if (progress < CORRIDOR_L2_PROGRESS) return;
@@ -3083,7 +3083,9 @@ function startLoop() {
         player.x,
         player.z,
         yaw,
-        level1World.isPlayerInMegCorridor(player.x, player.z)
+        level1World.isPlayerInHubCorridor
+          ? level1World.isPlayerInHubCorridor(player.x, player.z)
+          : level1World.isPlayerInMegCorridor(player.x, player.z)
       );
       hubRoute.updateBranchGate(player.x, player.z);
     } else if (hubRoute && hubRoute.isActive()) {

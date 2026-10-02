@@ -1436,29 +1436,15 @@ export function createLevel0ZoneManager(deps) {
         var trigger = poi.trigger || poi;
         if (!pointInAabb(deps.fps.player.x, deps.fps.player.z, trigger)) continue;
         var type = poi.type || poi.kind || poi.poiKind;
-        if (type === "red") {
-          enterRedRoom();
-          return;
-        }
-        if (type === "03") {
-          enterLevel03();
-          return;
-        }
-        if (type === "05") {
-          enterLevel05();
-          return;
-        }
-        if (type === "07") {
-          enterLevel07();
+        if (type === "red" || type === "03" || type === "05" || type === "07" || type === "02" || type === "01") {
           return;
         }
       }
       if (redChannelTrigger && pointInAabb(deps.fps.player.x, deps.fps.player.z, redChannelTrigger)) {
-        enterRedRoom();
         return;
       }
       if (blueHoleTrigger && pointInAabb(deps.fps.player.x, deps.fps.player.z, blueHoleTrigger)) {
-        enterLevel03();
+        return;
       }
     },
 

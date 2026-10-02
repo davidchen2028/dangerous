@@ -27,11 +27,28 @@ const POI_SPECS = [
   { kind: "red", chance: 0.0008, minDistance: 240, spacing: 312, wall: true },
   { kind: "02", chance: 0.0035, minDistance: 168, spacing: 216, wall: true },
   { kind: "03", chance: 0.004, minDistance: 144, spacing: 192, wall: false },
-  { kind: "manila", chance: 0.0025, minDistance: 168, spacing: 216, wall: false },
+  { kind: "manila", chance: 0.0025, minDistance: 168, spacing: 216, wall: true },
   { kind: "01", chance: 0.003, minDistance: 180, spacing: 228, wall: true },
   { kind: "05", chance: 0.0013, minDistance: 264, spacing: 336, wall: true },
   { kind: "07", chance: 0.0009, minDistance: 312, spacing: 408, wall: true },
 ];
+
+const RARE_POI_KINDS = {
+  red: true,
+  "01": true,
+  "05": true,
+  "07": true,
+};
+
+/** 0 子层级 / 房间入口。默认不刷，实现仍留在 buildPoi，以后加回 POI_SPECS 即可。 */
+const SUBLEVEL_ENTRANCE_KINDS = {
+  red: true,
+  "02": true,
+  "03": true,
+  "01": true,
+  "05": true,
+  "07": true,
+};
 
 function hashString(value) {
   var text = String(value);
@@ -156,6 +173,25 @@ export function createLevel0WorldManager(root, opts) {
     typeof opts.onPoiChanged === "function" ? opts.onPoiChanged : null;
   // 复用本生成器的其他层级（如 Level C-1 交点）可传 [] 关闭 Level 0 专属地标。
   var poiSpecs = Array.isArray(opts.poiSpecs) ? opts.poiSpecs : POI_SPECS;
+  var sublevelEntrancesEnabled = opts.enableSublevelEntrances === true;
+  var rarePoiEnabled =
+    opts.rareEnabled != null ? !!opts.rareEnabled : opts.rarePoiEnabled !== false;
+  var clipChanceOverride =
+    opts.clipChance != null && Number.isFinite(Number(opts.clipChance))
+      ? Number(opts.clipChance)
+      : null;
+  var clipMinDistanceOverride =
+    opts.clipMinDistance != null && Number.isFinite(Number(opts.clipMinDistance))
+      ? Number(opts.clipMinDistance)
+      : null;
+  var manilaChanceOverride =
+    opts.manilaChance != null && Number.isFinite(Number(opts.manilaChance))
+      ? Number(opts.manilaChance)
+      : null;
+  var manilaMinDistanceOverride =
+    opts.manilaMinDistance != null && Number.isFinite(Number(opts.manilaMinDistance))
+      ? Number(opts.manilaMinDistance)
+      : null;
   var onChunkBuilt =
     typeof opts.onChunkBuilt === "function" ? opts.onChunkBuilt : null;
 
@@ -248,6 +284,17 @@ export function createLevel0WorldManager(root, opts) {
     0.045,
     gridSize * 0.2
   );
+  var activeLightBodyGeometry = lightBodyGeometry;
+  var activeLightShadeGeometry = lightShadeGeometry;
+  var manilaDoorGeometry = null;
+  var manilaDoorMaterial = new THREE.MeshStandardMaterial({
+    color: 0xd2b06a,
+    roughness: 0.78,
+    metalness: 0.04,
+  });
+  var manilaVoidMaterial = new THREE.MeshBasicMaterial({ color: 0x070604 });
+  var manilaVoidGeometry = new THREE.BoxGeometry(0.3, 0.78, 0.2);
+  manilaVoidGeometry.translate(0, 0.48, -0.1);
   var floorGeometry = new THREE.PlaneGeometry(chunkSize, chunkSize);
   var ceilingGeometry = new THREE.PlaneGeometry(chunkSize, chunkSize);
   var specialWallGeometry = new THREE.BoxGeometry(
@@ -269,9 +316,10 @@ export function createLevel0WorldManager(root, opts) {
   var landmarkMemory = new Map();
   var specialClipWall = null;
   var specialClipCenter = null;
+  var clipHintCenter = null;
   var specialClipCollider = null;
   var specialClipVortex = null;
-  var clipGuarantee = false;
+  var clipGuarantee = !!opts.clipGuarantee;
   var clipPoiKey = null;
   var failedClipCount = 0;
   var disposed = false;
@@ -424,18 +472,115 @@ export function createLevel0WorldManager(root, opts) {
     return hasPoiSpacing(spec.kind, centerX, centerZ, spec.spacing, cx, cz);
   }
 
-  function choosePoi(cx, cz, epoch) {
-    if (!poiSpecs.length) return null;
-    var stableKind = stablePoiSpecs.get(keyOf(cx, cz));
-    if (stableKind) {
-      for (var si = 0; si < poiSpecs.length; si++) {
-        if (poiSpecs[si].kind === stableKind) return poiSpecs[si];
-      }
-    }
-    var clipSpec = poiSpecs[0];
-    if (clipGuarantee && eligibleForSpec(clipSpec, cx, cz)) return clipSpec;
+  function effectivePoiSpecs() {
+    var list = [];
     for (var i = 0; i < poiSpecs.length; i++) {
       var spec = poiSpecs[i];
+      if (!sublevelEntrancesEnabled && SUBLEVEL_ENTRANCE_KINDS[spec.kind]) {
+        continue;
+      }
+      if (!rarePoiEnabled && RARE_POI_KINDS[spec.kind]) continue;
+      if (spec.kind === "clip") {
+        list.push({
+          kind: "clip",
+          chance: clipChanceOverride != null ? clipChanceOverride : spec.chance,
+          minDistance:
+            clipMinDistanceOverride != null
+              ? clipMinDistanceOverride
+              : spec.minDistance,
+          spacing: spec.spacing,
+          wall: spec.wall,
+        });
+      } else if (spec.kind === "manila") {
+        list.push({
+          kind: "manila",
+          chance: manilaChanceOverride != null ? manilaChanceOverride : spec.chance,
+          minDistance:
+            manilaMinDistanceOverride != null
+              ? manilaMinDistanceOverride
+              : spec.minDistance,
+          spacing: spec.spacing,
+          wall: spec.wall,
+        });
+      } else {
+        list.push(spec);
+      }
+    }
+    return list;
+  }
+
+  function findClipSpec(list) {
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].kind === "clip") return list[i];
+    }
+    return null;
+  }
+
+  function setExitPressure(profile) {
+    profile = profile || {};
+    if (profile.rareEnabled != null) rarePoiEnabled = !!profile.rareEnabled;
+    if (profile.clipChance != null && Number.isFinite(Number(profile.clipChance))) {
+      clipChanceOverride = Number(profile.clipChance);
+    }
+    if (
+      profile.clipMinDistance != null &&
+      Number.isFinite(Number(profile.clipMinDistance))
+    ) {
+      clipMinDistanceOverride = Number(profile.clipMinDistance);
+    }
+    if (profile.clipGuarantee) {
+      clipGuarantee = true;
+      if (!specialClipWall) clipPoiKey = null;
+    }
+  }
+
+  function allowReplacementClip() {
+    if (specialClipWall) return;
+    clipPoiKey = null;
+    clipGuarantee = true;
+  }
+
+  function getExitPressure() {
+    return {
+      rareEnabled: rarePoiEnabled,
+      sublevelEntrancesEnabled: sublevelEntrancesEnabled,
+      clipChance: clipChanceOverride,
+      clipMinDistance: clipMinDistanceOverride,
+      clipGuarantee: clipGuarantee,
+    };
+  }
+
+  function choosePoi(cx, cz, epoch) {
+    var specs = effectivePoiSpecs();
+    if (!specs.length) return null;
+    var chunkKey = keyOf(cx, cz);
+    var stableKind = stablePoiSpecs.get(chunkKey);
+    if (
+      stableKind === "clip" &&
+      clipPoiKey &&
+      clipPoiKey !== chunkKey
+    ) {
+      stableKind = null;
+    }
+    if (
+      stableKind &&
+      SUBLEVEL_ENTRANCE_KINDS[stableKind] &&
+      !sublevelEntrancesEnabled
+    ) {
+      stablePoiSpecs.delete(chunkKey);
+      stableKind = null;
+    }
+    if (stableKind) {
+      for (var si = 0; si < specs.length; si++) {
+        if (specs[si].kind === stableKind) return specs[si];
+      }
+    }
+    var clipSpec = findClipSpec(specs);
+    if (clipGuarantee && clipSpec && eligibleForSpec(clipSpec, cx, cz)) {
+      return clipSpec;
+    }
+    for (var i = 0; i < specs.length; i++) {
+      var spec = specs[i];
       var roll =
         hashString(
           seed + "|poi|" + spec.kind + "|" + cx + "|" + cz + "|" + epoch
@@ -596,10 +741,10 @@ export function createLevel0WorldManager(root, opts) {
       z: position.z,
       chunkX: chunk.cx,
       chunkZ: chunk.cz,
-      minX: safePosition.x - half * 0.65,
-      maxX: safePosition.x + half * 0.65,
-      minZ: safePosition.z - half * 0.65,
-      maxZ: safePosition.z + half * 0.65,
+      minX: safePosition.x - half * 0.98,
+      maxX: safePosition.x + half * 0.98,
+      minZ: safePosition.z - half * 0.98,
+      maxZ: safePosition.z + half * 0.98,
     };
     var localColliders = [];
     var beforeChildren = chunk.group.children.length;
@@ -732,24 +877,17 @@ export function createLevel0WorldManager(root, opts) {
       }
       if (pick) pick.userData.brInteract.poi = trigger;
     } else if (spec.kind === "manila") {
-      var manilaMaterial = new THREE.MeshBasicMaterial({
-        color: 0xd8c58e,
-        transparent: true,
-        opacity: 0.08,
-        depthWrite: false,
+      pick = buildManilaEntrance(chunk, matrix, cell, position, safePosition, trigger);
+      addCollider(chunk, {
+        minX: position.x - half,
+        maxX: position.x + half,
+        minZ: position.z - half,
+        maxZ: position.z + half,
+        chunkX: chunk.cx,
+        chunkZ: chunk.cz,
+        poiKind: "manila",
+        kind: "manila",
       });
-      var manilaGeometry = new THREE.BoxGeometry(
-        gridSize * 0.75,
-        wallHeight * 0.85,
-        gridSize * 0.18
-      );
-      pick = new THREE.Mesh(manilaGeometry, manilaMaterial);
-      pick.name = "L0ManilaPlaceholder";
-      pick.position.set(position.x, wallHeight * 0.43, position.z);
-      pick.userData.brInteract = { kind: "manila_room", poi: trigger };
-      chunk.group.add(pick);
-      chunk.ownedGeometries.push(manilaGeometry);
-      chunk.ownedMaterials.push(manilaMaterial);
     } else if (spec.kind === "clip") {
       pick = new THREE.Mesh(
         specialWallGeometry,
@@ -768,6 +906,8 @@ export function createLevel0WorldManager(root, opts) {
         maxZ: position.z + half,
         special: true,
         ghost: false,
+        kind: "clip",
+        poiKind: "clip",
         chunkX: chunk.cx,
         chunkZ: chunk.cz,
       };
@@ -778,7 +918,38 @@ export function createLevel0WorldManager(root, opts) {
         y: wallHeight * 0.5,
         z: position.z,
       };
+      clipHintCenter = {
+        x: position.x,
+        y: wallHeight * 0.5,
+        z: position.z,
+      };
       specialClipCollider = specialCollider;
+      var faceDx = safePosition.x - position.x;
+      var faceDz = safePosition.z - position.z;
+      var faceLen = Math.hypot(faceDx, faceDz) || 1;
+      var clipPickGeo = new THREE.BoxGeometry(
+        gridSize * 0.95,
+        wallHeight * 0.96,
+        0.55
+      );
+      var clipPickMat = new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      });
+      var clipPick = new THREE.Mesh(clipPickGeo, clipPickMat);
+      clipPick.name = "L0ClipPick";
+      clipPick.position.set(
+        position.x + (faceDx / faceLen) * (gridSize * 0.5 + 0.16),
+        wallHeight * 0.48,
+        position.z + (faceDz / faceLen) * (gridSize * 0.5 + 0.16)
+      );
+      clipPick.rotation.y = Math.atan2(faceDx, faceDz);
+      clipPick.userData.brInteract = { kind: "clip_wall", poi: trigger };
+      chunk.group.add(clipPick);
+      chunk.ownedGeometries.push(clipPickGeo);
+      chunk.ownedMaterials.push(clipPickMat);
+      addInteract(chunk, clipPick);
       makeVortex(
         chunk,
         position.x,
@@ -822,6 +993,9 @@ export function createLevel0WorldManager(root, opts) {
       interacts: [],
       triggers: [],
       lights: [],
+      lightBody: null,
+      lightShade: null,
+      manilaDoor: null,
       landmark: null,
       vortex: null,
       ownedGeometries: [],
@@ -830,12 +1004,12 @@ export function createLevel0WorldManager(root, opts) {
     };
 
     var spec = choosePoi(cx, cz, epoch);
-    if (spec) {
+    var poiCell = spec ? buildPoi(chunk, spec, matrix) : null;
+    if (spec && poiCell) {
       chunk.pinned = true;
       stablePoiSpecs.set(key, spec.kind);
       if (spec.kind === "clip") clipPoiKey = key;
     }
-    var poiCell = spec ? buildPoi(chunk, spec, matrix) : null;
     var wallPositions = [];
     var walkableLights = [];
     var half = gridSize * 0.5;
@@ -900,12 +1074,12 @@ export function createLevel0WorldManager(root, opts) {
     group.add(wallInstances);
 
     var bodyInstances = new THREE.InstancedMesh(
-      lightBodyGeometry,
+      activeLightBodyGeometry,
       lightBodyMaterialInfo.material,
       Math.max(1, walkableLights.length)
     );
     var shadeInstances = new THREE.InstancedMesh(
-      lightShadeGeometry,
+      activeLightShadeGeometry,
       lightShadeMaterialInfo.material,
       Math.max(1, walkableLights.length)
     );
@@ -941,6 +1115,8 @@ export function createLevel0WorldManager(root, opts) {
     shadeInstances.instanceMatrix.needsUpdate = true;
     group.add(shadeInstances);
     group.add(bodyInstances);
+    chunk.lightBody = bodyInstances;
+    chunk.lightShade = shadeInstances;
 
     var floor = new THREE.Mesh(floorGeometry, floorMaterialInfo.material);
     floor.name = "L0ChunkFloor_" + key;
@@ -1141,6 +1317,10 @@ export function createLevel0WorldManager(root, opts) {
     return specialClipCenter;
   }
 
+  function getClipHintCenter() {
+    return specialClipCenter || clipHintCenter;
+  }
+
   function setSpecialClipGhost(ghost) {
     if (!specialClipCollider) return false;
     specialClipCollider.ghost = !!ghost;
@@ -1178,7 +1358,7 @@ export function createLevel0WorldManager(root, opts) {
 
   function noteFailedClip() {
     failedClipCount++;
-    if (failedClipCount >= 3) clipGuarantee = true;
+    if (failedClipCount >= 3) allowReplacementClip();
   }
 
   function consumeLoopSuggestion(px, pz, yaw, now) {
@@ -1194,6 +1374,7 @@ export function createLevel0WorldManager(root, opts) {
     for (var next = values.next(); !next.done; next = values.next()) {
       var landmark = next.value;
       if (!landmark.seen) continue;
+      if (landmark.kind === "clip" || landmark.kind === "manila") continue;
       seen.push(landmark);
       if (
         landmark.active &&
@@ -1228,6 +1409,173 @@ export function createLevel0WorldManager(root, opts) {
     };
   }
 
+  function manilaFacing(matrix, cell, position, safePosition, cx, cz) {
+    if (cell && cell.neighbor) return safePosition;
+    var dirs = [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+    ];
+    if (!matrix || !cell) return safePosition;
+    for (var i = 0; i < dirs.length; i++) {
+      var row = cell.row + dirs[i][0];
+      var col = cell.col + dirs[i][1];
+      if (matrix[row] && matrix[row][col] === 0) {
+        return cellWorldCenter(cx, cz, row, col);
+      }
+    }
+    return safePosition;
+  }
+
+  function releaseManilaPlaceholder(group) {
+    if (!group || !group.userData) return;
+    var chunk = group.userData.chunk;
+    if (!chunk) return;
+    var geo = group.userData.placeholderGeometry;
+    var mat = group.userData.placeholderMaterial;
+    if (geo) {
+      var gi = chunk.ownedGeometries.indexOf(geo);
+      if (gi >= 0) chunk.ownedGeometries.splice(gi, 1);
+      geo.dispose();
+      group.userData.placeholderGeometry = null;
+    }
+    if (mat) {
+      var mi = chunk.ownedMaterials.indexOf(mat);
+      if (mi >= 0) chunk.ownedMaterials.splice(mi, 1);
+      mat.dispose();
+      group.userData.placeholderMaterial = null;
+    }
+  }
+
+  function fillManilaEntrance(chunk) {
+    var group = chunk.manilaDoor;
+    if (!group) return;
+    releaseManilaPlaceholder(group);
+    var old = group.getObjectByName("L0ManilaEntranceVisual");
+    if (old) group.remove(old);
+    var visual = new THREE.Group();
+    visual.name = "L0ManilaEntranceVisual";
+    var height = Math.min(2.05, wallHeight - 0.15);
+    if (manilaDoorGeometry) {
+      var door = new THREE.Mesh(manilaDoorGeometry, manilaDoorMaterial);
+      door.name = "L0ManilaDoorMesh";
+      door.scale.setScalar(height);
+      door.castShadow = shadows;
+      door.receiveShadow = shadows;
+      visual.add(door);
+      var hole = new THREE.Mesh(manilaVoidGeometry, manilaVoidMaterial);
+      hole.scale.setScalar(height);
+      visual.add(hole);
+    } else {
+      var geo = new THREE.BoxGeometry(
+        gridSize * 0.72,
+        wallHeight * 0.92,
+        gridSize * 0.16
+      );
+      var mat = new THREE.MeshStandardMaterial({
+        color: 0xc4b37a,
+        emissive: 0x3a2e14,
+        emissiveIntensity: 0.22,
+        roughness: 0.78,
+        metalness: 0,
+      });
+      var box = new THREE.Mesh(geo, mat);
+      box.name = "L0ManilaPlaceholder";
+      box.position.y = wallHeight * 0.46;
+      visual.add(box);
+      chunk.ownedGeometries.push(geo);
+      chunk.ownedMaterials.push(mat);
+      group.userData.placeholderGeometry = geo;
+      group.userData.placeholderMaterial = mat;
+    }
+    group.add(visual);
+  }
+
+  function buildManilaEntrance(chunk, matrix, cell, position, safePosition, trigger) {
+    var group = new THREE.Group();
+    group.name = "L0ManilaEntrance";
+    var face = manilaFacing(matrix, cell, position, safePosition, chunk.cx, chunk.cz);
+    var dx = face.x - position.x;
+    var dz = face.z - position.z;
+    var len = Math.hypot(dx, dz) || 1;
+    group.position.set(
+      position.x + (dx / len) * (gridSize * 0.5 + 0.1),
+      0,
+      position.z + (dz / len) * (gridSize * 0.5 + 0.1)
+    );
+    group.userData.brInteract = { kind: "manila_room", poi: trigger };
+    group.userData.chunk = chunk;
+    chunk.group.add(group);
+    chunk.manilaDoor = group;
+    group.rotation.y = Math.atan2(dx, dz);
+    fillManilaEntrance(chunk);
+    var pickGeo = new THREE.BoxGeometry(gridSize * 0.95, wallHeight * 0.96, 0.62);
+    var pickMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    var pick = new THREE.Mesh(pickGeo, pickMat);
+    pick.name = "L0ManilaPick";
+    pick.position.set(0, wallHeight * 0.48, 0.14);
+    pick.visible = true;
+    pick.userData.brInteract = { kind: "manila_room", poi: trigger };
+    group.add(pick);
+    chunk.ownedGeometries.push(pickGeo);
+    chunk.ownedMaterials.push(pickMat);
+    return group;
+  }
+
+  /**
+   * 用外部模型替换马尼拉室入口。模型高度为 1、底面在 y=0、开门的一面朝 +Z。
+   * 已生成的入口会立刻换上；之后新刷出的入口直接用这个模型。
+   */
+  function setManilaDoorModel(sourceGeometry) {
+    if (disposed || !sourceGeometry || !sourceGeometry.isBufferGeometry) return false;
+    var next = sourceGeometry.clone();
+    if (manilaDoorGeometry) manilaDoorGeometry.dispose();
+    manilaDoorGeometry = next;
+    chunks.forEach(function (chunk) {
+      if (chunk.manilaDoor) fillManilaEntrance(chunk);
+    });
+    return true;
+  }
+
+  /**
+   * 用外部模型替换天花板荧光灯外壳：模型须长轴沿 X、长度 1、顶面在 y=0、灯管一侧朝 -Y。
+   * 发光条换成贴在灯管凸起下方的细条；已加载的 chunk 原地换几何，实例矩阵不变。
+   */
+  function setLightFixtureModel(sourceGeometry) {
+    if (disposed || !sourceGeometry || !sourceGeometry.isBufferGeometry) return false;
+    var scale = gridSize * 0.75;
+    var mountY = wallHeight + 0.015 * scale;
+    var shadeY = wallHeight - 0.025;
+    var bodyY = wallHeight - 0.09;
+    var housing = sourceGeometry.clone();
+    housing.scale(scale, scale, scale);
+    housing.translate(0, mountY - shadeY, 0);
+    var strip = new THREE.BoxGeometry(0.86 * scale, 0.012 * scale, 0.035 * scale);
+    strip.translate(0, mountY - 0.084 * scale - bodyY, 0.012 * scale);
+    var previousBody = activeLightBodyGeometry;
+    var previousShade = activeLightShadeGeometry;
+    activeLightBodyGeometry = strip;
+    activeLightShadeGeometry = housing;
+    chunks.forEach(function (chunk) {
+      if (chunk.lightBody) {
+        chunk.lightBody.geometry = strip;
+        chunk.lightBody.computeBoundingSphere();
+      }
+      if (chunk.lightShade) {
+        chunk.lightShade.geometry = housing;
+        chunk.lightShade.computeBoundingSphere();
+      }
+    });
+    previousBody.dispose();
+    previousShade.dispose();
+    return true;
+  }
+
   function getStats() {
     return {
       seed: seed,
@@ -1244,6 +1592,10 @@ export function createLevel0WorldManager(root, opts) {
       seenLandmarks: getLandmarks().length,
       failedClipCount: failedClipCount,
       clipGuaranteePending: clipGuarantee,
+      rarePoiEnabled: rarePoiEnabled,
+      sublevelEntrancesEnabled: sublevelEntrancesEnabled,
+      clipChanceOverride: clipChanceOverride,
+      clipMinDistanceOverride: clipMinDistanceOverride,
       totalLoads: loadCount,
       totalUnloads: unloadCount,
       currentChunkX: lastChunkX,
@@ -1262,12 +1614,18 @@ export function createLevel0WorldManager(root, opts) {
     lightCandidates.length = 0;
     landmarkMemory.clear();
     stablePoiSpecs.clear();
+    clipHintCenter = null;
+    specialClipCenter = null;
     wallGeometry.dispose();
-    lightBodyGeometry.dispose();
-    lightShadeGeometry.dispose();
+    activeLightBodyGeometry.dispose();
+    activeLightShadeGeometry.dispose();
     floorGeometry.dispose();
     ceilingGeometry.dispose();
     specialWallGeometry.dispose();
+    manilaVoidGeometry.dispose();
+    if (manilaDoorGeometry) manilaDoorGeometry.dispose();
+    manilaDoorMaterial.dispose();
+    manilaVoidMaterial.dispose();
     var infos = [
       wallMaterialInfo,
       floorMaterialInfo,
@@ -1293,12 +1651,17 @@ export function createLevel0WorldManager(root, opts) {
     getPoiTriggers: getPoiTriggers,
     getSpecialClipWall: getSpecialClipWall,
     getSpecialClipCenter: getSpecialClipCenter,
+    getClipHintCenter: getClipHintCenter,
     setSpecialClipGhost: setSpecialClipGhost,
     getSpawnPoint: getSpawnPoint,
     getSnapshotMatrix: getSnapshotMatrix,
     getLandmarks: getLandmarks,
     noteFailedClip: noteFailedClip,
     consumeLoopSuggestion: consumeLoopSuggestion,
+    setExitPressure: setExitPressure,
+    getExitPressure: getExitPressure,
+    setLightFixtureModel: setLightFixtureModel,
+    setManilaDoorModel: setManilaDoorModel,
     getStats: getStats,
   };
 }

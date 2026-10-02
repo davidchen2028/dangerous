@@ -28,25 +28,31 @@ function sweep(world, steps, stride) {
 
 test("Level 0 默认行为不受新参数影响：仍会生成专属地标", () => {
   const root = new THREE.Group();
-  const world = createLevel0WorldManager(root, { sessionSeed: "regression-seed" });
-
-  sweep(world, 40, 24);
-
-  const interacts = world.getInteractMeshes();
-  const kinds = new Set();
-  interacts.forEach((mesh) => {
-    if (mesh.userData && mesh.userData.brInteract) {
-      kinds.add(mesh.userData.brInteract.kind);
-    }
+  const world = createLevel0WorldManager(root, {
+    sessionSeed: "regression-seed",
+    clipGuarantee: true,
+    clipMinDistance: 28,
   });
+
+  const kinds = new Set();
+  function collect() {
+    world.getInteractMeshes().forEach((mesh) => {
+      if (mesh.userData && mesh.userData.brInteract) {
+        kinds.add(mesh.userData.brInteract.kind);
+      }
+    });
+  }
+  collect();
+  sweep(world, 40, 24);
+  collect();
 
   assert.ok(
     world.getColliders().length > 0,
     "Level 0 应当生成墙体碰撞"
   );
   assert.ok(
-    kinds.size > 0,
-    "Level 0 默认仍应刷出 POI 交互物，实际拿到：" + JSON.stringify([...kinds])
+    kinds.has("clip_wall") || kinds.has("manila_room"),
+    "Level 0 默认仍应刷出切出或马尼拉，实际拿到：" + JSON.stringify([...kinds])
   );
 
   world.dispose();
