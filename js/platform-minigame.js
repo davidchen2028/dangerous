@@ -3641,9 +3641,6 @@
   }
 
   function showViews() {
-    if (window.PasswordMinigame && window.PasswordMinigame.hide) {
-      window.PasswordMinigame.hide();
-    }
     viewEl.hidden = false;
   }
 

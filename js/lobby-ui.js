@@ -307,17 +307,8 @@
     );
     document.body.classList.add("minigame-open");
     if (minigamePanel) minigamePanel.hidden = false;
-    if (window.PasswordMinigame && window.PasswordMinigame.isDone && window.PasswordMinigame.isDone()) {
-      if (window.PlatformMinigame && window.PlatformMinigame.start) {
-        window.PlatformMinigame.start();
-      }
-      return;
-    }
-    if (window.PlatformMinigame && window.PlatformMinigame.hide) {
-      window.PlatformMinigame.hide();
-    }
-    if (window.PasswordMinigame && window.PasswordMinigame.reset) {
-      window.PasswordMinigame.reset();
+    if (window.PlatformMinigame && window.PlatformMinigame.start) {
+      window.PlatformMinigame.start();
     }
   }
 
