@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { resolveBackroomsGfxProfile } from "./backrooms-gfx-profile.js";
 import { buildLevel1_2World } from "./backrooms-level1-2-world.js?v=2";
 import { buildLevel1_3World } from "./backrooms-level1-3-world.js?v=2";
 import { buildLevel1_5World } from "./backrooms-level1-5-world.js?v=1";
@@ -24,7 +25,9 @@ export function createLevel1SublevelManager(deps) {
   document.body.appendChild(fxCanvas);
 
   function resizeFx() {
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var gfx = resolveBackroomsGfxProfile();
+    var dprCap = gfx.maxDrawPixels > 0 ? 1 : 2;
+    var dpr = Math.min(window.devicePixelRatio || 1, dprCap);
     var width = Math.max(1, Math.round(window.innerWidth * dpr));
     var height = Math.max(1, Math.round(window.innerHeight * dpr));
     if (fxCanvas.width !== width) fxCanvas.width = width;

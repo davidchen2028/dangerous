@@ -2810,7 +2810,11 @@ function init() {
   );
   camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 90);
   var gfx = resolveBackroomsGfxProfile();
-  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: gfx.antialias });
+  renderer = new THREE.WebGLRenderer({
+    canvas: canvas,
+    antialias: gfx.antialias,
+    stencil: gfx.stencil !== false,
+  });
   applyBackroomsRendererSize(renderer, window.innerWidth, window.innerHeight, gfx);
   renderer.shadowMap.enabled = false;
   applyBackroomsToneMapping(renderer);

@@ -1309,13 +1309,17 @@ export function buildLevel4World(root, gfxProfile) {
   root.add(sunLight.target);
 
   var followKey = new THREE.PointLight(0xfff0d8, 0.62, 11, 1.5);
-  var followFill = new THREE.PointLight(0xc8d0e0, 0.2, 7.5, 1.85);
   root.add(followKey);
-  root.add(followFill);
+  var lightBudget = gfx.pointLightBudget > 0 ? gfx.pointLightBudget : 6;
+  var followFill = null;
+  if (lightBudget > 1) {
+    followFill = new THREE.PointLight(0xc8d0e0, 0.2, 7.5, 1.85);
+    root.add(followFill);
+  }
 
-  // 两盏跟随灯已占掉预算，剩下的额度给区块顶灯池
+  // 跟随灯占掉预算，剩下的额度给区块顶灯池。iPad 只留一盏跟随灯。
   var ceilingPool = createPointLightPool(root, {
-    count: Math.max(1, gfx.pointLightBudget - 2),
+    count: lightBudget <= 1 ? 0 : Math.max(1, lightBudget - 2),
     color: 0xfff6dc,
     distance: L4_CHUNK_SIZE * 0.92,
     decay: 1.4,
@@ -1330,7 +1334,7 @@ export function buildLevel4World(root, gfxProfile) {
     sunLight.target.position.set(px, 0, pz);
     sunLight.target.updateMatrixWorld();
     followKey.position.set(px, 2.15, pz);
-    followFill.position.set(px + 0.35, 2.75, pz + 0.45);
+    if (followFill) followFill.position.set(px + 0.35, 2.75, pz + 0.45);
     ceilingPool.update(px, pz, ctx.lightCandidates);
   }
   syncLighting(L4_SPAWN_X, L4_SPAWN_Z);

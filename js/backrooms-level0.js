@@ -2062,7 +2062,8 @@ function onResize() {
   camera.updateProjectionMatrix();
   var fx = document.getElementById("backroomsL0Fx");
   if (fx) {
-    var fxScale = Math.min(2, window.devicePixelRatio || 1);
+    var fxCap = level0GfxProfile && level0GfxProfile.maxDrawPixels > 0 ? 1 : 2;
+    var fxScale = Math.min(fxCap, window.devicePixelRatio || 1);
     fx.width = Math.max(1, Math.floor(w * fxScale));
     fx.height = Math.max(1, Math.floor(h * fxScale));
   }
@@ -2136,7 +2137,9 @@ function init() {
   level0GfxProfile = resolveBackroomsGfxProfile();
   if (level0GfxProfile.tier === "low") {
     console.info(
-      "[Backrooms L0] 轻量画质（Retina/Safari 或 ?gfx=low）。高清：?gfx=high 或 localStorage backrooms_gfx_tier=high"
+      level0GfxProfile.maxFps > 0
+        ? "[Backrooms L0] iPad 画质：30 帧、单点光、视距收到雾边。高清：?gfx=high"
+        : "[Backrooms L0] 轻量画质（Retina/Safari 或 ?gfx=low）。高清：?gfx=high 或 localStorage backrooms_gfx_tier=high"
     );
   }
 
@@ -2154,7 +2157,8 @@ function init() {
   renderer = new THREE.WebGLRenderer({
     canvas: canvas,
     antialias: level0GfxProfile.antialias,
-    powerPreference: "high-performance",
+    stencil: level0GfxProfile.stencil !== false,
+    powerPreference: level0GfxProfile.powerPreference || "high-performance",
   });
   applyBackroomsRendererSize(
     renderer,
@@ -2193,6 +2197,8 @@ function init() {
     wallHeight: WALL_HEIGHT,
     sessionSeed: worldSeed,
     gfxProfile: level0GfxProfile,
+    streamRadius: level0GfxProfile.streamRadius,
+    unloadRadius: level0GfxProfile.unloadRadius,
     wallMaterialFactory: createWallMaterial,
     floorMaterialFactory: createFloorMaterial,
     ceilingMaterialFactory: createCeilingMaterial,

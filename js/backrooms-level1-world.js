@@ -3,6 +3,7 @@
  * 供 backrooms-level1.js 与 action-scene.js 共用
  */
 import * as THREE from "three";
+import { resolveBackroomsGfxProfile } from "./backrooms-gfx-profile.js";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import { LEVEL1_PROP, attachFittedProp, placeFittedProp } from "./backrooms-static-prop.js";
 import {
@@ -3446,8 +3447,10 @@ function updateStreaming(px, pz, ctx) {
   var want = Object.create(null);
   var dx;
   var dz;
-  for (dz = -STREAM_RADIUS; dz <= STREAM_RADIUS; dz++) {
-    for (dx = -STREAM_RADIUS; dx <= STREAM_RADIUS; dx++) {
+  var radius =
+    ctx && ctx.streamRadius != null ? ctx.streamRadius : STREAM_RADIUS;
+  for (dz = -radius; dz <= radius; dz++) {
+    for (dx = -radius; dx <= radius; dx++) {
       want[chunkKey(here.cx + dx, here.cz + dz)] = true;
     }
   }
@@ -3526,9 +3529,13 @@ export function buildBackroomsLevel1World(root, opts) {
     colliders
   );
 
+  var gfxProfile = resolveBackroomsGfxProfile();
+  var streamRadius =
+    gfxProfile.streamRadius != null ? gfxProfile.streamRadius | 0 : STREAM_RADIUS;
   var ctx = {
     horror: horror,
     loadGltf: opts.loadGltf,
+    streamRadius: Math.max(0, streamRadius),
     chunksRoot: chunksRoot,
     chunks: chunks,
     colliders: colliders,

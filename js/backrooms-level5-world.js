@@ -452,8 +452,9 @@ export function buildLevel5World(root, opts) {
     pick: new THREE.MeshBasicMaterial({ visible: false }),
   };
 
+  var lightBudget = gfx.pointLightBudget > 0 ? gfx.pointLightBudget : 6;
   var pool = createPointLightPool(root, {
-    count: Math.max(2, Math.min(7, gfx.pointLightBudget || 6)),
+    count: Math.min(7, lightBudget),
     color: 0xffd79a,
     distance: 13,
     decay: 1.6,

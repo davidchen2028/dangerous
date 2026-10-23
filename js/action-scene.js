@@ -6929,7 +6929,8 @@ if (typeof window !== "undefined") {
       renderer = new THREE.WebGLRenderer({
         canvas: canvas,
         antialias: actionGfxProfile.antialias,
-        powerPreference: "high-performance",
+        stencil: actionGfxProfile.stencil !== false,
+        powerPreference: actionGfxProfile.powerPreference || "high-performance",
       });
       applyBackroomsRendererSize(
         renderer,
