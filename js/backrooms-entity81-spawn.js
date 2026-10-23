@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import { E81_CALL_KIND, writeEntity81Origin } from "./backrooms-entity81-catalog.js";
 import { grantLevelPass } from "./backrooms-level-pass.js";
+import { LEVEL1_PROP, attachFittedProp } from "./backrooms-static-prop.js";
 
 var _poster = null;
 
@@ -74,8 +75,19 @@ export function buildEntity81CallDoor(opts) {
       new THREE.PlaneGeometry(0.72, 0.44),
       new THREE.MeshBasicMaterial(posterMap ? { map: posterMap } : { color: 0x1a1510 })
     );
-    poster.position.set(-1.22, 2.15, 0.14);
+    poster.position.set(-1.55, 2.15, 0.14);
     group.add(poster);
+    attachFittedProp(
+      group,
+      LEVEL1_PROP.doubleDoor,
+      { axis: "y", target: 2.5, name: "Entity81DoubleDoor" },
+      function () {
+        frame.visible = false;
+        left.visible = false;
+        right.visible = false;
+        rail.visible = false;
+      }
+    );
   }
 
   var pick = new THREE.Mesh(
