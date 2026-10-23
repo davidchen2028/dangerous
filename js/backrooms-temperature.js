@@ -42,6 +42,8 @@ const LEVEL_PROFILE = {
   4: { min: 20, max: 24, base: 22, swing: 1.2 },
   /** Level 5 — 大厅温暖，深入锅炉区后体感明显升高 */
   5: { min: 20, max: 29, base: 23, swing: 2.4 },
+  /** Level XW-0 — 腐朽试练，廊道偏热，管道段会顶到危险高温 */
+  xw0: { min: 16, max: 49, base: 31, swing: 9, swing2: 6, volatile: true },
   /** Level 5 锅炉房 — 蒸汽与失控锅炉造成剧烈高温波动 */
   "5_boiler": { min: 34, max: 49, base: 41, swing: 4.2, volatile: true, swing2: 3.2 },
   /** Level 6 — 伸手不见五指的黑暗空洞 */
@@ -128,7 +130,8 @@ const LEVEL_PROFILE = {
   c1294: { min: -6, max: 4, base: -1, swing: 2.4 },
   /** Level C-1295 — 凝固死区，恒温 25℃（升降温均无法抵消凝固效应） */
   c1295: { min: 24.6, max: 25.4, base: 25, swing: 0.3 },
-  c1296: { min: 15, max: 20, base: 17.5, swing: 1.3 },
+  /** Level C-1296 — 白光超出量程。此处只是回退值，关卡会把读数盖成「超出量程」。 */
+  c1296: { min: 15, max: 20, base: 17.5, swing: 0 },
   /** Level C-1297 — 无界之痿，潮湿腐败的公寓恒温偏暖 */
   c1297: { min: 21, max: 27, base: 24, swing: 1.6 },
   /** Level C-1298 — 人景，柔和黄昏田园 */

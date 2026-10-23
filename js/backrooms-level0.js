@@ -87,7 +87,7 @@ import {
   disposeClipWallVortex,
   L0_POSTER_WALL_CELL,
 } from "./backrooms-level0-wall-decor.js";
-import { createLevel0WorldManager } from "./backrooms-level0-world.js?v=15";
+import { createLevel0WorldManager } from "./backrooms-level0-world.js?v=18";
 import {
   createLevel0ExitClock,
   markLeftLevel0,
@@ -296,6 +296,7 @@ const FLUORO_MOUNT_Y = WALL_HEIGHT - 0.02;
 
 const FLUORESCENT_GLB_URL = "models/level0-fluorescent-light.glb";
 const MANILA_DOOR_GLB_URL = "models/level0-manila-door.glb";
+const XW0_DOOR_GLB_URL = "models/level-xw0-entry-door.glb";
 /** @type {THREE.BufferGeometry | null} */
 let fluorescentModelGeometry = null;
 let fluorescentModelRequested = false;
@@ -307,6 +308,27 @@ function applyFluorescentModel() {
 }
 
 /** 加载失败时保留半透明占位块 */
+function loadXw0DoorModel() {
+  new GLTFLoader().load(
+    XW0_DOOR_GLB_URL,
+    function (gltf) {
+      var geometry = null;
+      var material = null;
+      gltf.scene.traverse(function (child) {
+        if (!geometry && child.isMesh) {
+          geometry = child.geometry;
+          material = Array.isArray(child.material) ? child.material[0] : child.material;
+        }
+      });
+      if (level0World && geometry) level0World.setXw0DoorModel(geometry, material);
+    },
+    undefined,
+    function (err) {
+      console.warn("[Level0] 腐朽试练门模型加载失败，保留占位", err);
+    }
+  );
+}
+
 function loadManilaDoorModel() {
   new GLTFLoader().load(
     MANILA_DOOR_GLB_URL,
@@ -1435,6 +1457,10 @@ function isAimingActiveZoneInteraction() {
   );
 }
 
+function isAimingXw0Entry() {
+  return isAimingInteractKind("xw0_entrance");
+}
+
 function isAimingManilaEntry() {
   return isAimingInteractKind("manila_room");
 }
@@ -1577,6 +1603,11 @@ function updateClipPrompt() {
     clipHintEl.hidden = true;
     return;
   }
+  if (isAimingXw0Entry()) {
+    clipHintEl.innerHTML = '腐朽试练 · 按 <kbd>Q</kbd> 进入';
+    clipHintEl.hidden = false;
+    return;
+  }
   if (isAimingManilaEntry() || standingExitKind() === "manila") {
     clipHintEl.innerHTML = '按 <kbd>Q</kbd> 进入';
     clipHintEl.hidden = false;
@@ -1610,6 +1641,7 @@ function updateCrosshairL0() {
       isAimingLevel02Exit() ||
       isAimingLevel01Entry() ||
       isAimingActiveZoneInteraction() ||
+      isAimingXw0Entry() ||
       isAimingManilaEntry() ||
       isAimingInteractKind("level05_entrance") ||
       isAimingInteractKind("level07_entrance") ||
@@ -1755,6 +1787,10 @@ function tryPrimaryQAction() {
   if (isAimingInteractKind("level02_construction")) {
     return;
   }
+  if (isAimingXw0Entry()) {
+    goToXw0FromL0();
+    return;
+  }
   if (isAimingManilaEntry() || standingExitKind() === "manila") {
     enterManilaRoom();
     return;
@@ -1853,6 +1889,22 @@ function goToLevel1FromL0() {
   });
 }
 
+function goToXw0FromL0() {
+  if (clipState === "done") return;
+  markLeftLevel0();
+  clipState = "done";
+  if (hallucinations) hallucinations.dispose();
+  hallucinations = null;
+  fps.move.forward = false;
+  if (clipHintEl) clipHintEl.hidden = true;
+  saveBackroomsSurvival(survival);
+  grantLevelPass("xw0", fps.yaw);
+  queueEnterLevelBanner("Level XW-0 · 腐朽试练");
+  fadeOutLevel0Music(MUSIC_FADE_OUT_MS).then(function () {
+    window.location.href = "backrooms-level-xw0.html";
+  });
+}
+
 function goToLevel37FromL0() {
   if (clipState === "done") return;
   markLeftLevel0();
@@ -1912,6 +1964,11 @@ function bindDevJump() {
     if (command === "chen") {
       closeDevJump();
       goToLevel1FromL0();
+      return;
+    }
+    if (command === "xw0") {
+      closeDevJump();
+      goToXw0FromL0();
       return;
     }
     showBackroomsToast("测试指令无效");
@@ -2149,6 +2206,7 @@ function init() {
   });
   loadFluorescentModel();
   loadManilaDoorModel();
+  loadXw0DoorModel();
   worldDrops = createWorldDrops();
   worldDrops.attachSpace("world", levelRoot);
   setItemDropHandler(dropItemFromHotbar);

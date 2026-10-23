@@ -1,7 +1,9 @@
 /**
- * 派对客（Partygoer）— 黄色笑脸人形 + 红气球，程序化建模
+ * 派对客（Partygoer）— 分件 GLB：躯干、笑脸头、手臂、红气球。
+ * 模型未到齐前先用程序化身体占位，到齐后整具换上。
  */
 import * as THREE from "three";
+import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import {
   BACKROOMS_ENTITY_HEALTH,
   registerBackroomsEntityTarget,
@@ -9,8 +11,28 @@ import {
 } from "./backrooms-entity-health.js";
 
 export const PARTYGOER_DEFAULT_SCALE = 1;
-/** 站立高约 2.15m */
-export const PARTYGOER_HEIGHT = 2.15;
+/** 躯干 1.48m，头叠上去后站立约 2.14m */
+export const PARTYGOER_HEIGHT = 2.14;
+
+var PART_URL = {
+  torso: "models/partygoer-torso.glb",
+  head: "models/partygoer-head.glb",
+  arm: "models/partygoer-arm.glb",
+  balloon: "models/partygoer-balloon.glb",
+};
+/** 原始网格约 1m 高、底在 y=0。这里是装到身上之后的高度。 */
+var TORSO_H = 1.48;
+var HEAD_H = 0.74;
+var ARM_H = 0.92;
+var BALLOON_H = 0.82;
+var HEAD_Y = TORSO_H - 0.08;
+var SHOULDER_Y = TORSO_H * 0.8;
+var SHOULDER_X = 0.46;
+
+var partTemplates = null;
+var partLoadStarted = false;
+/** @type {((parts: object) => void)[]} */
+var partWaiters = [];
 
 var _bodyGeo = null;
 var _armGeo = null;
@@ -99,6 +121,62 @@ function yellowMaterial(seed) {
   });
 }
 
+function loadPart(loader, url) {
+  return new Promise(function (resolve) {
+    loader.load(url, function (gltf) { resolve(gltf.scene); }, undefined, function () { resolve(null); });
+  });
+}
+
+function whenParts(callback) {
+  if (typeof window === "undefined") return;
+  if (partTemplates) {
+    callback(partTemplates);
+    return;
+  }
+  partWaiters.push(callback);
+  if (partLoadStarted) return;
+  partLoadStarted = true;
+  var loader = new GLTFLoader();
+  Promise.all([
+    loadPart(loader, PART_URL.torso),
+    loadPart(loader, PART_URL.head),
+    loadPart(loader, PART_URL.arm),
+    loadPart(loader, PART_URL.balloon),
+  ]).then(function (scenes) {
+    partTemplates = {
+      torso: scenes[0],
+      head: scenes[1],
+      arm: scenes[2],
+      balloon: scenes[3],
+    };
+    var pending = partWaiters.slice();
+    partWaiters.length = 0;
+    var i;
+    for (i = 0; i < pending.length; i++) pending[i](partTemplates);
+  });
+}
+
+/** 底贴在局部 y=0，水平居中，高度缩到 targetHeight。 */
+function cloneFitted(template, targetHeight, mirrorX) {
+  var model = template.clone(true);
+  model.traverse(function (child) {
+    if (child.isMesh) child.frustumCulled = true;
+  });
+  model.updateMatrixWorld(true);
+  var box = new THREE.Box3().setFromObject(model);
+  var size = new THREE.Vector3();
+  box.getSize(size);
+  var fit = targetHeight / Math.max(0.001, size.y);
+  model.scale.setScalar(fit);
+  if (mirrorX) model.scale.x *= -1;
+  model.updateMatrixWorld(true);
+  box.setFromObject(model);
+  model.position.x -= (box.min.x + box.max.x) * 0.5;
+  model.position.z -= (box.min.z + box.max.z) * 0.5;
+  model.position.y -= box.min.y;
+  return model;
+}
+
 /**
  * @param {{ scale?: number, seed?: number }} [opts]
  */
@@ -120,27 +198,30 @@ export function buildPartygoerFigure(opts) {
   });
   if (!faceTex) faceMat.color.setHSL(0.12, 0.62, 0.5);
 
-  var body = new THREE.Mesh(bodyGeo(), bodyMat);
-  body.position.y = 0.02;
+  var body = new THREE.Group();
+  body.name = "PartygoerBody";
+  var bodyMesh = new THREE.Mesh(bodyGeo(), bodyMat);
+  bodyMesh.position.y = 0.02;
+  body.add(bodyMesh);
   group.add(body);
 
-  var head = new THREE.Mesh(headGeo(), faceMat);
-  head.position.y = 1.52;
+  var head = new THREE.Group();
+  head.name = "PartygoerHead";
+  head.position.y = HEAD_Y;
+  var headMesh = new THREE.Mesh(headGeo(), faceMat);
+  headMesh.position.y = 0.2;
+  head.add(headMesh);
+  var neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.12, 8), bodyMat);
+  neck.position.y = -0.16;
+  head.add(neck);
   group.add(head);
-
-  var neck = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.12, 0.14, 0.12, 8),
-    bodyMat
-  );
-  neck.position.y = 1.28;
-  group.add(neck);
 
   var armL = new THREE.Group();
   armL.name = "PartygoerArmL";
   var armMeshL = new THREE.Mesh(armGeo(), bodyMat);
   armMeshL.position.y = -0.42;
   armL.add(armMeshL);
-  armL.position.set(-0.38, 1.22, 0.02);
+  armL.position.set(-SHOULDER_X, SHOULDER_Y, 0.02);
   armL.rotation.z = 0.55;
   armL.rotation.x = 0.12;
   group.add(armL);
@@ -150,20 +231,18 @@ export function buildPartygoerFigure(opts) {
   var armMeshR = new THREE.Mesh(armGeo(), bodyMat);
   armMeshR.position.y = -0.42;
   armR.add(armMeshR);
-  armR.position.set(0.38, 1.22, 0.02);
+  armR.position.set(SHOULDER_X, SHOULDER_Y, 0.02);
   armR.rotation.z = -0.55;
   armR.rotation.x = 0.12;
   group.add(armR);
 
   var balloonPivot = new THREE.Group();
   balloonPivot.name = "PartygoerBalloon";
-  balloonPivot.position.set(0.55, 1.65, 0.15);
+  balloonPivot.position.set(0.72, 1.42, 0.22);
 
-  var string = new THREE.Mesh(stringGeo(), new THREE.MeshStandardMaterial({
-    color: 0x222222,
-    roughness: 0.95,
-  }));
-  string.position.y = 0.55;
+  var stringMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.95 });
+  var string = new THREE.Mesh(stringGeo(), stringMat);
+  string.position.y = 0.4;
   balloonPivot.add(string);
 
   var balloonMat = new THREE.MeshStandardMaterial({
@@ -175,19 +254,41 @@ export function buildPartygoerFigure(opts) {
   });
   var balloon = new THREE.Mesh(balloonGeo(), balloonMat);
   balloon.scale.set(1, 1.18, 1);
-  balloon.position.y = 1.12;
+  balloon.position.y = 0.95;
   balloonPivot.add(balloon);
-
-  var knot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.025, 6, 6),
-    balloonMat
-  );
-  knot.position.y = 0.08;
-  balloonPivot.add(knot);
-
   group.add(balloonPivot);
 
   group.scale.setScalar(unitScale);
+
+  var balloonBaseY = balloonPivot.position.y;
+  var replaced = false;
+  var disposed = false;
+
+  function clearSlot(slot) {
+    var i;
+    for (i = slot.children.length - 1; i >= 0; i--) slot.remove(slot.children[i]);
+  }
+
+  function hangArm(slot, mesh) {
+    clearSlot(slot);
+    mesh.position.y = -ARM_H;
+    slot.add(mesh);
+  }
+
+  whenParts(function (parts) {
+    if (disposed || replaced) return;
+    if (!parts.torso || !parts.head || !parts.arm || !parts.balloon) return;
+    replaced = true;
+    clearSlot(body);
+    body.add(cloneFitted(parts.torso, TORSO_H, false));
+    clearSlot(head);
+    head.add(cloneFitted(parts.head, HEAD_H, false));
+    hangArm(armL, cloneFitted(parts.arm, ARM_H, false));
+    hangArm(armR, cloneFitted(parts.arm, ARM_H, true));
+    clearSlot(balloonPivot);
+    balloonPivot.add(cloneFitted(parts.balloon, BALLOON_H, false));
+    disposeProcedural();
+  });
 
   function update(t) {
     var sway = Math.sin(t * 0.9) * 0.025;
@@ -195,16 +296,23 @@ export function buildPartygoerFigure(opts) {
     head.rotation.y = sway * 0.25;
     armL.rotation.z = 0.55 + Math.sin(t * 1.1 + 0.3) * 0.08;
     armR.rotation.z = -0.55 - Math.sin(t * 1.05) * 0.08;
-    balloonPivot.position.y = 1.65 + Math.sin(t * 2.2) * 0.06;
+    balloonPivot.position.y = balloonBaseY + Math.sin(t * 2.2) * 0.06;
     balloonPivot.rotation.z = Math.sin(t * 1.4) * 0.06;
-    balloon.position.x = Math.sin(t * 1.8) * 0.03;
   }
 
-  function dispose() {
+  function disposeProcedural() {
     bodyMat.dispose();
     faceMat.dispose();
     balloonMat.dispose();
+    stringMat.dispose();
+    neck.geometry.dispose();
     if (faceTex) faceTex.dispose();
+  }
+
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    if (!replaced) disposeProcedural();
   }
 
   return {

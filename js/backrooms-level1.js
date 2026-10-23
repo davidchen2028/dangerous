@@ -63,7 +63,7 @@ import {
   resolveClipEntrySpawn,
   getSpawnChunkBounds,
   WAREHOUSE_HEIGHT,
-} from "./backrooms-level1-world.js?v=30";
+} from "./backrooms-level1-world.js?v=33";
 import {
   showEnterLevelBannerIfQueued,
   queueEnterLevelNumber,
@@ -197,7 +197,7 @@ let survival = null;
 let horror = null;
 
 const LOOK_SENS = 0.0022;
-const MOBILE_LOOK_SENS_MULT = 1.35;
+const MOBILE_LOOK_SENS_MULT = 5;
 const GRAVITY = 32;
 const JUMP_SPEED = 9;
 const EYE_HEIGHT = 1.65;

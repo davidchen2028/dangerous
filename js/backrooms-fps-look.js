@@ -1,7 +1,8 @@
 /**
  * 后室 FPS — 触屏拖动视角（L0/L1/L2/L3/L283 共用）
  */
-export const MOBILE_LOOK_SENS_MULT = 1.35;
+/** 触屏拖动转视角。iPad 指尖一次滑动的像素不多，倍率要明显高于鼠标。 */
+export const MOBILE_LOOK_SENS_MULT = 5;
 
 export function isTouchPrimaryDevice() {
   var ua = navigator.userAgent || "";

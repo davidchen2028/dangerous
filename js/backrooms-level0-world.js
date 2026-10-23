@@ -28,6 +28,7 @@ const POI_SPECS = [
   { kind: "02", chance: 0.0035, minDistance: 168, spacing: 216, wall: true },
   { kind: "03", chance: 0.004, minDistance: 144, spacing: 192, wall: false },
   { kind: "manila", chance: 0.0025, minDistance: 168, spacing: 216, wall: true },
+  { kind: "xw0", chance: 1, minDistance: 24, spacing: 8, wall: true },
   { kind: "01", chance: 0.003, minDistance: 180, spacing: 228, wall: true },
   { kind: "05", chance: 0.0013, minDistance: 264, spacing: 336, wall: true },
   { kind: "07", chance: 0.0009, minDistance: 312, spacing: 408, wall: true },
@@ -287,6 +288,12 @@ export function createLevel0WorldManager(root, opts) {
   var activeLightBodyGeometry = lightBodyGeometry;
   var activeLightShadeGeometry = lightShadeGeometry;
   var manilaDoorGeometry = null;
+  var xw0DoorGeometry = null;
+  var xw0DoorMaterial = new THREE.MeshStandardMaterial({
+    color: 0x8a7048,
+    roughness: 0.86,
+    metalness: 0.02,
+  });
   var manilaDoorMaterial = new THREE.MeshStandardMaterial({
     color: 0xd2b06a,
     roughness: 0.78,
@@ -876,6 +883,8 @@ export function createLevel0WorldManager(root, opts) {
         chunk.disposableSpecials.push(level07Root);
       }
       if (pick) pick.userData.brInteract.poi = trigger;
+    } else if (spec.kind === "xw0") {
+      pick = buildXw0Entrance(chunk, matrix, cell, position, safePosition, trigger);
     } else if (spec.kind === "manila") {
       pick = buildManilaEntrance(chunk, matrix, cell, position, safePosition, trigger);
       addCollider(chunk, {
@@ -1492,6 +1501,137 @@ export function createLevel0WorldManager(root, opts) {
     group.add(visual);
   }
 
+  function makeXw0Sign() {
+    if (typeof document === "undefined") {
+      var fallback = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.78, 0.3),
+        new THREE.MeshBasicMaterial({ color: 0x3a2414 })
+      );
+      fallback.position.set(0, 1.48, 0.07);
+      fallback.name = "L0Xw0Sign";
+      return fallback;
+    }
+    var canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 96;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, 256, 96);
+    ctx.fillStyle = "#3a2414";
+    ctx.font = "bold 46px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("腐朽试练", 128, 48);
+    var texture = new THREE.CanvasTexture(canvas);
+    var material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+    });
+    var sign = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.3), material);
+    sign.position.set(0, 1.48, 0.07);
+    sign.name = "L0Xw0Sign";
+    return sign;
+  }
+
+  function fillXw0Entrance(chunk) {
+    var group = chunk.xw0Door;
+    if (!group) return;
+    var old = group.getObjectByName("L0Xw0Visual");
+    if (old) {
+      old.traverse(function (child) {
+        if (!child.isMesh || child.geometry === xw0DoorGeometry) return;
+        var geoIndex = chunk.ownedGeometries.indexOf(child.geometry);
+        if (geoIndex >= 0) chunk.ownedGeometries.splice(geoIndex, 1);
+        child.geometry.dispose();
+        if (child.material && child.material !== xw0DoorMaterial) {
+          var matIndex = chunk.ownedMaterials.indexOf(child.material);
+          if (matIndex >= 0) chunk.ownedMaterials.splice(matIndex, 1);
+          if (child.material.map) child.material.map.dispose();
+          child.material.dispose();
+        }
+      });
+      group.remove(old);
+    }
+    var visual = new THREE.Group();
+    visual.name = "L0Xw0Visual";
+    if (xw0DoorGeometry) {
+      var door = new THREE.Mesh(xw0DoorGeometry, xw0DoorMaterial);
+      door.name = "L0Xw0DoorMesh";
+      door.castShadow = shadows;
+      door.receiveShadow = shadows;
+      visual.add(door);
+    } else {
+      var geo = new THREE.BoxGeometry(0.9, 2.05, 0.1);
+      geo.translate(0, 1.025, 0);
+      var box = new THREE.Mesh(geo, xw0DoorMaterial);
+      box.name = "L0Xw0Placeholder";
+      visual.add(box);
+      chunk.ownedGeometries.push(geo);
+      group.userData.xw0Placeholder = geo;
+    }
+    var sign = makeXw0Sign();
+    chunk.ownedGeometries.push(sign.geometry);
+    chunk.ownedMaterials.push(sign.material);
+    visual.add(sign);
+    group.add(visual);
+  }
+
+  function buildXw0Entrance(chunk, matrix, cell, position, safePosition, trigger) {
+    var group = new THREE.Group();
+    group.name = "L0Xw0Entrance";
+    var face = manilaFacing(matrix, cell, position, safePosition, chunk.cx, chunk.cz);
+    var dx = face.x - position.x;
+    var dz = face.z - position.z;
+    var len = Math.hypot(dx, dz) || 1;
+    group.position.set(
+      position.x + (dx / len) * (gridSize * 0.5 + 0.08),
+      0,
+      position.z + (dz / len) * (gridSize * 0.5 + 0.08)
+    );
+    group.rotation.y = Math.atan2(dx, dz);
+    chunk.group.add(group);
+    chunk.xw0Door = group;
+    fillXw0Entrance(chunk);
+    var pickGeo = new THREE.BoxGeometry(1.05, wallHeight * 0.92, 0.45);
+    var pickMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    var pick = new THREE.Mesh(pickGeo, pickMat);
+    pick.name = "L0Xw0Pick";
+    pick.position.set(0, wallHeight * 0.46, 0.12);
+    pick.userData.brInteract = { kind: "xw0_entrance", poi: trigger };
+    group.add(pick);
+    chunk.ownedGeometries.push(pickGeo);
+    chunk.ownedMaterials.push(pickMat);
+    addCollider(chunk, {
+      minX: position.x - gridSize * 0.5,
+      maxX: position.x + gridSize * 0.5,
+      minZ: position.z - gridSize * 0.5,
+      maxZ: position.z + gridSize * 0.5,
+      chunkX: chunk.cx,
+      chunkZ: chunk.cz,
+      poiKind: "xw0",
+      kind: "xw0",
+    });
+    return pick;
+  }
+
+  function setXw0DoorModel(sourceGeometry, sourceMaterial) {
+    if (disposed || !sourceGeometry || !sourceGeometry.isBufferGeometry) return false;
+    var next = sourceGeometry.clone();
+    if (xw0DoorGeometry) xw0DoorGeometry.dispose();
+    xw0DoorGeometry = next;
+    if (sourceMaterial && sourceMaterial.isMaterial && sourceMaterial !== xw0DoorMaterial) {
+      xw0DoorMaterial = sourceMaterial;
+    }
+    chunks.forEach(function (chunk) {
+      if (chunk.xw0Door) fillXw0Entrance(chunk);
+    });
+    return true;
+  }
+
   function buildManilaEntrance(chunk, matrix, cell, position, safePosition, trigger) {
     var group = new THREE.Group();
     group.name = "L0ManilaEntrance";
@@ -1624,7 +1764,9 @@ export function createLevel0WorldManager(root, opts) {
     specialWallGeometry.dispose();
     manilaVoidGeometry.dispose();
     if (manilaDoorGeometry) manilaDoorGeometry.dispose();
+    if (xw0DoorGeometry) xw0DoorGeometry.dispose();
     manilaDoorMaterial.dispose();
+    xw0DoorMaterial.dispose();
     manilaVoidMaterial.dispose();
     var infos = [
       wallMaterialInfo,
@@ -1662,6 +1804,7 @@ export function createLevel0WorldManager(root, opts) {
     getExitPressure: getExitPressure,
     setLightFixtureModel: setLightFixtureModel,
     setManilaDoorModel: setManilaDoorModel,
+    setXw0DoorModel: setXw0DoorModel,
     getStats: getStats,
   };
 }

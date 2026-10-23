@@ -60,7 +60,7 @@ if (typeof window !== "undefined") {
   var STAMINA_DRAIN_SEC = 2;
   var staminaDrainAcc = 0;
   var LOOK_SENS = 0.0022;
-  var MOBILE_LOOK_SENS_MULT = 3;
+  var MOBILE_LOOK_SENS_MULT = 5;
   var GRAVITY = 32;
   var JUMP_SPEED = 9;
   var BOUNDS_X = 5.5;

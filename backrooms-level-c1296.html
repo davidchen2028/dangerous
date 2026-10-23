@@ -6,9 +6,46 @@
   <title>后室 Level C-1296 — 0.1296%</title>
   <link rel="stylesheet" href="css/backrooms-level0.css?v=26">
   <link rel="stylesheet" href="css/backrooms-survival.css?v=11">
+  <style>
+    body.backrooms-level-c1296 {
+      background: #fff;
+    }
+    /* 盖住画布的白。时间不动，所以这层光也不闪。 */
+    .c1296-wash {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background: #fff;
+    }
+    body.backrooms-level-c1296 .backrooms-hud__title--l1 {
+      color: #f4f7fb;
+      background: rgba(8, 14, 22, 0.78);
+      padding: 6px 12px;
+      border-radius: 999px;
+    }
+    body.backrooms-level-c1296 .br-survival {
+      padding: 10px 12px 4px;
+      border-radius: 10px;
+      background: rgba(8, 14, 22, 0.78);
+    }
+    body.backrooms-level-c1296 .backrooms-crosshair::before,
+    body.backrooms-level-c1296 .backrooms-crosshair::after {
+      background: rgba(18, 22, 28, 0.92);
+      box-shadow: 0 0 4px rgba(255, 255, 255, 0.9);
+    }
+    body.backrooms-level-c1296 .backrooms-temp--blind .backrooms-temp__value {
+      min-width: 4.8em;
+      font-size: 13px;
+    }
+    body.backrooms-level-c1296 .backrooms-temp--blind .backrooms-temp__fill {
+      background: #f4f4f4;
+    }
+  </style>
 </head>
 <body class="backrooms-level1 backrooms-level-c1296" data-c-level="c1296" data-c-num="1296" data-c-title="Level C-1296 · 0.1296%" data-c-blurb="你从写着 0.1296% 的门后切出。">
   <canvas id="backroomsCanvas" aria-label="后室 Level C-1296"></canvas>
+  <div class="c1296-wash" aria-hidden="true"></div>
   <div id="backroomsInput" class="backrooms-input" aria-hidden="true"></div>
   <div class="backrooms-crosshair" id="backroomsCrosshair" aria-hidden="true"></div>
   <div class="backrooms-hud">
@@ -22,6 +59,6 @@
     <div class="backrooms-hud__error" id="backroomsError" hidden></div>
   </div>
   <script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
-  <script type="module" src="js/backrooms-level-c1296.js?v=1"></script>
+  <script type="module" src="js/backrooms-level-c1296.js?v=2"></script>
 </body>
 </html>
