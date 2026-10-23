@@ -679,6 +679,25 @@ function featurePosition(record, feature) {
       };
 }
 
+function addDaomenDoor(ctx, record) {
+  var x = L2_SPAWN_X + 1.15;
+  var z = L2_SPAWN_Z;
+  var geometry = new THREE.BoxGeometry(0.7, 2.1, 0.16);
+  var material = new THREE.MeshStandardMaterial({
+    color: 0x8a4a28,
+    metalness: 0.75,
+    roughness: 0.4,
+    emissive: 0xff5a18,
+    emissiveIntensity: 0.25,
+  });
+  var frame = new THREE.Mesh(geometry, material);
+  frame.position.set(x, 1.15, z);
+  record.group.add(frame);
+  record.geometries.push(geometry);
+  record.materials.push(material);
+  addPickRoot(ctx, record, x, 1.15, z + 0.35, { kind: "daomen_outpost_door" });
+}
+
 function addPickRoot(ctx, record, x, y, z, data) {
   var geometry = new THREE.BoxGeometry(1.25, 1.25, 1.25);
   var material = new THREE.MeshBasicMaterial({ visible: false });
@@ -1020,6 +1039,8 @@ function loadChunk(cx, cz, ctx) {
   }
   addChunkFeatures(ctx, record);
   record.entitySpawns = deriveEntitySpawns(record);
+  var spawnChunk = getChunkCoords(L2_SPAWN_X, L2_SPAWN_Z);
+  if (cx === spawnChunk.cx && cz === spawnChunk.cz) addDaomenDoor(ctx, record);
 
   if (key !== "0,0" && hashText(key + ":steam") % 5 === 0 && record.navSegments.length) {
     var seg = record.navSegments[hashText(key) % record.navSegments.length];

@@ -1889,6 +1889,22 @@ function goToLevel1FromL0() {
   });
 }
 
+function goToC1166FromL0() {
+  if (clipState === "done") return;
+  markLeftLevel0();
+  clipState = "done";
+  if (hallucinations) hallucinations.dispose();
+  hallucinations = null;
+  fps.move.forward = false;
+  if (clipHintEl) clipHintEl.hidden = true;
+  saveBackroomsSurvival(survival);
+  grantLevelPass("c1166", fps.yaw);
+  queueEnterLevelBanner("Level C-1166 · 兜率天");
+  fadeOutLevel0Music(MUSIC_FADE_OUT_MS).then(function () {
+    window.location.href = "backrooms-level-c1166.html";
+  });
+}
+
 function goToXw0FromL0() {
   if (clipState === "done") return;
   markLeftLevel0();
@@ -1969,6 +1985,11 @@ function bindDevJump() {
     if (command === "xw0") {
       closeDevJump();
       goToXw0FromL0();
+      return;
+    }
+    if (command === "c1166") {
+      closeDevJump();
+      goToC1166FromL0();
       return;
     }
     showBackroomsToast("测试指令无效");

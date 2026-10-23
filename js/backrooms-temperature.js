@@ -44,6 +44,13 @@ const LEVEL_PROFILE = {
   5: { min: 20, max: 29, base: 23, swing: 2.4 },
   /** Level XW-0 — 腐朽试练，廊道偏热，管道段会顶到危险高温 */
   xw0: { min: 16, max: 49, base: 31, swing: 9, swing2: 6, volatile: true },
+  /** Level C-1166 兜率天 — 铜炉内壁，停在热伤阈值之下 */
+  c1166: { min: 38, max: 43.5, base: 40, swing: 1.4 },
+  c1166_xun: { min: 13, max: 17, base: 15, swing: 0.8 },
+  c1166_dui: { min: 48, max: 52, base: 50, swing: 1.2 },
+  c1166_gen: { min: 48, max: 52, base: 50, swing: 1.2 },
+  c1166_li: { min: 58, max: 63, base: 60, swing: 1.5 },
+  c1166_zhong: { min: 22, max: 26, base: 24, swing: 0.4 },
   /** Level 5 锅炉房 — 蒸汽与失控锅炉造成剧烈高温波动 */
   "5_boiler": { min: 34, max: 49, base: 41, swing: 4.2, volatile: true, swing2: 3.2 },
   /** Level 6 — 伸手不见五指的黑暗空洞 */

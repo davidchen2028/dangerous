@@ -27,7 +27,7 @@ function defineKey(itemId, levelId, label, page, pass, opts) {
   });
 }
 
-/** 66 个已制作、可游玩区域；C-102 与纯过渡场景不列入。 */
+/** 67 个已制作、可游玩区域；C-102 与纯过渡场景不列入。 */
 function trade(buyPrice, sellPrice, extra) {
   extra = extra || {};
   extra.buyPrice = buyPrice;
@@ -107,6 +107,7 @@ export const LEVEL_KEY_CATALOG = Object.freeze([
   defineKey("level_key_c1299", "c1299", "Level C-1299 浓汤煮沸", "backrooms-level-c1299.html", "c1299", trade(300, 150, { hubTarget: true })),
   defineKey("level_key_c1299_1", "c1299_1", "Level C-1299.1 浓汤美味", "backrooms-level-c1299-1.html", "c1299_1", trade(300, 150, { hubTarget: true })),
   defineKey("level_key_c1623", "c1623", "Level C-1623 二十里面有过量的三十", "backrooms-level-c1623.html", "c1623", trade(155, 75, { hubTarget: true })),
+  defineKey("level_key_c1166", "c1166", "Level C-1166 兜率天", "backrooms-level-c1166.html", "c1166", trade(180, 90, { hubTarget: true })),
 
   // 隐秘层级（1）：可鉴定/交易，但不在 Hub 内生成指向自身的门。
   defineKey("level_key_hub", "hub", "枢纽 The Hub", "backrooms-hub.html", "hub", trade(200, 100)),

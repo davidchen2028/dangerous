@@ -308,6 +308,19 @@ function addGrandHallFurniture(chunk, center, layout, mats) {
   addGuestDoor(chunk, center.x - 7, center.z + 4.5, Math.PI * 0.5, 1, mats);
 }
 
+function addDaomenDoor(chunk, center, mats) {
+  var x = center.x;
+  var z = center.z - 8;
+  var frame = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.18), mats.metal);
+  frame.position.set(x, 1.15, z);
+  chunk.group.add(frame);
+  var pick = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.2, 0.45), mats.pick);
+  pick.position.set(x, 1.15, z + 0.45);
+  pick.userData.brInteract = { kind: "daomen_outpost_door" };
+  chunk.group.add(pick);
+  chunk.interacts.push(pick);
+}
+
 function addBoilerFurniture(chunk, center, layout, mats) {
   for (var i = -1; i <= 1; i++) {
     var tank = new THREE.Mesh(
@@ -508,6 +521,7 @@ export function buildLevel5World(root, opts) {
     if (layout.zone === "lobby") addLobby(chunk, center, mats);
     else if (layout.zone === "grand_hall") addGrandHallFurniture(chunk, center, layout, mats);
     else addBoilerFurniture(chunk, center, layout, mats);
+    if (cx === 2 && cz === 0) addDaomenDoor(chunk, center, mats);
 
     for (var li = 0; li < layout.loot.length; li++) {
       addLoot(chunk, center, layout.loot[li], mats, taken);

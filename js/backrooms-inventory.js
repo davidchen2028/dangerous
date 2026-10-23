@@ -3,6 +3,7 @@
  * 获得物品优先进快捷栏；可从背包拖到快捷栏；←/→ 选中，R 使用选中格
  */
 import { getLevelKeyByItemId } from "./backrooms-level-key-catalog.js";
+import { isC1166BoundId } from "./backrooms-level-c1166-pills.js";
 
 export const BACKPACK_COLS = 7;
 export const BACKPACK_ROWS = 5;
@@ -614,7 +615,23 @@ function dispatchUseItemId(itemId) {
     } else {
       useScrapPageSafe();
     }
+  } else if (isC1166BoundId(itemId)) {
+    if (typeof window.__backroomsUseC1166Bound === "function") {
+      window.__backroomsUseC1166Bound(itemId);
+    } else if (removeFirstItem(itemId)) {
+      powderC1166Toast();
+    }
   }
+}
+
+function powderC1166Toast() {
+  var el = document.getElementById("backroomsLootToast");
+  if (!el) return;
+  el.hidden = false;
+  el.textContent = "化为粉末";
+  window.setTimeout(function () {
+    if (el.textContent === "化为粉末") el.hidden = true;
+  }, 1800);
 }
 
 const SCRAP_PAGE_SAFE_TEXT = [

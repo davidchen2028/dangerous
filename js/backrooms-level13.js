@@ -18,6 +18,7 @@ import {
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
 import { pickCrosshairInteract } from "./backrooms-interact-aim.js";
+import { createDaomenOutpost } from "./backrooms-daomen-outpost.js?v=1";
 import { aiChoiceHtml, isAiChatOpen, closeAiChat } from "./backrooms-ai-chat.js?v=2";
 import { showEnterLevelBannerIfQueued, queueEnterLevelNumber } from "./backrooms-level-enter.js";
 import { enforceLevelEntry, grantLevelPass } from "./backrooms-level-pass.js";
@@ -78,6 +79,8 @@ let renderer = null;
 let camera = null;
 let scene = null;
 let survival = null;
+let hostRoot = null;
+let daomen = null;
 let currentAimPick = null;
 let dialogueOpen = false;
 let transitionLock = false;
@@ -340,6 +343,26 @@ function buildWorld(root) {
     root.add(light);
   }
   root.add(new THREE.AmbientLight(0xffead0, 0.28));
+  var furnaceDoor = new THREE.Mesh(
+    new THREE.BoxGeometry(0.7, 2.1, 0.16),
+    new THREE.MeshStandardMaterial({
+      color: 0x8a4a28,
+      metalness: 0.75,
+      roughness: 0.4,
+      emissive: 0xff5a18,
+      emissiveIntensity: 0.25,
+    })
+  );
+  furnaceDoor.position.set(2.55, 1.15, 1.4);
+  root.add(furnaceDoor);
+  var furnacePick = new THREE.Mesh(
+    new THREE.BoxGeometry(0.8, 2.1, 0.4),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  furnacePick.position.set(2.2, 1.15, 1.4);
+  furnacePick.userData.brInteract = { kind: "daomen_outpost_door" };
+  root.add(furnacePick);
+  interactRoots.push(furnacePick);
   spawnFaceling(root);
 }
 
@@ -400,7 +423,9 @@ function updateInteractUi() {
   if (interactHintEl) {
     interactHintEl.hidden = hidden;
     if (!hidden) {
-      if (data && data.kind === "l13_faceling") {
+      if (data && daomen && daomen.hint(data)) {
+        interactHintEl.innerHTML = daomen.hint(data);
+      } else if (data && data.kind === "l13_faceling") {
         interactHintEl.innerHTML = "无面灵前台 · 按 <kbd>Q</kbd> 对话";
       } else if (data && data.kind === "l13_pipe") {
         interactHintEl.innerHTML = "管道口 · 按 <kbd>Q</kbd> 切入";
@@ -478,6 +503,7 @@ function tryQAction() {
   }
   if (transitionLock || isInventoryOpen() || !survival || survival.dead) return;
   var data = resolveInteract();
+  if (daomen && daomen.interact(data)) return;
   if (!data) return;
   if (data.kind === "l13_faceling") {
     openFacelingDialogue();
@@ -561,8 +587,19 @@ function init() {
 
   var root = new THREE.Group();
   root.name = "BackroomsLevel13";
+  hostRoot = root;
   scene.add(root);
   buildWorld(root);
+  daomen = createDaomenOutpost({
+    scene: scene,
+    colliders: colliders,
+    interactRoots: interactRoots,
+    getHostRoot: function () { return hostRoot; },
+    fps: fps,
+    place: "l13",
+    showToast: showToast,
+    getSurvival: function () { return survival; },
+  });
 
   survival = new BackroomsSurvival();
   survival.mountHud(document.querySelector(".backrooms-hud") || document.body);

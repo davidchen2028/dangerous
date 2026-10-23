@@ -23,6 +23,7 @@ import {
   updateBackroomsHeatDamage,
 } from "./backrooms-temperature.js";
 import { buildLevel5World } from "./backrooms-level5-world.js";
+import { createDaomenOutpost } from "./backrooms-daomen-outpost.js?v=1";
 import { createLevel5EntityManager } from "./backrooms-level5-entities.js";
 import { createLevel5Atmosphere } from "./backrooms-level5-atmosphere.js";
 import { createBackroomsFiresaltController } from "./backrooms-firesalt.js";
@@ -89,6 +90,8 @@ let scene = null;
 let camera = null;
 let survival = null;
 let world = null;
+let hostRoot = null;
+let daomen = null;
 let entities = null;
 let atmosphere = null;
 let firesalt = null;
@@ -151,6 +154,8 @@ function updateInteractionHint() {
     text = getEntity81CallHint();
   } else if (data && data.kind === "l5_exit_l6") {
     text = "没有灯的锅炉通道 · 按 <kbd>Q</kbd> 进入 Level 6";
+  } else if (daomen) {
+    text = daomen.hint(data);
   }
   interactHintEl.innerHTML = text;
   interactHintEl.hidden = !text || isInventoryOpen() || !survival || survival.dead;
@@ -191,6 +196,7 @@ function leaveTo(levelId, number, page, message) {
 function interact() {
   if (isInventoryOpen() || !survival || survival.dead) return;
   var data = aimData();
+  if (daomen && daomen.interact(data)) return;
   if (!data) return;
   if (data.kind === "l5_loot") {
     takeLoot(data);
@@ -316,6 +322,7 @@ function init() {
 
   var root = new THREE.Group();
   root.name = "BackroomsLevel5";
+  hostRoot = root;
   scene.add(root);
   world = buildLevel5World(root, { gfxProfile: gfx });
   world.update(world.spawnX, world.spawnZ, performance.now());
@@ -326,6 +333,16 @@ function init() {
 
   entities = createLevel5EntityManager(root, world.colliders);
   atmosphere = createLevel5Atmosphere(toast);
+  daomen = createDaomenOutpost({
+    scene: scene,
+    colliders: world.colliders,
+    interactRoots: world.interactRoots,
+    getHostRoot: function () { return hostRoot; },
+    fps: fps,
+    place: "l5",
+    showToast: toast,
+    getSurvival: function () { return survival; },
+  });
   firesalt = createBackroomsFiresaltController({
     scene: scene,
     camera: camera,
@@ -339,6 +356,9 @@ function init() {
   });
   updateMegPointsDisplay(megPointsEl);
   bindControls();
+  if (/(?:^|[?&])daomen=1(?:&|$)/.test(location.search)) {
+    window.__l5 = { daomen: daomen, fps: fps, world: world };
+  }
   toast("猩红地毯向旅馆深处延伸。前台的登记簿上没有日期。", 5200);
   startLoop();
 }
@@ -351,7 +371,8 @@ function startLoop() {
     tick: function () {
       var dt = Math.min(clock.getDelta(), 0.05);
       var now = performance.now();
-      environment = world.update(fps.player.x, fps.player.z, now);
+      var inOutpost = daomen && daomen.isActive();
+      if (!inOutpost) environment = world.update(fps.player.x, fps.player.z, now);
       var mood = atmosphere.update(dt, now, environment, survival);
       var moving = isBackroomsPlayerMoving(fps);
       var sprinting = isBackroomsSprintHeld(fps) && moving;
@@ -372,7 +393,7 @@ function startLoop() {
           return resolveBackroomsMoveCollisions(nx, nz, fps.player.radius, world.colliders, 10);
         });
       }
-      if (entities && survival && !survival.dead) {
+      if (!inOutpost && entities && survival && !survival.dead) {
         entities.update(
           dt,
           fps.player.x,

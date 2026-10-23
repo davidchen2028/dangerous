@@ -26,6 +26,7 @@ import {
   CORRIDOR_HEIGHT,
   SPAWN_Z,
 } from "./backrooms-level2-streaming-world.js?v=3";
+import { createDaomenOutpost } from "./backrooms-daomen-outpost.js?v=1";
 import { raycastWallBlockDistance } from "./backrooms-collide.js";
 import {
   resolveBackroomsGfxProfile,
@@ -126,6 +127,8 @@ const fps = createBackroomsFpsState({
 let level2Lighting = null;
 /** @type {ReturnType<buildBackroomsLevel2World> | null} */
 let level2World = null;
+let hostRoot = null;
+let daomen = null;
 /** @type {{ key: THREE.PointLight, fill: THREE.PointLight } | null} */
 let playerFollowLights = null;
 let lootToastUntil = 0;
@@ -257,6 +260,7 @@ function isAimWanderer() {
 
 function tryDoorQAction() {
   if (isInventoryOpen() || !survival || survival.dead) return;
+  if (daomen && currentAimPick && daomen.interact(currentAimPick.data)) return;
   if (isAimWanderer() && wandererManager) {
     wandererManager.interact(currentAimPick.data);
     return;
@@ -313,6 +317,12 @@ function updateDoorHint() {
   if (!id) {
     if (isAimWanderer()) {
       doorHintEl.innerHTML = '流浪者 · 按 <kbd>Q</kbd> 交谈';
+      doorHintEl.hidden = false;
+      return;
+    }
+    var daomenHint = daomen && currentAimPick ? daomen.hint(currentAimPick.data) : "";
+    if (daomenHint) {
+      doorHintEl.innerHTML = daomenHint;
       doorHintEl.hidden = false;
       return;
     }
@@ -556,6 +566,7 @@ function init() {
 
   var root = new THREE.Group();
   root.name = "BackroomsLevel2";
+  hostRoot = root;
   scene.add(root);
 
   wallColliders.length = 0;
@@ -570,6 +581,16 @@ function init() {
   level2Doors = built.doors;
   interactRoots = built.interactRoots || [];
   level2Entities = createLevel2EntityManager(root, wallColliders);
+  daomen = createDaomenOutpost({
+    scene: scene,
+    colliders: wallColliders,
+    interactRoots: interactRoots,
+    getHostRoot: function () { return hostRoot; },
+    fps: fps,
+    place: "l2",
+    showToast: showLootToast,
+    getSurvival: function () { return survival; },
+  });
   firesalt = createBackroomsFiresaltController({
     scene: scene,
     camera: camera,
@@ -630,7 +651,8 @@ function startLoop() {
     var dt = Math.min(clock.getDelta(), 0.05);
     var nv = isNightVisionActive();
     applyLevel2NightVisionLighting(nv);
-    if (level2World && level2World.update) {
+    var inOutpost = daomen && daomen.isActive();
+    if (!inOutpost && level2World && level2World.update) {
       level2Environment = level2World.update(dt, fps.player, {
         showToast: showLootToast,
         onDamage: function (amount) {
@@ -674,11 +696,11 @@ function startLoop() {
 
     updateAimPick();
     updateDoorHint();
-    if (wandererManager && survival && !survival.dead) {
+    if (!inOutpost && wandererManager && survival && !survival.dead) {
       wandererManager.update(dt, fps.player.x, fps.player.z);
     }
-    updateLevel2Doors(level2Doors, dt);
-    if (level2Entities && level2World && survival && !survival.dead) {
+    if (!inOutpost) updateLevel2Doors(level2Doors, dt);
+    if (!inOutpost && level2Entities && level2World && survival && !survival.dead) {
       level2Entities.update(
         dt,
         fps.player.x,
