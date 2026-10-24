@@ -356,9 +356,6 @@ function init() {
   });
   updateMegPointsDisplay(megPointsEl);
   bindControls();
-  if (/(?:^|[?&])daomen=1(?:&|$)/.test(location.search)) {
-    window.__l5 = { daomen: daomen, fps: fps, world: world };
-  }
   toast("猩红地毯向旅馆深处延伸。前台的登记簿上没有日期。", 5200);
   startLoop();
 }

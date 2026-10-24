@@ -492,17 +492,6 @@ function init() {
   if (hintEl) {
     hintEl.innerHTML = "<kbd>WASD</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>Space</kbd> 跳 · <kbd>Q</kbd> 互动 · <kbd>R</kbd> 使用 · <kbd>B</kbd> 背包";
   }
-  if (FAST) {
-    window.__c1166 = {
-      run: run,
-      load: loadPalace,
-      fps: fps,
-      entities: entities,
-      survival: function () { return survival; },
-      layout: function () { return layout; },
-      colliders: wallColliders,
-    };
-  }
 
   var clock = new THREE.Clock();
   function frame() {
